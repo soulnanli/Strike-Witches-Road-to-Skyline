@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "com.monitor1394.xugl": "file:D:/资源/XUGL-master",
     "com.unity.2d.sprite": "1.0.0",
     "com.unity.ai.navigation": "2.0.6",
     "com.unity.collab-proxy": "2.7.1",
