@@ -137,7 +137,7 @@ public class CamaraEdgeScroll : MonoBehaviour
 
     void Adjust()
     {
-        //obRect = Utils.GetWorldRect(observeWindow);
+        obRect = Utils.GetWorldRect(observeWindow);
         float dx = Mathf.Max(0, rfRect.xMin - obRect.xMin) - Mathf.Max(0, obRect.xMax - rfRect.xMax);
         float dy = Mathf.Max(0, rfRect.yMin - obRect.yMin) - Mathf.Max(0, obRect.yMax - rfRect.yMax);
         d = new(dx, dy);
