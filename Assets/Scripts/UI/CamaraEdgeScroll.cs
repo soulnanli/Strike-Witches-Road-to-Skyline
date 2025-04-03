@@ -40,7 +40,7 @@ public class CamaraEdgeScroll : MonoBehaviour
             HandleZoom();
             if (_turnOnEdgeScroll)
             {
-                //HandleEdgeScroll();
+                HandleEdgeScroll();
             }
         }
         Adjust();
@@ -101,8 +101,7 @@ public class CamaraEdgeScroll : MonoBehaviour
         if (_isDragging)
         {
             Vector2 dragCurrentMousePosition = Input.mousePosition;
-            Vector2 distanceInWorldSpace = c.ScreenToWorldPoint(dragStartMousePosition)
-                                           - c.ScreenToWorldPoint(dragCurrentMousePosition);
+            Vector2 distanceInWorldSpace = c.ScreenToWorldPoint(dragStartMousePosition) - c.ScreenToWorldPoint(dragCurrentMousePosition);
             Vector2 newPos = dragStartCameraPosition + distanceInWorldSpace;
             transform.position = new Vector3(newPos.x, newPos.y, transform.position.z);
         }
