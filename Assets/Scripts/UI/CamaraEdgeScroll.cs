@@ -1,6 +1,6 @@
 using System;
 using UnityEngine;
-
+using SW.Core;
 public class CamaraEdgeScroll : MonoBehaviour
 {
     public RectTransform observeWindow;

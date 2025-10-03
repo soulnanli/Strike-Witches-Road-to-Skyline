@@ -14,20 +14,24 @@ namespace SW.Core
     }
     public class QuadtreeNode
     {
-        private Vector3 center;
-        private Vector3 size;
+        public Vector3 center;
+        public Vector3 size;
         private QuadtreeNode fl;
         private QuadtreeNode fr;
         private QuadtreeNode bl;
         private QuadtreeNode br;
 
+        private float _nodeSize ;
+        public int lodLevel;
+        
         public Vector3 Center { get => center; set => center = value; }
         public Vector3 Size => size;
 
-        public QuadtreeNode(Vector3 center, Vector3 size)
+        public QuadtreeNode(Vector3 center, Vector3 size, int lodLevel)
         {
             this.center = center;
             this.size = size;
+            this.lodLevel = lodLevel;
         }
 
         public void DrowGizoms()
@@ -113,10 +117,42 @@ namespace SW.Core
         public void Segmentaion(QuadtreeNode nfl = null, QuadtreeNode nfr = null, QuadtreeNode nbl = null, QuadtreeNode nbr = null)
         {
             Vector3 oneFourth = size / 4;
-            fl = nfl == null ? new QuadtreeNode(center + new Vector3(-oneFourth.x, 0, oneFourth.z), size / 2) : nfl;
-            fr = nfr == null ? new QuadtreeNode(center + new Vector3(oneFourth.x, 0, oneFourth.z), size / 2) : nfr;
-            bl = nbl == null ? new QuadtreeNode(center + new Vector3(-oneFourth.x, 0, -oneFourth.z), size / 2) : nbl;
-            br = nbr == null ? new QuadtreeNode(center + new Vector3(oneFourth.x, 0, -oneFourth.z), size / 2) : nbr;
+            fl = nfl == null ? new QuadtreeNode(center + new Vector3(-oneFourth.x, 0, oneFourth.z), size / 2, lodLevel - 1) : nfl;
+            fr = nfr == null ? new QuadtreeNode(center + new Vector3(oneFourth.x, 0, oneFourth.z), size / 2, lodLevel - 1) : nfr;
+            bl = nbl == null ? new QuadtreeNode(center + new Vector3(-oneFourth.x, 0, -oneFourth.z), size / 2, lodLevel - 1) : nbl;
+            br = nbr == null ? new QuadtreeNode(center + new Vector3(oneFourth.x, 0, -oneFourth.z), size / 2, lodLevel - 1) : nbr;
+        }
+
+        public bool CaculateLodNode()
+        {
+            if (!CanLod())
+            {
+                mapmgr.Instance.finalNodeList.Add(this);
+                return false;
+            }
+            Segmentaion();
+            fl.CaculateLodNode();
+            fr.CaculateLodNode();
+            bl.CaculateLodNode();
+            br.CaculateLodNode();
+
+            return true;
+        }
+        public bool CanLod()
+        {
+            if (lodLevel <= 0) return false; //到达最大Lod等级 0~5
+            
+            float t;
+            t = (mapmgr.Instance.lodJudgeSector * size.x) / (DistanceFromCamera() * Camera.main.fieldOfView);
+            if (t >= 1)
+                return true;
+            else
+                return false;
+        }
+        
+        public float DistanceFromCamera()
+        {
+            return Vector3.Distance(center, Camera.main.transform.position);
         }
     }
 }
