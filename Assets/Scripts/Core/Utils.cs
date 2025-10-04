@@ -35,13 +35,10 @@ namespace SW.Core
         private static int _planeSize = 8;
         public static (Mesh,Vector3) heightMap2Mesh( Texture2D heightMap, int scale, float size, Vector3 center, float mapSize,float heightScale,int col,int row,Vector3 pos)
         {
-            var planes = GeometryUtility.CalculateFrustumPlanes(Camera.main);
             
             float gray = -1;
             Mesh original = Resources.Load<Mesh>("plane");
             Mesh mesh = GameObject.Instantiate(original); // 克隆一份，不会影响原资源
-
-            
             
             var vertices = mesh.vertices;
 
@@ -79,7 +76,7 @@ namespace SW.Core
             mesh.vertices = vertices;
             mesh.RecalculateBounds();
             mesh.RecalculateNormals();
-
+            //视锥裁减
             return (mesh, new Vector3(leftOffset,downOffset, gray));
         }
     }

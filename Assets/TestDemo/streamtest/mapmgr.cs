@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using SW.Core;
 using Unity.VisualScripting;
+using Unity.VisualScripting.FullSerializer;
 using UnityEngine.TextCore.Text;
 
 public class mapmgr : MonoBehaviour
@@ -72,6 +73,25 @@ public class mapmgr : MonoBehaviour
             finalNodeList.Clear();
             lodComplete = _root.CaculateLodNode();
         }
+
+        foreach (var o in meshObjList)
+        {
+            Mesh mesh = o.GetComponent<MeshFilter>().mesh;
+            var planes = GeometryUtility.CalculateFrustumPlanes(Camera.main);
+            Bounds bounds = mesh.bounds;
+            bounds.center = o.gameObject.transform.position;
+            bounds.Expand(25f);
+            bool b = GeometryUtility.TestPlanesAABB(planes, bounds);
+
+            if (!b)
+            {
+                o.SetActive(false);
+            }
+            else
+            {
+                o.SetActive(true);
+            }
+        }
     }
 
     public void GenerateMeshObj()
@@ -89,7 +109,11 @@ public class mapmgr : MonoBehaviour
                     Vector3 pos = new Vector3(node.center.x + (int)scale * ( - 32 + 4) + j *  (int)scale * 8, 0f,
                         node.center.z + (int)scale * ( - 32 + 4) + i *  (int)scale * 8 );
                     (m,v) = Utils.heightMap2Mesh(heightMap,(int)scale,node.size.x,node.center, mapSize, heightScale,i,j, pos);
-                    
+
+                    if (m is null)
+                    {
+                        continue;
+                    }
                     GameObject go = meshPool.TryDequeue(1);
                     meshObjList.Add(go);
                     go.SetActive(true);

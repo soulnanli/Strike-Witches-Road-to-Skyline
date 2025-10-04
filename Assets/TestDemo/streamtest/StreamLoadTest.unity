@@ -359,12 +359,13 @@ MonoBehaviour:
   mapSize: 4096
   lodJudgeSector: 100
   cameraFov: 0
-  heightScale: 1
-  cameraMoveLimit: 0
+  heightScale: 300
+  cameraMoveLimit: 500
   cameraPosBuffer: {x: 0, y: 0, z: 0}
+  patchNumber: 0
   mesh: {fileID: 4300000, guid: 385c83a107979db40ae3e5b495dd6700, type: 2}
-  meshMaterial: {fileID: 15303, guid: 0000000000000000f000000000000000, type: 0}
-  heightMap: {fileID: 2800000, guid: b6bc3b422fbe7a6489978def91622138, type: 3}
+  meshMaterial: {fileID: 2100000, guid: dbf898c9f9c4a2d46aa6336e23caeb61, type: 2}
+  heightMap: {fileID: 2800000, guid: f17ca9da849a9374eb1939fcd59d9e23, type: 3}
   meshObjList: []
   _cameraProjection: {fileID: 0}
 --- !u!4 &1590585345
@@ -469,7 +470,7 @@ Transform:
   m_GameObject: {fileID: 1935406356}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 1, z: -10}
+  m_LocalPosition: {x: 0, y: 100, z: -937}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
