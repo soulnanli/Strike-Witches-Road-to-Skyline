@@ -356,13 +356,16 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   minSize: 64
-  mapSize: 512
+  mapSize: 4096
   lodJudgeSector: 100
   cameraFov: 0
-  heightScale: 300
+  heightScale: 1
+  cameraMoveLimit: 0
+  cameraPosBuffer: {x: 0, y: 0, z: 0}
   mesh: {fileID: 4300000, guid: 385c83a107979db40ae3e5b495dd6700, type: 2}
   meshMaterial: {fileID: 15303, guid: 0000000000000000f000000000000000, type: 0}
   heightMap: {fileID: 2800000, guid: b6bc3b422fbe7a6489978def91622138, type: 3}
+  meshObjList: []
   _cameraProjection: {fileID: 0}
 --- !u!4 &1590585345
 Transform:

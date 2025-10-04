@@ -31,11 +31,18 @@ namespace SW.Core
             return new Rect(leftBottom, rightTop - leftBottom);
         }
 
-        public static Mesh heightMap2Mesh( Texture2D heightMap, int level, float size, Vector3 center, float mapSize,float heightScale)
+        private static int _patchSize = 64;
+        private static int _planeSize = 8;
+        public static (Mesh,Vector3) heightMap2Mesh( Texture2D heightMap, int scale, float size, Vector3 center, float mapSize,float heightScale,int col,int row,Vector3 pos)
         {
+            var planes = GeometryUtility.CalculateFrustumPlanes(Camera.main);
+            
+            float gray = -1;
             Mesh original = Resources.Load<Mesh>("plane");
             Mesh mesh = GameObject.Instantiate(original); // 克隆一份，不会影响原资源
 
+            
+            
             var vertices = mesh.vertices;
 
             int hmWidth = heightMap.width;
@@ -46,8 +53,8 @@ namespace SW.Core
             float meshWidth = bounds.size.x;
             float meshHeight = bounds.size.z;
 
-            float leftOffset = (center.x - size / 2) + mapSize / 2 ;
-            float downOffset = (center.z - size / 2) + mapSize / 2 ;
+            float leftOffset = center.x + mapSize / 2 - scale * (_patchSize / 2) + row * _planeSize * scale;
+            float downOffset = center.z + mapSize / 2 - scale * (_patchSize / 2) + col * _planeSize * scale;
             
             for (int i = 0; i < vertices.Length; i++)
             {
@@ -56,15 +63,13 @@ namespace SW.Core
                 float v = (vertices[i].z - bounds.min.z) / meshHeight;
                 
                 // 用 UV 在 heightmap 上采样
-                float x = (u * size );
-                float y = (v * size );
+                float x = (u * _planeSize * scale );
+                float y = (v * _planeSize * scale );
                 
-                int mx = Mathf.RoundToInt((x + leftOffset) * (int)(hmHeight / mapSize));
-                int my = Mathf.RoundToInt((y + downOffset) * (int)(hmHeight / mapSize));
+                int mx = Mathf.RoundToInt((x + leftOffset) );
+                int my = Mathf.RoundToInt((y + downOffset) );
                 
-                float gray = heightMap.GetPixel(mx, my).grayscale;
-
-               
+                gray = heightMap.GetPixel(mx, my).grayscale;
                 
                 // 修改顶点高度
                 vertices[i].y = gray * heightScale;
@@ -75,7 +80,7 @@ namespace SW.Core
             mesh.RecalculateBounds();
             mesh.RecalculateNormals();
 
-            return mesh;
+            return (mesh, new Vector3(leftOffset,downOffset, gray));
         }
     }
     // float2 heightUV = (inVertex.xz + (_WorldSize.xz * 0.5) + 0.5) / (_WorldSize.xz + 1);
