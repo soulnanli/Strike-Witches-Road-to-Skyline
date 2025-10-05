@@ -24,14 +24,15 @@ namespace SW.Core
         private float _nodeSize ;
         public int lodLevel;
         
+        public Dictionary<Mesh,GameObject> meshObjDict;
         public Vector3 Center { get => center; set => center = value; }
-        public Vector3 Size => size;
 
         public QuadtreeNode(Vector3 center, Vector3 size, int lodLevel)
         {
             this.center = center;
             this.size = size;
             this.lodLevel = lodLevel;
+            meshObjDict = new Dictionary<Mesh, GameObject>();
         }
 
         public void DrowGizoms()

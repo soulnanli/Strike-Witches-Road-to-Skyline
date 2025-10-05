@@ -4,6 +4,7 @@ using UnityEngine;
 using SW.Core;
 using Unity.VisualScripting;
 using Unity.VisualScripting.FullSerializer;
+using UnityEditor.Timeline;
 using UnityEngine.TextCore.Text;
 
 public class mapmgr : MonoBehaviour
@@ -22,9 +23,9 @@ public class mapmgr : MonoBehaviour
     
     public Material meshMaterial;
     public Texture2D heightMap;
+    public Texture2D minMaxHeightMap;
     
     public List<QuadtreeNode> finalNodeList = new List<QuadtreeNode>();
-    public Dictionary<Mesh,GameObject> meshObjDict = new Dictionary<Mesh, GameObject>();
     public MeshObjPool meshPool = new ();
     public CameraProjection _cameraProjection;
 
@@ -51,7 +52,7 @@ public class mapmgr : MonoBehaviour
     // Update is called once per frame
     void Update()
     {
-        patchNumber = meshObjDict.Count;
+        //patchNumber = meshObjDict.Count;
         if (lodComplete)
         {
             lodComplete = false;
@@ -62,15 +63,15 @@ public class mapmgr : MonoBehaviour
         if (Vector3.Distance(_camera.transform.position, cameraPosBuffer) > cameraMoveLimit)
         {
             cameraPosBuffer = _camera.transform.position;
-            foreach (var o in meshObjDict.Values)
+            foreach (var node in finalNodeList)
             {
-                if (o is not null)
+                foreach (var o in node.meshObjDict.Values)
                 {
                     o.SetActive(false);
                     meshPool.TryEnqueue(1,o);
                 }
+                node.meshObjDict.Clear();
             }
-            meshObjDict.Clear(); // 清空列表
             finalNodeList.Clear();
             lodComplete = _root.CaculateLodNode();
         }
@@ -84,21 +85,60 @@ public class mapmgr : MonoBehaviour
         if (!isCameraMoved) return;
         
         var planes = GeometryUtility.CalculateFrustumPlanes(_camera);
-        foreach (var m in meshObjDict)
+        foreach (var node in finalNodeList)
         {
-            var bounds = m.Key.bounds;
-            bounds.center = m.Value.transform.position;
-            bool b = GeometryUtility.TestPlanesAABB(planes, bounds);
-
+            //先对node进行剔除
+            bool b = GeometryUtility.TestPlanesAABB(planes, GetNodeBounds(node));
             if (!b)
             {
-                m.Value.SetActive(false);
+                foreach (var o in node.meshObjDict.Values)
+                {
+                    o.SetActive(false);
+                    meshPool.TryEnqueue(1,o);
+                }
+                continue;
             }
             else
             {
-                m.Value.SetActive(true);
+                foreach (var m in node.meshObjDict)
+                {
+                    var bounds = m.Key.bounds;
+                    bounds.center = m.Value.transform.position + m.Key.bounds.center;
+                    b = GeometryUtility.TestPlanesAABB(planes, bounds);
+                
+                    if (!b)
+                    {
+                        m.Value.SetActive(false);
+                    }
+                    else
+                    {
+                        m.Value.SetActive(true);
+                    }
+                }
             }
         }
+    }
+
+    public Bounds GetNodeBounds(QuadtreeNode node)
+    {
+        int mipLevel = node.lodLevel + 6;
+        int mipWidth = Mathf.Max(1, minMaxHeightMap.width >> mipLevel);
+        int mipHeight = Mathf.Max(1, minMaxHeightMap.height >> mipLevel);
+        
+        float u = (node.center.x / mapSize + 0.5f);
+        float v = (node.center.y / mapSize + 0.5f);
+        
+        int x = Mathf.Clamp(Mathf.FloorToInt(u * mipWidth), 0, mipWidth - 1);
+        int y = Mathf.Clamp(Mathf.FloorToInt(v * mipHeight), 0, mipHeight - 1);
+        
+        Color c = minMaxHeightMap.GetPixel(x, y, mipLevel);
+        float minH = c.r * heightScale;
+        float maxH = c.g * heightScale;
+        
+        Vector3 center = new Vector3(node.center.x, (minH + maxH) * 0.5f, node.center.z);
+        Vector3 size = new Vector3(node.size.x, maxH - minH, node.size.z);
+
+        return new Bounds(center, size);
     }
 
     public void GenerateMeshObj()
@@ -122,7 +162,7 @@ public class mapmgr : MonoBehaviour
                         continue;
                     }
                     GameObject go = meshPool.TryDequeue(1);
-                    meshObjDict[m] = go;
+                    node.meshObjDict[m] = go;
                     go.SetActive(true);
                     go.GetComponent<MeshFilter>().mesh = m;
                     go.GetComponent<MeshRenderer>().material = meshMaterial;
