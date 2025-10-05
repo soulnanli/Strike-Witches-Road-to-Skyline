@@ -20,15 +20,15 @@ public class mapmgr : MonoBehaviour
     [Header("patch number")]
     public int patchNumber;
     
-    public Mesh mesh;
     public Material meshMaterial;
     public Texture2D heightMap;
     
     public List<QuadtreeNode> finalNodeList = new List<QuadtreeNode>();
-    public List<GameObject> meshObjList = new List<GameObject>();
+    public Dictionary<Mesh,GameObject> meshObjDict = new Dictionary<Mesh, GameObject>();
     public MeshObjPool meshPool = new ();
     public CameraProjection _cameraProjection;
-    
+
+    private Camera _camera;
     // Start is called once before the first execution of Update after the MonoBehaviour is created
 
     bool lodComplete = false;
@@ -36,6 +36,7 @@ public class mapmgr : MonoBehaviour
 
     void Start()
     {
+        _camera = Camera.main;
         Instance = this;
         _root = new QuadtreeNode(
             center: new Vector3(0,0,0),
@@ -44,13 +45,13 @@ public class mapmgr : MonoBehaviour
             );
         // _root.Segmentaion();
         lodComplete = _root.CaculateLodNode();
-        cameraPosBuffer = Camera.main.transform.position;
+        cameraPosBuffer = _camera.transform.position;
     }
 
     // Update is called once per frame
     void Update()
     {
-        patchNumber = meshObjList.Count;
+        patchNumber = meshObjDict.Count;
         if (lodComplete)
         {
             lodComplete = false;
@@ -58,38 +59,44 @@ public class mapmgr : MonoBehaviour
             GenerateMeshObj();
         }
 
-        if (Vector3.Distance(Camera.main.transform.position, cameraPosBuffer) > cameraMoveLimit)
+        if (Vector3.Distance(_camera.transform.position, cameraPosBuffer) > cameraMoveLimit)
         {
-            cameraPosBuffer = Camera.main.transform.position;
-            for (int i = meshObjList.Count - 1; i >= 0; i--)
+            cameraPosBuffer = _camera.transform.position;
+            foreach (var o in meshObjDict.Values)
             {
-                if (meshObjList[i] != null)
+                if (o is not null)
                 {
-                    meshObjList[i].SetActive(false);
-                    meshPool.TryEnqueue(1,meshObjList[i]);
+                    o.SetActive(false);
+                    meshPool.TryEnqueue(1,o);
                 }
             }
-            meshObjList.Clear(); // 清空列表
+            meshObjDict.Clear(); // 清空列表
             finalNodeList.Clear();
             lodComplete = _root.CaculateLodNode();
         }
 
-        foreach (var o in meshObjList)
+        FrustumCulling();
+    }
+
+    bool isCameraMoved = true;
+    public void FrustumCulling()
+    {
+        if (!isCameraMoved) return;
+        
+        var planes = GeometryUtility.CalculateFrustumPlanes(_camera);
+        foreach (var m in meshObjDict)
         {
-            Mesh mesh = o.GetComponent<MeshFilter>().mesh;
-            var planes = GeometryUtility.CalculateFrustumPlanes(Camera.main);
-            Bounds bounds = mesh.bounds;
-            bounds.center = o.gameObject.transform.position;
-            bounds.Expand(25f);
+            var bounds = m.Key.bounds;
+            bounds.center = m.Value.transform.position;
             bool b = GeometryUtility.TestPlanesAABB(planes, bounds);
 
             if (!b)
             {
-                o.SetActive(false);
+                m.Value.SetActive(false);
             }
             else
             {
-                o.SetActive(true);
+                m.Value.SetActive(true);
             }
         }
     }
@@ -115,7 +122,7 @@ public class mapmgr : MonoBehaviour
                         continue;
                     }
                     GameObject go = meshPool.TryDequeue(1);
-                    meshObjList.Add(go);
+                    meshObjDict[m] = go;
                     go.SetActive(true);
                     go.GetComponent<MeshFilter>().mesh = m;
                     go.GetComponent<MeshRenderer>().material = meshMaterial;

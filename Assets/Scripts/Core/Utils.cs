@@ -76,6 +76,7 @@ namespace SW.Core
             mesh.vertices = vertices;
             mesh.RecalculateBounds();
             mesh.RecalculateNormals();
+            mesh.bounds.Expand(25f);
             //视锥裁减
             return (mesh, new Vector3(leftOffset,downOffset, gray));
         }
