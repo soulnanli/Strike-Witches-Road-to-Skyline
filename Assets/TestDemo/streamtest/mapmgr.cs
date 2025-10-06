@@ -2,6 +2,10 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using SW.Core;
+using Unity.Burst;
+using Unity.Collections;
+using Unity.Jobs;
+using Unity.Mathematics;
 using Unity.VisualScripting;
 using Unity.VisualScripting.FullSerializer;
 using UnityEditor.Timeline;
@@ -26,6 +30,7 @@ public class mapmgr : MonoBehaviour
     public Texture2D minMaxHeightMap;
     
     public List<QuadtreeNode> finalNodeList = new List<QuadtreeNode>();
+    public GameObject[] nodeObjArray = new GameObject[64];
     public MeshObjPool meshPool = new ();
     public CameraProjection _cameraProjection;
 
@@ -80,7 +85,7 @@ public class mapmgr : MonoBehaviour
     }
 
     bool isCameraMoved = true;
-    public void FrustumCulling()
+    public void FrustumCulling() 
     {
         if (!isCameraMoved) return;
         
@@ -94,27 +99,81 @@ public class mapmgr : MonoBehaviour
                 foreach (var o in node.meshObjDict.Values)
                 {
                     o.SetActive(false);
-                    meshPool.TryEnqueue(1,o);
+                    //meshPool.TryEnqueue(1,o);
                 }
                 continue;
             }
             else
             {
+                TestPlanesAABBJob job = new TestPlanesAABBJob();
+                
+                NativeArray<Vector3> jobPlanesNormal = new NativeArray<Vector3>(6, Allocator.Persistent);
+                NativeArray<float> jobPlanesDistance = new NativeArray<float>(6, Allocator.Persistent);
+                NativeArray<Vector3> jobBoundsMaxPoint = new NativeArray<Vector3>(64, Allocator.Persistent);
+                NativeArray<Vector3> jobBoundsMinPoint = new NativeArray<Vector3>(64, Allocator.Persistent);
+                NativeArray<bool> result = new NativeArray<bool>(64, Allocator.Persistent);
+                
+                for (int i = 0; i < 6; i++)
+                {
+                    jobPlanesNormal[i] = planes[i].normal;
+                    jobPlanesDistance[i] = planes[i].distance;
+                }
+                
+                int index = -1;
+                //nodeObjArray.Clear();
                 foreach (var m in node.meshObjDict)
                 {
+                    ++index;
                     var bounds = m.Key.bounds;
                     bounds.center = m.Value.transform.position + m.Key.bounds.center;
-                    b = GeometryUtility.TestPlanesAABB(planes, bounds);
+                    jobBoundsMaxPoint[index] = bounds.max;
+                    jobBoundsMinPoint[index] = bounds.min;
+                    nodeObjArray[index] = m.Value;
+                }
                 
-                    if (!b)
+                job.jobPlanesNormal = jobPlanesNormal;
+                job.jobBoundsMaxPoint = jobBoundsMaxPoint;
+                job.jobBoundsMinPoint = jobBoundsMinPoint;
+                job.jobPlanesDistance = jobPlanesDistance;
+                job.result = result;
+                
+                JobHandle handle = job.Schedule(64, 1);
+                handle.Complete();
+                job.result.CopyTo(result);
+
+                for (int i = 0; i < 64; i++)
+                {
+                    if (result[i])
                     {
-                        m.Value.SetActive(false);
+                        nodeObjArray[i].SetActive(true);
                     }
                     else
                     {
-                        m.Value.SetActive(true);
+                        nodeObjArray[i].SetActive(false);
                     }
                 }
+                
+                // foreach (var m in node.meshObjDict)
+                // {
+                //      var bounds = m.Key.bounds;
+                //      bounds.center = m.Value.transform.position + m.Key.bounds.center;
+                //      b = GeometryUtility.TestPlanesAABB(planes, bounds);
+                //     
+                //      if (!b)
+                //      {
+                //          m.Value.SetActive(false);
+                //      }
+                //      else
+                //      {
+                //          m.Value.SetActive(true);
+                //      }
+                // }
+
+                result.Dispose();
+                jobBoundsMaxPoint.Dispose();
+                jobBoundsMinPoint.Dispose();
+                jobPlanesNormal.Dispose();
+                jobPlanesDistance.Dispose();
             }
         }
     }
@@ -208,6 +267,38 @@ public class mapmgr : MonoBehaviour
             go.AddComponent<MeshRenderer>();
             go.AddComponent<NodeDescriptor>();
             return go;
+        }
+    }
+    
+    [BurstCompile]
+    public struct TestPlanesAABBJob : IJobParallelFor
+    {
+        [ReadOnly] public NativeArray<Vector3> jobPlanesNormal;
+        [ReadOnly] public NativeArray<float> jobPlanesDistance;
+        [ReadOnly] public NativeArray<Vector3> jobBoundsMaxPoint;
+        [ReadOnly] public NativeArray<Vector3> jobBoundsMinPoint;
+        public NativeArray<bool> result;
+        public void Execute(int index)
+        {
+            bool f = true;
+            for(int i = 0; i < 6; i++)
+            {
+                Vector3 normal = jobPlanesNormal[i];
+                Vector3 p = jobBoundsMinPoint[index];
+                Vector3 maxPos = jobBoundsMaxPoint[index];
+                if (normal.x >= 0)
+                    p.x = maxPos.x;
+                if (normal.y >= 0)
+                    p.y = maxPos.y;
+                if (normal.z >= 0)
+                    p.z = maxPos.z;
+                if (Vector3.Dot(normal, p) + jobPlanesDistance[i] < 0)
+                {
+                    f = false;
+                }
+            }
+            Debug.Log("job Complete" + index);
+            result[index] = f;
         }
     }
 }
