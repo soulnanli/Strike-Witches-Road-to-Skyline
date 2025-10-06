@@ -297,7 +297,7 @@ public class mapmgr : MonoBehaviour
                     f = false;
                 }
             }
-            Debug.Log("job Complete" + index);
+            //Debug.Log("job Complete" + index);
             result[index] = f;
         }
     }
