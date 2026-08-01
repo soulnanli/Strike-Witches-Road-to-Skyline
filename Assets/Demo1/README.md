@@ -1,0 +1,29 @@
+# Demo 1.0 implementation
+
+Open `Assets/Demo1/Scenes/Demo1.unity` and enter Play Mode.
+
+## Controls
+
+- Left click / drag: select one or several witches. Shift modifies the current selection.
+- Right click ground: give every selected witch an independent move order into the same small destination area.
+- Right click a discovered enemy, or `A` then left click it: initiate combat when in engagement range.
+- `G`: send selected eligible witches to reinforce the nearest active battle.
+- `R`: start the delayed retreat process for selected participants.
+- `B` then left click: schedule an area-level remote strike from the selected purple artillery witch.
+- `Space`: pause/resume simulation. Camera, selection and orders remain available while paused.
+- `F`: focus the selected units. WASD/arrow keys, edge scrolling, middle drag and wheel control the camera.
+- `Ctrl+1..9`: save a control group; `1..9`: recall and focus it.
+
+## Configurable prototype assumptions
+
+The Feishu specification revision 6 intentionally leaves formulas and concrete values open. Demo defaults are centralized in `Demo1Balance` and `DemoUnitStats`:
+
+- defense is flat reduction with a minimum damage floor;
+- a discovered core replaces (rather than stacks with) an ordinary critical multiplier;
+- shield absorption consumes both shield and magic, with allied global shield bonuses improving efficiency;
+- pathing is direct movement on the unobstructed prototype map; every witch owns her route and destination offset;
+- enemy AI only starts a legal nearby engagement; player operational choices remain manual;
+- orders may be queued while paused;
+- the victory condition is destroying the enemy fortress, and defeat occurs when no player witch remains operational.
+
+These are implementation defaults, not new game-design source of truth. They can be replaced without changing the simulation API when the corresponding Feishu sections are approved.

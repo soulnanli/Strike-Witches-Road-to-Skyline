@@ -1,0 +1,22 @@
+{
+  "name": "SWRTS.Demo1.Tests",
+  "rootNamespace": "SWRTS.Demo1.Tests",
+  "references": [
+    "SWRTS.Demo1"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": true,
+  "precompiledReferences": [
+    "nunit.framework.dll"
+  ],
+  "autoReferenced": false,
+  "defineConstraints": [
+    "UNITY_INCLUDE_TESTS"
+  ],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

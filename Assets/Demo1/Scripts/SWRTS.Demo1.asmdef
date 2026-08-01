@@ -1,0 +1,14 @@
+{
+  "name": "SWRTS.Demo1",
+  "rootNamespace": "SWRTS.Demo1",
+  "references": [],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}
