@@ -15,7 +15,9 @@ namespace SWRTS.Demo1
             line.startWidth = width;
             line.endWidth = width;
             line.numCornerVertices = 2;
-            line.material = CreateLineMaterial(color);
+            Material material = CreateLineMaterial(color);
+            if (material != null)
+                line.material = material;
             line.startColor = color;
             line.endColor = color;
             return line;
@@ -30,7 +32,9 @@ namespace SWRTS.Demo1
             line.positionCount = 2;
             line.startWidth = width;
             line.endWidth = width;
-            line.material = CreateLineMaterial(color);
+            Material material = CreateLineMaterial(color);
+            if (material != null)
+                line.material = material;
             line.startColor = color;
             line.endColor = color;
             return line;
@@ -52,7 +56,13 @@ namespace SWRTS.Demo1
         {
             Shader shader = Shader.Find("Universal Render Pipeline/Lit");
             if (shader == null)
+                shader = Shader.Find("Universal Render Pipeline/Simple Lit");
+            if (shader == null)
+                shader = Shader.Find("Universal Render Pipeline/Unlit");
+            if (shader == null)
                 shader = Shader.Find("Standard");
+            if (shader == null)
+                return null;
             Material material = new Material(shader);
             material.color = color;
             return material;
@@ -61,6 +71,12 @@ namespace SWRTS.Demo1
         private static Material CreateLineMaterial(Color color)
         {
             Shader shader = Shader.Find("Sprites/Default");
+            if (shader == null)
+                shader = Shader.Find("Universal Render Pipeline/Unlit");
+            if (shader == null)
+                shader = Shader.Find("UI/Default");
+            if (shader == null)
+                return null;
             Material material = new Material(shader);
             material.color = color;
             return material;

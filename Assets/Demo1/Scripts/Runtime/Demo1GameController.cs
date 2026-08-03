@@ -35,6 +35,12 @@ namespace SWRTS.Demo1
         private readonly Dictionary<int, List<int>> _controlGroups = new Dictionary<int, List<int>>();
         private readonly List<DemoBattleEvent> _events = new List<DemoBattleEvent>();
 
+        private sealed class PendingEngagement
+        {
+            public int TargetId;
+            public List<int> UnitIds;
+        }
+
         private Demo1Simulation _simulation;
         private Demo1Balance _balance;
         private Camera _camera;
@@ -43,6 +49,7 @@ namespace SWRTS.Demo1
         private Vector2 _dragStart;
         private bool _dragSelecting;
         private bool _paused;
+        private PendingEngagement _pendingEngagement;
         private string _statusMessage = "左键选择，右键移动；先靠近已发现目标再交战。";
         private GUIStyle _titleStyle;
         private GUIStyle _smallStyle;
@@ -52,6 +59,9 @@ namespace SWRTS.Demo1
         private const float PanelWidth = 340f;
 
         public Demo1Simulation Simulation => _simulation;
+        public IReadOnlyCollection<int> SelectedUnitIds => _selection;
+        public bool IsPaused => _paused;
+        public string StatusMessage => _statusMessage;
 
         private void Start()
         {
@@ -72,6 +82,7 @@ namespace SWRTS.Demo1
             HandleGlobalInput();
             if (!_paused)
                 _simulation.Advance(Time.deltaTime);
+            ResolvePendingEngagement();
             HandlePointerInput();
             SyncViews();
         }
@@ -183,7 +194,99 @@ namespace SWRTS.Demo1
 
             _simulation.IssueMove(new[] { scout.Id }, new Vector3(-10f, 0f, -5f));
             _events.Clear();
-            _statusMessage = "任务：摧毁地图东侧的异形军巢穴。紫色单位可执行远程打击。";
+            SelectAllPlayerUnits();
+            _statusMessage = "全队已选中：右键地面移动，右键红色敌人会自动接近并开战。";
+        }
+
+        public void SelectAllPlayerUnits()
+        {
+            if (_simulation == null)
+                return;
+
+            _selection.Clear();
+            foreach (DemoUnitModel unit in _simulation.Units.Where(unit => unit.Team == DemoTeam.Player && unit.IsAlive))
+                _selection.Add(unit.Id);
+        }
+
+        public void SelectUnits(IEnumerable<int> unitIds)
+        {
+            _selection.Clear();
+            if (_simulation == null || unitIds == null)
+                return;
+
+            foreach (int id in unitIds)
+            {
+                DemoUnitModel unit = _simulation.GetUnit(id);
+                if (unit != null && unit.IsAlive && unit.Team == DemoTeam.Player)
+                    _selection.Add(id);
+            }
+        }
+
+        public DemoCommandResult CommandMove(Vector3 destination)
+        {
+            _pendingEngagement = null;
+            DemoCommandResult result = _simulation == null
+                ? DemoCommandResult.Fail("战场尚未初始化")
+                : _simulation.IssueMove(_selection, destination);
+            ApplyResult(result);
+            return result;
+        }
+
+        public DemoCommandResult CommandEngage(int targetId)
+        {
+            if (_simulation == null)
+                return ApplyAndReturn(DemoCommandResult.Fail("战场尚未初始化"));
+
+            DemoUnitModel target = _simulation.GetUnit(targetId);
+            if (target == null || !target.IsAlive || target.Team != DemoTeam.Enemy)
+                return ApplyAndReturn(DemoCommandResult.Fail("交战目标无效"));
+            if (!target.IsRevealedToPlayer)
+                return ApplyAndReturn(DemoCommandResult.Fail("尚未获得目标情报"));
+
+            List<DemoUnitModel> attackers = _selection
+                .Select(_simulation.GetUnit)
+                .Where(unit => unit != null && unit.IsAlive && unit.Team == DemoTeam.Player && !unit.IsFixed && unit.CombatId < 0)
+                .OrderBy(unit => Vector3.Distance(unit.Position, target.Position))
+                .ToList();
+            if (attackers.Count == 0)
+                return ApplyAndReturn(DemoCommandResult.Fail("请先选择一个可作战单位"));
+
+            DemoUnitModel attacker = attackers[0];
+            if (target.CombatId >= 0)
+                return ApplyAndReturn(_simulation.RequestReinforcement(attackers.Select(unit => unit.Id), target.CombatId));
+
+            float distance = Vector3.Distance(attacker.Position, target.Position);
+            if (distance <= attacker.Stats.EngagementRadius)
+                return StartSelectedCombat(attacker, target, attackers.Select(unit => unit.Id).ToList());
+
+            List<int> unitIds = attackers.Select(unit => unit.Id).ToList();
+            DemoCommandResult moveResult = _simulation.IssueMove(unitIds, target.Position);
+            if (!moveResult.Success)
+                return ApplyAndReturn(moveResult);
+
+            _pendingEngagement = new PendingEngagement { TargetId = targetId, UnitIds = unitIds };
+            _commandMode = CommandMode.Select;
+            return ApplyAndReturn(DemoCommandResult.Ok($"正在接近 {target.DisplayName}，进入射程后将自动开战"));
+        }
+
+        public DemoCommandResult CommandRemoteStrike(Vector3 target)
+        {
+            if (_simulation == null)
+                return ApplyAndReturn(DemoCommandResult.Fail("战场尚未初始化"));
+
+            DemoUnitModel artillery = _selection.Select(_simulation.GetUnit)
+                .FirstOrDefault(unit => unit != null && unit.IsAlive && unit.Stats.CanRemoteStrike);
+            _commandMode = CommandMode.Select;
+            return ApplyAndReturn(artillery == null
+                ? DemoCommandResult.Fail("选中单位中没有远程打击单位（紫色单位）")
+                : _simulation.ScheduleRemoteStrike(artillery.Id, target));
+        }
+
+        public void SetPaused(bool paused)
+        {
+            if (_paused == paused)
+                return;
+            TogglePause();
         }
 
         private DemoUnitModel AddUnit(string name, DemoTeam team, DemoUnitRole role, DemoUnitStats stats, Vector3 position)
@@ -276,9 +379,9 @@ namespace SWRTS.Demo1
                 _commandMode = CommandMode.Select;
                 Demo1UnitView targetView = RaycastUnit(Input.mousePosition);
                 if (targetView != null && _simulation.GetUnit(targetView.UnitId)?.Team == DemoTeam.Enemy)
-                    EngageTarget(targetView.UnitId);
+                    CommandEngage(targetView.UnitId);
                 else if (TryGroundPoint(Input.mousePosition, out Vector3 point))
-                    ApplyResult(_simulation.IssueMove(_selection, point));
+                    CommandMove(point);
             }
         }
 
@@ -287,7 +390,7 @@ namespace SWRTS.Demo1
             if (_commandMode == CommandMode.RemoteStrike)
             {
                 if (TryGroundPoint(Input.mousePosition, out Vector3 target))
-                    RemoteStrike(target);
+                    CommandRemoteStrike(target);
                 return;
             }
 
@@ -297,7 +400,7 @@ namespace SWRTS.Demo1
                 if (view == null || _simulation.GetUnit(view.UnitId)?.Team != DemoTeam.Enemy)
                     _statusMessage = "交战命令需要一个已发现的敌方目标";
                 else
-                    EngageTarget(view.UnitId);
+                    CommandEngage(view.UnitId);
                 return;
             }
 
@@ -328,40 +431,56 @@ namespace SWRTS.Demo1
             }
         }
 
-        private void EngageTarget(int targetId)
+        private DemoCommandResult StartSelectedCombat(DemoUnitModel attacker, DemoUnitModel target, List<int> selectedIds)
         {
-            DemoUnitModel target = _simulation.GetUnit(targetId);
-            DemoUnitModel attacker = _selection
-                .Select(_simulation.GetUnit)
-                .Where(unit => unit != null && unit.IsAlive && unit.Team == DemoTeam.Player && !unit.IsFixed)
-                .OrderBy(unit => Vector3.Distance(unit.Position, target.Position))
-                .FirstOrDefault();
-            if (attacker == null)
+            DemoCommandResult result = _simulation.StartCombat(attacker.Id, target.Id);
+            ApplyResult(result);
+            if (!result.Success)
+                return result;
+
+            int combatId = target.CombatId >= 0 ? target.CombatId : attacker.CombatId;
+            List<int> remaining = selectedIds.Where(id => id != attacker.Id).ToList();
+            if (remaining.Count > 0 && combatId >= 0)
+                _simulation.RequestReinforcement(remaining, combatId);
+            _pendingEngagement = null;
+            _commandMode = CommandMode.Select;
+            return result;
+        }
+
+        private void ResolvePendingEngagement()
+        {
+            if (_pendingEngagement == null || _simulation == null || _paused)
+                return;
+
+            DemoUnitModel target = _simulation.GetUnit(_pendingEngagement.TargetId);
+            if (target == null || !target.IsAlive)
             {
-                _statusMessage = "请先选择一个可作战单位";
+                _pendingEngagement = null;
+                _statusMessage = "自动接战已取消：目标已失效";
                 return;
             }
 
-            DemoCommandResult result = _simulation.StartCombat(attacker.Id, targetId);
-            ApplyResult(result);
-            if (!result.Success)
+            List<DemoUnitModel> attackers = _pendingEngagement.UnitIds
+                .Select(_simulation.GetUnit)
+                .Where(unit => unit != null && unit.IsAlive && unit.Team == DemoTeam.Player && unit.CombatId < 0)
+                .OrderBy(unit => Vector3.Distance(unit.Position, target.Position))
+                .ToList();
+            if (attackers.Count == 0)
+            {
+                _pendingEngagement = null;
                 return;
+            }
 
-            int combatId = target.CombatId >= 0 ? target.CombatId : attacker.CombatId;
-            List<int> remaining = _selection.Where(id => id != attacker.Id).ToList();
-            if (remaining.Count > 0 && combatId >= 0)
-                _simulation.RequestReinforcement(remaining, combatId);
-            _commandMode = CommandMode.Select;
-        }
+            if (target.CombatId >= 0)
+            {
+                ApplyResult(_simulation.RequestReinforcement(attackers.Select(unit => unit.Id), target.CombatId));
+                _pendingEngagement = null;
+                return;
+            }
 
-        private void RemoteStrike(Vector3 target)
-        {
-            DemoUnitModel artillery = _selection.Select(_simulation.GetUnit)
-                .FirstOrDefault(unit => unit != null && unit.IsAlive && unit.Stats.CanRemoteStrike);
-            ApplyResult(artillery == null
-                ? DemoCommandResult.Fail("选中单位中没有远程打击单位（紫色单位）")
-                : _simulation.ScheduleRemoteStrike(artillery.Id, target));
-            _commandMode = CommandMode.Select;
+            DemoUnitModel attacker = attackers[0];
+            if (Vector3.Distance(attacker.Position, target.Position) <= attacker.Stats.EngagementRadius)
+                StartSelectedCombat(attacker, target, _pendingEngagement.UnitIds);
         }
 
         private void ReinforceNearestBattle()
@@ -401,6 +520,12 @@ namespace SWRTS.Demo1
         private void ApplyResult(DemoCommandResult result)
         {
             _statusMessage = result.Message;
+        }
+
+        private DemoCommandResult ApplyAndReturn(DemoCommandResult result)
+        {
+            ApplyResult(result);
+            return result;
         }
 
         private void OnBattleEvent(DemoBattleEvent battleEvent)
@@ -671,7 +796,13 @@ namespace SWRTS.Demo1
         private void RestartScene()
         {
             Time.timeScale = 1f;
-            SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
+            Scene activeScene = SceneManager.GetActiveScene();
+            if (activeScene.buildIndex >= 0)
+                SceneManager.LoadScene(activeScene.buildIndex);
+            else if (!string.IsNullOrEmpty(activeScene.path))
+                SceneManager.LoadScene(activeScene.path);
+            else
+                _statusMessage = "无法重新载入当前场景，请停止并重新进入播放模式";
         }
 
         private static Rect ScreenRect(Vector2 a, Vector2 b)

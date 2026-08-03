@@ -4,9 +4,10 @@ Open `Assets/Demo1/Scenes/Demo1.unity` and enter Play Mode.
 
 ## Controls
 
+- The full squad is selected on entry so a move or attack can be issued immediately.
 - Left click / drag: select one or several witches. Shift modifies the current selection.
 - Right click ground: give every selected witch an independent move order into the same small destination area.
-- Right click a discovered enemy, or `A` then left click it: initiate combat when in engagement range.
+- Right click a discovered enemy, or `A` then left click it: approach automatically and initiate combat when in engagement range.
 - `G`: send selected eligible witches to reinforce the nearest active battle.
 - `R`: start the delayed retreat process for selected participants.
 - `B` then left click: schedule an area-level remote strike from the selected purple artillery witch.

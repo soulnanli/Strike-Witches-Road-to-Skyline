@@ -22,7 +22,8 @@ namespace SWRTS.Demo1
                 ? RoleColor(model.Role)
                 : model.Role == DemoUnitRole.Fortress ? new Color(0.7f, 0.08f, 0.12f) : new Color(0.92f, 0.2f, 0.16f);
             _material = Demo1Drawing.CreateMaterial(_baseColor);
-            _renderer.sharedMaterial = _material;
+            if (_material != null)
+                _renderer.sharedMaterial = _material;
 
             _selectionCircle = Demo1Drawing.CreateCircle(transform, "Selection", new Color(0.2f, 1f, 0.95f, 0.95f), 0.13f, 48);
             _visionCircle = Demo1Drawing.CreateCircle(transform, "Vision", new Color(0.25f, 0.75f, 1f, 0.28f), 0.06f, 72);
@@ -45,7 +46,8 @@ namespace SWRTS.Demo1
             Color activityColor = model.Activity == DemoUnitActivity.Retreating
                 ? new Color(1f, 0.65f, 0.1f)
                 : model.Activity == DemoUnitActivity.Protected ? new Color(0.35f, 0.9f, 1f) : _baseColor;
-            _material.color = Color.Lerp(Color.black, activityColor, 0.55f + model.HealthRatio * 0.45f);
+            if (_material != null)
+                _material.color = Color.Lerp(Color.black, activityColor, 0.55f + model.HealthRatio * 0.45f);
             SetSelected(selected, model);
 
             _routeLine.enabled = selected && model.HasDestination;
