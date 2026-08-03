@@ -20,7 +20,7 @@ namespace SWRTS.Demo1
             _renderer = GetComponent<Renderer>();
             _baseColor = model.Team == DemoTeam.Player
                 ? RoleColor(model.Role)
-                : model.Role == DemoUnitRole.Fortress ? new Color(0.7f, 0.08f, 0.12f) : new Color(0.92f, 0.2f, 0.16f);
+                : EnemyRoleColor(model.Role);
             _material = Demo1Drawing.CreateMaterial(_baseColor);
             if (_material != null)
                 _renderer.sharedMaterial = _material;
@@ -82,6 +82,21 @@ namespace SWRTS.Demo1
                     return new Color(0.75f, 0.42f, 1f);
                 default:
                     return new Color(0.15f, 0.58f, 1f);
+            }
+        }
+
+        private static Color EnemyRoleColor(DemoUnitRole role)
+        {
+            switch (role)
+            {
+                case DemoUnitRole.Scout:
+                    return new Color(1f, 0.5f, 0.12f);
+                case DemoUnitRole.Guard:
+                    return new Color(0.95f, 0.16f, 0.2f);
+                case DemoUnitRole.Fortress:
+                    return new Color(0.7f, 0.08f, 0.12f);
+                default:
+                    return new Color(0.92f, 0.2f, 0.16f);
             }
         }
 

@@ -14,6 +14,17 @@ Open `Assets/Demo1/Scenes/Demo1.unity` and enter Play Mode.
 - `Space`: pause/resume simulation. Camera, selection and orders remain available while paused.
 - `F`: focus the selected units. WASD/arrow keys, edge scrolling, middle drag and wheel control the camera.
 - `Ctrl+1..9`: save a control group; `1..9`: recall and focus it.
+- Click a battle bubble: open the live three-line battle panel. Opening it does not pause the simulation.
+
+## Three-line battle prototype
+
+- Each side has two slots in the vanguard, main and support lines; overflow participants wait in reserve.
+- Witches and guards prefer the vanguard, artillery and scouts prefer the main line, and support units and fortresses prefer the support line.
+- Ordinary attacks must target the nearest occupied enemy line. Vanguard units provide screening for units behind them.
+- Artillery and scouts use screen-piercing attacks. Their chance to reach the main/support lines is `penetration * (1 - screening efficiency)`; complete screening blocks penetration.
+- Select a friendly card in the live battle panel to order a two-second line change. Repositioning units remain exposed but cannot attack, screen or support until the timer completes.
+- Reserve units cannot attack, be targeted, screen or provide support. They automatically deploy when a slot becomes available.
+- These formation rules and values are code-only prototype assumptions and have not been written back to Feishu revision 6.
 
 ## Configurable prototype assumptions
 

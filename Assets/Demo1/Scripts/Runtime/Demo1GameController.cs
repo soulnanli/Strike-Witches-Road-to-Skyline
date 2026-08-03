@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.SceneManagement;
 
 namespace SWRTS.Demo1
@@ -45,6 +46,7 @@ namespace SWRTS.Demo1
         private Demo1Balance _balance;
         private Camera _camera;
         private Demo1CameraController _cameraController;
+        private Demo1BattleUI _battleUi;
         private CommandMode _commandMode;
         private Vector2 _dragStart;
         private bool _dragSelecting;
@@ -62,6 +64,8 @@ namespace SWRTS.Demo1
         public IReadOnlyCollection<int> SelectedUnitIds => _selection;
         public bool IsPaused => _paused;
         public string StatusMessage => _statusMessage;
+        public IReadOnlyList<DemoBattleEvent> BattleEvents => _events;
+        public Camera BattleCamera => _camera;
 
         private void Start()
         {
@@ -71,6 +75,7 @@ namespace SWRTS.Demo1
             BuildEnvironment();
             BuildCamera();
             CreateScenario();
+            BuildBattleUi();
             SyncViews();
         }
 
@@ -85,6 +90,7 @@ namespace SWRTS.Demo1
             ResolvePendingEngagement();
             HandlePointerInput();
             SyncViews();
+            _battleUi?.Sync();
         }
 
         private void OnDisable()
@@ -143,11 +149,14 @@ namespace SWRTS.Demo1
         private void CreateScenario()
         {
             DemoUnitStats witch = new DemoUnitStats();
+            witch.PreferredBattleLine = DemoBattleLine.Vanguard;
+            witch.ScreenPower = 1f;
             DemoUnitStats ace = witch.Clone();
             ace.MaxHealth = 145f;
             ace.Attack = 29f;
             ace.CoreDiscovery = 0.28f;
             ace.Mobility = 1.25f;
+            ace.ScreenPower = 1.2f;
 
             DemoUnitStats support = witch.Clone();
             support.Attack = 18f;
@@ -155,11 +164,17 @@ namespace SWRTS.Demo1
             support.MaxShield = 60f;
             support.GlobalShieldBonus = 0.28f;
             support.MagicRecovery = 6f;
+            support.PreferredBattleLine = DemoBattleLine.Support;
+            support.ScreenPower = 0.35f;
 
             DemoUnitStats artillery = witch.Clone();
             artillery.Attack = 22f;
             artillery.CanRemoteStrike = true;
             artillery.CoreDiscovery = 0.22f;
+            artillery.PreferredBattleLine = DemoBattleLine.Main;
+            artillery.AttackProfile = DemoAttackProfile.ScreenPiercing;
+            artillery.ScreenPenetration = 0.65f;
+            artillery.ScreenPower = 0.25f;
 
             DemoUnitStats neuroi = witch.Clone();
             neuroi.MaxHealth = 105f;
@@ -168,6 +183,20 @@ namespace SWRTS.Demo1
             neuroi.MaxShield = 34f;
             neuroi.MoveSpeed = 4.8f;
             neuroi.EngagementRadius = 7.5f;
+            neuroi.PreferredBattleLine = DemoBattleLine.Main;
+            neuroi.AttackProfile = DemoAttackProfile.ScreenPiercing;
+            neuroi.ScreenPenetration = 0.5f;
+            neuroi.ScreenPower = 0.45f;
+
+            DemoUnitStats guard = neuroi.Clone();
+            guard.MaxHealth = 135f;
+            guard.Defense = 9f;
+            guard.Attack = 22f;
+            guard.MoveSpeed = 4.2f;
+            guard.PreferredBattleLine = DemoBattleLine.Vanguard;
+            guard.AttackProfile = DemoAttackProfile.Standard;
+            guard.ScreenPenetration = 0f;
+            guard.ScreenPower = 1.15f;
 
             DemoUnitStats fortress = neuroi.Clone();
             fortress.MaxHealth = 360f;
@@ -180,15 +209,19 @@ namespace SWRTS.Demo1
             fortress.EngagementRadius = 10f;
             fortress.VisionRadius = 26f;
             fortress.MoveSpeed = 0f;
+            fortress.PreferredBattleLine = DemoBattleLine.Support;
+            fortress.AttackProfile = DemoAttackProfile.Standard;
+            fortress.ScreenPenetration = 0f;
+            fortress.ScreenPower = 0f;
 
             AddUnit("宫藤芳佳", DemoTeam.Player, DemoUnitRole.Support, support, new Vector3(-27f, 0f, -10f));
             AddUnit("坂本美绪", DemoTeam.Player, DemoUnitRole.Witch, ace, new Vector3(-25f, 0f, -3f));
             AddUnit("莉涅特", DemoTeam.Player, DemoUnitRole.Artillery, artillery, new Vector3(-27f, 0f, 5f));
             AddUnit("佩琳", DemoTeam.Player, DemoUnitRole.Witch, witch, new Vector3(-23f, 0f, 12f));
 
-            DemoUnitModel scout = AddUnit("异形军侦察体", DemoTeam.Enemy, DemoUnitRole.Witch, neuroi, new Vector3(2f, 0f, -9f));
-            AddUnit("异形军护卫 A", DemoTeam.Enemy, DemoUnitRole.Witch, neuroi, new Vector3(17f, 0f, -3f));
-            AddUnit("异形军护卫 B", DemoTeam.Enemy, DemoUnitRole.Witch, neuroi, new Vector3(18f, 0f, 8f));
+            DemoUnitModel scout = AddUnit("异形军侦察体", DemoTeam.Enemy, DemoUnitRole.Scout, neuroi, new Vector3(2f, 0f, -9f));
+            AddUnit("异形军护卫 A", DemoTeam.Enemy, DemoUnitRole.Guard, guard, new Vector3(17f, 0f, -3f));
+            AddUnit("异形军护卫 B", DemoTeam.Enemy, DemoUnitRole.Guard, guard, new Vector3(18f, 0f, 8f));
             DemoUnitModel objective = AddUnit("异形军巢穴", DemoTeam.Enemy, DemoUnitRole.Fortress, fortress, new Vector3(34f, 0f, 3f));
             objective.IsRevealedToPlayer = true;
 
@@ -289,10 +322,48 @@ namespace SWRTS.Demo1
             TogglePause();
         }
 
+        public DemoCommandResult CommandBattleLineChange(int unitId, DemoBattleLine line)
+        {
+            DemoCommandResult result = _simulation.RequestBattleLineChange(unitId, line);
+            ApplyResult(result);
+            return result;
+        }
+
+        public DemoCommandResult CommandReinforceCombat(int combatId)
+        {
+            DemoCommandResult result = _simulation.RequestReinforcement(_selection, combatId);
+            ApplyResult(result);
+            return result;
+        }
+
+        public DemoCommandResult CommandRetreatUnit(int unitId)
+        {
+            DemoCommandResult result = _simulation.RequestRetreat(new[] { unitId });
+            ApplyResult(result);
+            return result;
+        }
+
+        public void FocusCombat(int combatId)
+        {
+            DemoCombatModel combat = _simulation.GetCombat(combatId);
+            if (combat != null)
+                _cameraController.Focus(combat.Center);
+        }
+
+        private void BuildBattleUi()
+        {
+            GameObject uiObject = new GameObject("Demo1 Battle UI");
+            uiObject.transform.SetParent(transform, false);
+            _battleUi = uiObject.AddComponent<Demo1BattleUI>();
+            _battleUi.Initialize(this);
+        }
+
         private DemoUnitModel AddUnit(string name, DemoTeam team, DemoUnitRole role, DemoUnitStats stats, Vector3 position)
         {
             DemoUnitModel model = _simulation.AddUnit(name, team, role, stats, position);
-            PrimitiveType primitive = role == DemoUnitRole.Fortress ? PrimitiveType.Cube : PrimitiveType.Capsule;
+            PrimitiveType primitive = role == DemoUnitRole.Fortress
+                ? PrimitiveType.Cube
+                : role == DemoUnitRole.Scout ? PrimitiveType.Sphere : PrimitiveType.Capsule;
             GameObject viewObject = GameObject.CreatePrimitive(primitive);
             viewObject.name = $"Unit {model.Id} - {name}";
             viewObject.transform.SetParent(transform);
@@ -311,6 +382,11 @@ namespace SWRTS.Demo1
                 TogglePause();
             if (Input.GetKeyDown(KeyCode.Escape))
             {
+                if (_battleUi != null && _battleUi.IsPanelOpen)
+                {
+                    _battleUi.ClosePanel();
+                    return;
+                }
                 _commandMode = CommandMode.Select;
                 _statusMessage = "命令已取消";
             }
@@ -355,6 +431,8 @@ namespace SWRTS.Demo1
 
         private void HandlePointerInput()
         {
+            if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject())
+                return;
             if (IsPointerOverHud())
                 return;
 

@@ -155,5 +155,114 @@ namespace SWRTS.Demo1.Tests
             Assert.That(retreat.Success, Is.False);
             Assert.That(fortress.Position, Is.EqualTo(Vector3.zero));
         }
+
+        [Test]
+        public void BattleLines_AssignPreferredSlotsAndOverflowToReserve()
+        {
+            Demo1Simulation simulation = new Demo1Simulation();
+            DemoUnitStats harmless = BasicStats(0f);
+            DemoUnitModel attacker = simulation.AddUnit("attacker", DemoTeam.Player, DemoUnitRole.Witch, harmless, Vector3.zero);
+            DemoUnitModel enemy = simulation.AddUnit("enemy", DemoTeam.Enemy, DemoUnitRole.Guard, harmless, Vector3.right * 2f);
+            enemy.IsRevealedToPlayer = true;
+            simulation.StartCombat(attacker.Id, enemy.Id);
+            DemoCombatModel combat = simulation.Combats.Single();
+
+            DemoUnitModel[] reinforcements = Enumerable.Range(0, 6)
+                .Select(index => simulation.AddUnit($"reinforcement-{index}", DemoTeam.Player, DemoUnitRole.Witch, harmless, combat.Center))
+                .ToArray();
+            simulation.RequestReinforcement(reinforcements.Select(unit => unit.Id), combat.Id);
+
+            Assert.That(combat.Participants.Select(simulation.GetUnit).Count(unit => unit.Team == DemoTeam.Player && combat.GetAssignment(unit.Id).Line == DemoBattleLine.Vanguard), Is.EqualTo(2));
+            Assert.That(combat.Participants.Select(simulation.GetUnit).Count(unit => unit.Team == DemoTeam.Player && combat.GetAssignment(unit.Id).Line == DemoBattleLine.Main), Is.EqualTo(2));
+            Assert.That(combat.Participants.Select(simulation.GetUnit).Count(unit => unit.Team == DemoTeam.Player && combat.GetAssignment(unit.Id).Line == DemoBattleLine.Support), Is.EqualTo(2));
+            Assert.That(combat.Participants.Select(simulation.GetUnit).Count(unit => unit.Team == DemoTeam.Player && combat.GetAssignment(unit.Id).Line == DemoBattleLine.Reserve), Is.EqualTo(1));
+        }
+
+        [Test]
+        public void BattleLineChange_IsDelayedAndRejectsFixedTargets()
+        {
+            Demo1Simulation simulation = new Demo1Simulation();
+            DemoUnitStats harmless = BasicStats(0f);
+            DemoUnitModel player = simulation.AddUnit("player", DemoTeam.Player, DemoUnitRole.Witch, harmless, Vector3.zero);
+            DemoUnitStats fortressStats = harmless.Clone();
+            fortressStats.PreferredBattleLine = DemoBattleLine.Support;
+            DemoUnitModel fortress = simulation.AddUnit("fortress", DemoTeam.Enemy, DemoUnitRole.Fortress, fortressStats, Vector3.right * 2f);
+            fortress.IsRevealedToPlayer = true;
+            simulation.StartCombat(player.Id, fortress.Id);
+            DemoCombatModel combat = simulation.Combats.Single();
+
+            DemoCommandResult move = simulation.RequestBattleLineChange(player.Id, DemoBattleLine.Main);
+            DemoCommandResult fixedMove = simulation.RequestBattleLineChange(fortress.Id, DemoBattleLine.Main);
+
+            Assert.That(move.Success, Is.True);
+            Assert.That(combat.GetAssignment(player.Id).Line, Is.EqualTo(DemoBattleLine.Main));
+            Assert.That(combat.GetAssignment(player.Id).IsRepositioning, Is.True);
+            simulation.Advance(simulation.Balance.BattleLineChangeDuration + 0.1f);
+            Assert.That(combat.GetAssignment(player.Id).IsRepositioning, Is.False);
+            Assert.That(fixedMove.Success, Is.False);
+        }
+
+        [Test]
+        public void Screening_BlocksStandardAndFullyScreenedPiercingAttacks()
+        {
+            Demo1Simulation simulation = new Demo1Simulation();
+            DemoUnitStats piercing = BasicStats(10f);
+            piercing.AttackProfile = DemoAttackProfile.ScreenPiercing;
+            piercing.ScreenPenetration = 1f;
+            DemoUnitModel attacker = simulation.AddUnit("piercer", DemoTeam.Player, DemoUnitRole.Artillery, piercing, Vector3.zero);
+
+            DemoUnitStats screenStats = BasicStats(0f);
+            screenStats.PreferredBattleLine = DemoBattleLine.Vanguard;
+            screenStats.ScreenPower = 1f;
+            DemoUnitModel screen = simulation.AddUnit("screen", DemoTeam.Enemy, DemoUnitRole.Guard, screenStats, Vector3.right * 2f);
+            screen.IsRevealedToPlayer = true;
+            simulation.StartCombat(attacker.Id, screen.Id);
+            DemoCombatModel combat = simulation.Combats.Single();
+
+            DemoUnitStats rearStats = BasicStats(0f);
+            rearStats.PreferredBattleLine = DemoBattleLine.Support;
+            DemoUnitModel rear = simulation.AddUnit("rear", DemoTeam.Enemy, DemoUnitRole.Support, rearStats, combat.Center);
+            rear.Shield = 0f;
+            rear.Magic = 0f;
+            simulation.RequestReinforcement(new[] { rear.Id }, combat.Id);
+            float rearHealth = rear.Health;
+
+            Assert.That(simulation.GetScreeningEfficiency(combat.Id, DemoTeam.Enemy), Is.EqualTo(1f).Within(0.001f));
+            simulation.Advance(1.1f);
+            Assert.That(rear.Health, Is.EqualTo(rearHealth), "Full screening must block even a 100% base piercing attack.");
+        }
+
+        [Test]
+        public void ScreeningLoss_ExposesRearLineToPiercingAttack()
+        {
+            Demo1Simulation simulation = new Demo1Simulation();
+            DemoUnitStats piercing = BasicStats(25f);
+            piercing.AttackProfile = DemoAttackProfile.ScreenPiercing;
+            piercing.ScreenPenetration = 1f;
+            DemoUnitModel attacker = simulation.AddUnit("piercer", DemoTeam.Player, DemoUnitRole.Scout, piercing, Vector3.zero);
+
+            DemoUnitStats screenStats = BasicStats(0f);
+            screenStats.PreferredBattleLine = DemoBattleLine.Vanguard;
+            screenStats.ScreenPower = 1f;
+            DemoUnitModel screen = simulation.AddUnit("screen", DemoTeam.Enemy, DemoUnitRole.Guard, screenStats, Vector3.right * 2f);
+            screen.IsRevealedToPlayer = true;
+            simulation.StartCombat(attacker.Id, screen.Id);
+            DemoCombatModel combat = simulation.Combats.Single();
+
+            DemoUnitStats rearStats = BasicStats(0f);
+            rearStats.PreferredBattleLine = DemoBattleLine.Support;
+            DemoUnitModel rear = simulation.AddUnit("rear", DemoTeam.Enemy, DemoUnitRole.Support, rearStats, combat.Center);
+            rear.Shield = 0f;
+            rear.Magic = 0f;
+            simulation.RequestReinforcement(new[] { rear.Id }, combat.Id);
+            screen.Health = 0f;
+            screen.Activity = DemoUnitActivity.Destroyed;
+            float rearHealth = rear.Health;
+
+            simulation.Advance(1.1f);
+
+            Assert.That(simulation.GetScreeningEfficiency(combat.Id, DemoTeam.Enemy), Is.EqualTo(0f));
+            Assert.That(rear.Health, Is.LessThan(rearHealth));
+        }
     }
 }

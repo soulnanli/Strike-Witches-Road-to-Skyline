@@ -16,7 +16,23 @@ namespace SWRTS.Demo1
         Witch,
         Support,
         Artillery,
+        Scout,
+        Guard,
         Fortress
+    }
+
+    public enum DemoBattleLine
+    {
+        Vanguard,
+        Main,
+        Support,
+        Reserve
+    }
+
+    public enum DemoAttackProfile
+    {
+        Standard,
+        ScreenPiercing
     }
 
     public enum DemoUnitActivity
@@ -46,6 +62,9 @@ namespace SWRTS.Demo1
         public float ShieldMagicCostPerDamage = 0.55f;
         public float ReinforcementRadius = 13f;
         public float ForcedEngagementRadius = 6f;
+        public int BattleLineCapacity = 2;
+        public float ScreenRequiredPerProtectedUnit = 1f;
+        public float BattleLineChangeDuration = 2f;
         public float RetreatBaseDuration = 4.5f;
         public float DisengageProtectionDuration = 5f;
         public float RetreatSafeDistance = 9f;
@@ -79,6 +98,10 @@ namespace SWRTS.Demo1
         public float VisionRadius = 22f;
         public float EngagementRadius = 8f;
         public bool CanRemoteStrike;
+        public DemoBattleLine PreferredBattleLine = DemoBattleLine.Vanguard;
+        public DemoAttackProfile AttackProfile = DemoAttackProfile.Standard;
+        public float ScreenPower = 1f;
+        public float ScreenPenetration;
 
         public DemoUnitStats Clone()
         {
@@ -134,13 +157,33 @@ namespace SWRTS.Demo1
         public string Message { get; }
         public Vector3 Position { get; }
         public bool Important { get; }
+        public int CombatId { get; }
 
-        public DemoBattleEvent(float time, string message, Vector3 position, bool important)
+        public DemoBattleEvent(float time, string message, Vector3 position, bool important, int combatId = -1)
         {
             Time = time;
             Message = message;
             Position = position;
             Important = important;
+            CombatId = combatId;
+        }
+    }
+
+    public sealed class DemoCombatParticipantState
+    {
+        public int UnitId { get; }
+        public DemoBattleLine Line;
+        public DemoBattleLine TargetLine;
+        public float RepositionRemaining;
+        public int LastTargetId = -1;
+
+        public bool IsRepositioning => RepositionRemaining > 0f;
+
+        public DemoCombatParticipantState(int unitId, DemoBattleLine line)
+        {
+            UnitId = unitId;
+            Line = line;
+            TargetLine = line;
         }
     }
 
@@ -197,6 +240,7 @@ namespace SWRTS.Demo1
         public float ReinforcementRadius { get; }
         public float ForcedRadius { get; }
         public HashSet<int> Participants { get; } = new HashSet<int>();
+        public Dictionary<int, DemoCombatParticipantState> Assignments { get; } = new Dictionary<int, DemoCombatParticipantState>();
         public bool IsFinished;
 
         public DemoCombatModel(int id, Vector3 center, float reinforcementRadius, float forcedRadius)
@@ -205,6 +249,12 @@ namespace SWRTS.Demo1
             Center = center;
             ReinforcementRadius = reinforcementRadius;
             ForcedRadius = forcedRadius;
+        }
+
+        public DemoCombatParticipantState GetAssignment(int unitId)
+        {
+            DemoCombatParticipantState state;
+            return Assignments.TryGetValue(unitId, out state) ? state : null;
         }
     }
 
@@ -311,6 +361,69 @@ namespace SWRTS.Demo1
             return _combats.FirstOrDefault(combat => combat.Id == id);
         }
 
+        public float GetScreeningEfficiency(int combatId, DemoTeam team)
+        {
+            DemoCombatModel combat = GetCombat(combatId);
+            if (combat == null || combat.IsFinished)
+                return 0f;
+
+            List<DemoUnitModel> protectedUnits = combat.Participants
+                .Select(GetUnit)
+                .Where(unit => IsParticipantOnLine(combat, unit, team, DemoBattleLine.Main) ||
+                               IsParticipantOnLine(combat, unit, team, DemoBattleLine.Support))
+                .ToList();
+            if (protectedUnits.Count == 0)
+                return 1f;
+
+            float screen = combat.Participants
+                .Select(GetUnit)
+                .Where(unit => ProvidesBattleSupport(combat, unit, team) &&
+                               combat.GetAssignment(unit.Id).Line == DemoBattleLine.Vanguard)
+                .Sum(unit => Mathf.Max(0f, unit.Stats.ScreenPower));
+            float required = protectedUnits.Count * Mathf.Max(0.01f, Balance.ScreenRequiredPerProtectedUnit);
+            return Mathf.Clamp01(screen / required);
+        }
+
+        public float GetCombatStrength(int combatId, DemoTeam team)
+        {
+            DemoCombatModel combat = GetCombat(combatId);
+            if (combat == null)
+                return 0f;
+            return combat.Participants.Select(GetUnit)
+                .Where(unit => unit != null && unit.IsAlive && unit.Team == team)
+                .Sum(unit => unit.Health + unit.Shield + unit.Magic * 0.25f);
+        }
+
+        public DemoCommandResult RequestBattleLineChange(int unitId, DemoBattleLine targetLine)
+        {
+            DemoUnitModel unit = GetUnit(unitId);
+            if (unit == null || !unit.IsAlive || unit.Team != DemoTeam.Player)
+                return DemoCommandResult.Fail("只能调整己方存活单位的阵位");
+            if (unit.IsFixed)
+                return DemoCommandResult.Fail("固定目标不能调整阵位");
+            if (unit.CombatId < 0)
+                return DemoCommandResult.Fail("单位尚未加入战斗");
+            if (unit.Activity == DemoUnitActivity.Retreating)
+                return DemoCommandResult.Fail("撤退中的单位不能调整阵位");
+            if (targetLine == DemoBattleLine.Reserve)
+                return DemoCommandResult.Fail("不能主动退入预备队");
+
+            DemoCombatModel combat = GetCombat(unit.CombatId);
+            DemoCombatParticipantState state = combat?.GetAssignment(unitId);
+            if (combat == null || combat.IsFinished || state == null)
+                return DemoCommandResult.Fail("目标战斗已经结束");
+            if (state.Line == targetLine && !state.IsRepositioning)
+                return DemoCommandResult.Fail("单位已经位于该阵线");
+            if (CountLineOccupants(combat, unit.Team, targetLine, unitId) >= Balance.BattleLineCapacity)
+                return DemoCommandResult.Fail($"{BattleLineName(targetLine)}已满");
+
+            state.Line = targetLine;
+            state.TargetLine = targetLine;
+            state.RepositionRemaining = Balance.BattleLineChangeDuration;
+            Raise($"{unit.DisplayName} 正在转移至{BattleLineName(targetLine)}", combat.Center, true, combat.Id);
+            return DemoCommandResult.Ok($"换位命令已下达，{state.RepositionRemaining:0.0}s 后完成");
+        }
+
         public DemoCommandResult IssueMove(IEnumerable<int> unitIds, Vector3 destination)
         {
             List<DemoUnitModel> candidates = unitIds.Select(GetUnit).Where(CanMove).ToList();
@@ -362,7 +475,7 @@ namespace SWRTS.Demo1
             _combats.Add(combat);
             AddParticipant(combat, attacker);
             AddParticipant(combat, target);
-            Raise($"战斗 #{combat.Id} 爆发：{attacker.DisplayName} 对 {target.DisplayName}", center, true);
+            Raise($"战斗 #{combat.Id} 爆发：{attacker.DisplayName} 对 {target.DisplayName}", center, true, combat.Id);
             return DemoCommandResult.Ok($"战斗 #{combat.Id} 已创建");
         }
 
@@ -383,7 +496,7 @@ namespace SWRTS.Demo1
                 if (HorizontalDistance(unit.Position, combat.Center) <= combat.ReinforcementRadius)
                 {
                     AddParticipant(combat, unit);
-                    Raise($"{unit.DisplayName} 加入战斗 #{combat.Id}", combat.Center, false);
+                    Raise($"{unit.DisplayName} 加入战斗 #{combat.Id}", combat.Center, false, combat.Id);
                 }
                 else
                 {
@@ -412,7 +525,7 @@ namespace SWRTS.Demo1
                 unit.RetreatDuration = Mathf.Clamp(Balance.RetreatBaseDuration / Mathf.Max(0.25f, unit.Stats.Mobility), 1.2f, 8f);
                 unit.RetreatRemaining = unit.RetreatDuration;
                 accepted++;
-                Raise($"{unit.DisplayName} 开始撤退", unit.Position, true);
+                Raise($"{unit.DisplayName} 开始撤退", unit.Position, true, unit.CombatId);
             }
 
             return accepted > 0
@@ -496,7 +609,7 @@ namespace SWRTS.Demo1
                     else if (HorizontalDistance(unit.Position, combat.Center) <= combat.ReinforcementRadius)
                     {
                         AddParticipant(combat, unit);
-                        Raise($"{unit.DisplayName} 抵达并加入战斗 #{combat.Id}", combat.Center, false);
+                        Raise($"{unit.DisplayName} 抵达并加入战斗 #{combat.Id}", combat.Center, false, combat.Id);
                     }
                     continue;
                 }
@@ -545,30 +658,30 @@ namespace SWRTS.Demo1
             {
                 ForceNearbyUnitsIntoCombat(combat);
                 TickRetreats(combat, dt);
+                TickBattleLines(combat, dt);
+                PromoteReserves(combat);
 
                 List<DemoUnitModel> attackers = combat.Participants
                     .Select(GetUnit)
-                    .Where(unit => unit != null && unit.IsAlive && unit.Activity == DemoUnitActivity.Fighting)
+                    .Where(unit => CanAttackFromBattleLine(combat, unit))
                     .ToList();
 
                 foreach (DemoUnitModel attacker in attackers)
                 {
                     if (attacker.AttackCooldown > 0f)
                         continue;
-                    DemoUnitModel target = combat.Participants
-                        .Select(GetUnit)
-                        .Where(unit => unit != null && unit.IsAlive && unit.Team != attacker.Team)
-                        .OrderBy(unit => unit.HealthRatio)
-                        .ThenBy(unit => unit.Id)
-                        .FirstOrDefault();
+                    DemoUnitModel target = SelectBattleTarget(combat, attacker);
                     if (target == null)
                         continue;
 
                     float shieldBonus = combat.Participants
                         .Select(GetUnit)
-                        .Where(unit => unit != null && unit.IsAlive && unit.Team == target.Team)
+                        .Where(unit => ProvidesBattleSupport(combat, unit, target.Team))
                         .Sum(unit => unit.Stats.GlobalShieldBonus);
                     DemoDamageResult result = DemoDamageResolver.Resolve(attacker, target, Balance, _random, shieldBonus);
+                    DemoCombatParticipantState attackerState = combat.GetAssignment(attacker.Id);
+                    if (attackerState != null)
+                        attackerState.LastTargetId = target.Id;
                     attacker.AttackCooldown = Mathf.Max(0.2f, attacker.Stats.AttackInterval);
                     ReportDamage(attacker, target, result, combat.Center, false);
                 }
@@ -596,8 +709,100 @@ namespace SWRTS.Demo1
                 if (SimulationTime < unit.ProtectedUntil || HorizontalDistance(unit.Position, combat.Center) > combat.ForcedRadius)
                     continue;
                 AddParticipant(combat, unit);
-                Raise($"{unit.DisplayName} 进入强制交战区", combat.Center, true);
+                Raise($"{unit.DisplayName} 进入强制交战区", combat.Center, true, combat.Id);
             }
+        }
+
+        private void TickBattleLines(DemoCombatModel combat, float dt)
+        {
+            foreach (int id in combat.Participants.ToList())
+            {
+                DemoCombatParticipantState state = combat.GetAssignment(id);
+                if (state == null || !state.IsRepositioning)
+                    continue;
+                state.RepositionRemaining = Mathf.Max(0f, state.RepositionRemaining - dt);
+                if (state.RepositionRemaining <= 0f)
+                {
+                    DemoUnitModel unit = GetUnit(id);
+                    if (unit != null && unit.IsAlive)
+                        Raise($"{unit.DisplayName} 已进入{BattleLineName(state.Line)}", combat.Center, false, combat.Id);
+                }
+            }
+        }
+
+        private void PromoteReserves(DemoCombatModel combat)
+        {
+            foreach (DemoTeam team in new[] { DemoTeam.Player, DemoTeam.Enemy })
+            {
+                List<DemoUnitModel> reserves = combat.Participants
+                    .Select(GetUnit)
+                    .Where(unit => IsParticipantOnLine(combat, unit, team, DemoBattleLine.Reserve))
+                    .OrderBy(unit => unit.Id)
+                    .ToList();
+                foreach (DemoUnitModel unit in reserves)
+                {
+                    DemoBattleLine line = FindAutomaticBattleLine(combat, unit);
+                    if (line == DemoBattleLine.Reserve)
+                        continue;
+                    DemoCombatParticipantState state = combat.GetAssignment(unit.Id);
+                    state.Line = line;
+                    state.TargetLine = line;
+                    state.RepositionRemaining = Balance.BattleLineChangeDuration;
+                    Raise($"{unit.DisplayName} 从预备队进入{BattleLineName(line)}", combat.Center, false, combat.Id);
+                }
+            }
+        }
+
+        private bool CanAttackFromBattleLine(DemoCombatModel combat, DemoUnitModel unit)
+        {
+            if (unit == null || !unit.IsAlive || unit.Activity != DemoUnitActivity.Fighting)
+                return false;
+            DemoCombatParticipantState state = combat.GetAssignment(unit.Id);
+            return state != null && state.Line != DemoBattleLine.Reserve && !state.IsRepositioning;
+        }
+
+        private bool ProvidesBattleSupport(DemoCombatModel combat, DemoUnitModel unit, DemoTeam team)
+        {
+            if (unit == null || !unit.IsAlive || unit.Team != team || unit.Activity != DemoUnitActivity.Fighting)
+                return false;
+            DemoCombatParticipantState state = combat.GetAssignment(unit.Id);
+            return state != null && state.Line != DemoBattleLine.Reserve && !state.IsRepositioning;
+        }
+
+        private DemoUnitModel SelectBattleTarget(DemoCombatModel combat, DemoUnitModel attacker)
+        {
+            List<DemoUnitModel> candidates = combat.Participants
+                .Select(GetUnit)
+                .Where(unit => unit != null && unit.IsAlive && unit.Team != attacker.Team &&
+                               combat.GetAssignment(unit.Id)?.Line != DemoBattleLine.Reserve)
+                .ToList();
+            if (candidates.Count == 0)
+                return null;
+
+            if (attacker.Stats.AttackProfile == DemoAttackProfile.ScreenPiercing)
+            {
+                List<DemoUnitModel> rear = candidates.Where(unit =>
+                {
+                    DemoBattleLine line = combat.GetAssignment(unit.Id).Line;
+                    return line == DemoBattleLine.Main || line == DemoBattleLine.Support;
+                }).ToList();
+                float chance = Mathf.Clamp01(attacker.Stats.ScreenPenetration) *
+                               (1f - GetScreeningEfficiency(combat.Id, candidates[0].Team));
+                if (rear.Count > 0 && _random.NextDouble() < chance)
+                    return rear.OrderBy(unit => unit.HealthRatio).ThenBy(unit => unit.Id).First();
+            }
+
+            foreach (DemoBattleLine line in new[] { DemoBattleLine.Vanguard, DemoBattleLine.Main, DemoBattleLine.Support })
+            {
+                DemoUnitModel target = candidates
+                    .Where(unit => combat.GetAssignment(unit.Id).Line == line)
+                    .OrderBy(unit => unit.HealthRatio)
+                    .ThenBy(unit => unit.Id)
+                    .FirstOrDefault();
+                if (target != null)
+                    return target;
+            }
+            return null;
         }
 
         private void TickRetreats(DemoCombatModel combat, float dt)
@@ -618,7 +823,7 @@ namespace SWRTS.Demo1
                 unit.ProtectedUntil = SimulationTime + Balance.DisengageProtectionDuration;
                 unit.Activity = DemoUnitActivity.Protected;
                 combat.Participants.Remove(unit.Id);
-                Raise($"{unit.DisplayName} 完成撤退并获得脱战保护", unit.Position, true);
+                Raise($"{unit.DisplayName} 完成撤退并获得脱战保护", unit.Position, true, combat.Id);
             }
         }
 
@@ -657,11 +862,66 @@ namespace SWRTS.Demo1
         {
             if (!unit.IsAlive || combat.IsFinished)
                 return;
-            combat.Participants.Add(unit.Id);
+            if (!combat.Participants.Add(unit.Id))
+                return;
+            DemoBattleLine line = FindAutomaticBattleLine(combat, unit);
+            combat.Assignments[unit.Id] = new DemoCombatParticipantState(unit.Id, line);
             unit.CombatId = combat.Id;
             unit.PendingReinforcementBattleId = -1;
             unit.HasDestination = false;
             unit.Activity = DemoUnitActivity.Fighting;
+            Raise($"{unit.DisplayName} 进入{BattleLineName(line)}", combat.Center, false, combat.Id);
+        }
+
+        private DemoBattleLine FindAutomaticBattleLine(DemoCombatModel combat, DemoUnitModel unit)
+        {
+            DemoBattleLine[] order;
+            switch (unit.Stats.PreferredBattleLine)
+            {
+                case DemoBattleLine.Main:
+                    order = new[] { DemoBattleLine.Main, DemoBattleLine.Vanguard, DemoBattleLine.Support };
+                    break;
+                case DemoBattleLine.Support:
+                    order = unit.IsFixed
+                        ? new[] { DemoBattleLine.Support }
+                        : new[] { DemoBattleLine.Support, DemoBattleLine.Main, DemoBattleLine.Vanguard };
+                    break;
+                default:
+                    order = new[] { DemoBattleLine.Vanguard, DemoBattleLine.Main, DemoBattleLine.Support };
+                    break;
+            }
+
+            foreach (DemoBattleLine line in order)
+            {
+                if (CountLineOccupants(combat, unit.Team, line, unit.Id) < Balance.BattleLineCapacity)
+                    return line;
+            }
+            return DemoBattleLine.Reserve;
+        }
+
+        private int CountLineOccupants(DemoCombatModel combat, DemoTeam team, DemoBattleLine line, int ignoredUnitId = -1)
+        {
+            return combat.Participants.Select(GetUnit).Count(unit =>
+                unit != null && unit.Id != ignoredUnitId && unit.IsAlive && unit.Team == team &&
+                combat.GetAssignment(unit.Id)?.Line == line);
+        }
+
+        private bool IsParticipantOnLine(DemoCombatModel combat, DemoUnitModel unit, DemoTeam team, DemoBattleLine line)
+        {
+            return unit != null && unit.IsAlive && unit.Team == team && combat.Participants.Contains(unit.Id) &&
+                   combat.GetAssignment(unit.Id)?.Line == line;
+        }
+
+        public static string BattleLineName(DemoBattleLine line)
+        {
+            switch (line)
+            {
+                case DemoBattleLine.Vanguard: return "前卫线";
+                case DemoBattleLine.Main: return "主战线";
+                case DemoBattleLine.Support: return "支援线";
+                case DemoBattleLine.Reserve: return "预备队";
+                default: return line.ToString();
+            }
         }
 
         private void EndCombat(DemoCombatModel combat)
@@ -674,16 +934,17 @@ namespace SWRTS.Demo1
                 unit.Activity = SimulationTime < unit.ProtectedUntil ? DemoUnitActivity.Protected : DemoUnitActivity.Idle;
             }
             combat.Participants.Clear();
-            Raise($"战斗 #{combat.Id} 结束", combat.Center, true);
+            Raise($"战斗 #{combat.Id} 结束", combat.Center, true, combat.Id);
         }
 
         private void ReportDamage(DemoUnitModel attacker, DemoUnitModel target, DemoDamageResult result, Vector3 position, bool remote)
         {
             string modifier = result.CoreHit ? "核心命中" : result.Critical ? "暴击" : "命中";
+            int combatId = target.CombatId >= 0 ? target.CombatId : attacker.CombatId;
             if (result.Destroyed)
-                Raise($"{target.DisplayName} 被{(remote ? "远程打击" : attacker.DisplayName)}击毁", position, true);
+                Raise($"{target.DisplayName} 被{(remote ? "远程打击" : attacker.DisplayName)}击毁", position, true, combatId);
             else if (result.CoreHit || target.HealthRatio <= 0.3f)
-                Raise($"{attacker.DisplayName} {modifier} {target.DisplayName}，目标生命 {target.Health:0}", position, true);
+                Raise($"{attacker.DisplayName} {modifier} {target.DisplayName}，目标生命 {target.Health:0}", position, true, combatId);
         }
 
         private void EvaluateOutcome()
@@ -723,9 +984,9 @@ namespace SWRTS.Demo1
             return Vector3.Distance(a, b);
         }
 
-        private void Raise(string message, Vector3 position, bool important)
+        private void Raise(string message, Vector3 position, bool important, int combatId = -1)
         {
-            EventRaised?.Invoke(new DemoBattleEvent(SimulationTime, message, position, important));
+            EventRaised?.Invoke(new DemoBattleEvent(SimulationTime, message, position, important, combatId));
         }
     }
 }

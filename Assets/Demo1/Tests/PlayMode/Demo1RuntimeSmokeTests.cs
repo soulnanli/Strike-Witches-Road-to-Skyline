@@ -42,6 +42,16 @@ namespace SWRTS.Demo1.PlayModeTests
             Assert.That(engage.Success, Is.True, engage.Message);
             Assert.That(controller.Simulation.Combats.Any(combat => !combat.IsFinished), Is.True,
                 "Engaging through the controller should create a live battle.");
+            DemoCombatModel activeCombat = controller.Simulation.Combats.First(combat => !combat.IsFinished);
+            yield return null;
+            Demo1BattleUI battleUi = Object.FindFirstObjectByType<Demo1BattleUI>();
+            Assert.That(battleUi, Is.Not.Null);
+            Assert.That(GameObject.Find($"Battle Bubble {activeCombat.Id}"), Is.Not.Null, "An active battle should create a clickable map bubble.");
+            battleUi.OpenPanel(activeCombat.Id);
+            Assert.That(battleUi.IsPanelOpen, Is.True);
+            DemoCommandResult lineChange = controller.CommandBattleLineChange(mover.Id, DemoBattleLine.Main);
+            Assert.That(lineChange.Success, Is.True, lineChange.Message);
+            Assert.That(activeCombat.GetAssignment(mover.Id).IsRepositioning, Is.True);
 
             DemoUnitModel artillery = controller.Simulation.Units.First(unit => unit.Team == DemoTeam.Player && unit.Stats.CanRemoteStrike);
             DemoUnitModel strikeTarget = controller.Simulation.Units.First(unit => unit.Team == DemoTeam.Enemy && unit.IsAlive && unit.CombatId < 0);
@@ -68,6 +78,13 @@ namespace SWRTS.Demo1.PlayModeTests
             yield return null;
             Assert.That(controller.IsPaused, Is.False);
             Assert.That(controller.Simulation.SimulationTime, Is.GreaterThan(pausedAt));
+
+            target.Health = 0f;
+            target.Activity = DemoUnitActivity.Destroyed;
+            controller.Simulation.Advance(0.2f);
+            yield return null;
+            Assert.That(activeCombat.IsFinished, Is.True);
+            Assert.That(battleUi.IsPanelOpen, Is.False, "The panel should close when its battle ends.");
 
             Object.Destroy(root);
             yield return null;
