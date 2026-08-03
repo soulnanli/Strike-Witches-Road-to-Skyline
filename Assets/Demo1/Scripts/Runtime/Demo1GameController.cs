@@ -177,10 +177,12 @@ namespace SWRTS.Demo1
             artillery.ScreenPower = 0.25f;
 
             DemoUnitStats neuroi = witch.Clone();
-            neuroi.MaxHealth = 105f;
-            neuroi.Attack = 20f;
-            neuroi.MaxMagic = 55f;
-            neuroi.MaxShield = 34f;
+            neuroi.MaxHealth = 190f;
+            neuroi.Attack = 26f;
+            neuroi.Defense = 10f;
+            neuroi.MaxMagic = 110f;
+            neuroi.MaxShield = 70f;
+            neuroi.CoreConcealment = 0.65f;
             neuroi.MoveSpeed = 4.8f;
             neuroi.EngagementRadius = 7.5f;
             neuroi.PreferredBattleLine = DemoBattleLine.Main;
@@ -189,9 +191,11 @@ namespace SWRTS.Demo1
             neuroi.ScreenPower = 0.45f;
 
             DemoUnitStats guard = neuroi.Clone();
-            guard.MaxHealth = 135f;
-            guard.Defense = 9f;
-            guard.Attack = 22f;
+            guard.MaxHealth = 260f;
+            guard.Defense = 13f;
+            guard.Attack = 29f;
+            guard.MaxMagic = 120f;
+            guard.MaxShield = 100f;
             guard.MoveSpeed = 4.2f;
             guard.PreferredBattleLine = DemoBattleLine.Vanguard;
             guard.AttackProfile = DemoAttackProfile.Standard;
@@ -199,11 +203,11 @@ namespace SWRTS.Demo1
             guard.ScreenPower = 1.15f;
 
             DemoUnitStats fortress = neuroi.Clone();
-            fortress.MaxHealth = 360f;
-            fortress.Attack = 31f;
-            fortress.Defense = 11f;
-            fortress.MaxMagic = 180f;
-            fortress.MaxShield = 120f;
+            fortress.MaxHealth = 720f;
+            fortress.Attack = 42f;
+            fortress.Defense = 16f;
+            fortress.MaxMagic = 300f;
+            fortress.MaxShield = 260f;
             fortress.CoreConcealment = 0.9f;
             fortress.AttackInterval = 2.2f;
             fortress.EngagementRadius = 10f;
@@ -667,7 +671,8 @@ namespace SWRTS.Demo1
             if (_simulation == null || _camera == null)
                 return;
             EnsureGuiStyles();
-            DrawWorldLabels();
+            if (_battleUi == null || !_battleUi.IsPanelOpen)
+                DrawWorldLabels();
             DrawTopBar();
             DrawSidePanel();
             DrawSelectionBox();

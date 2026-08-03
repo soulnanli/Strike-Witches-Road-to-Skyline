@@ -24,6 +24,8 @@ Open `Assets/Demo1/Scenes/Demo1.unity` and enter Play Mode.
 - Artillery and scouts use screen-piercing attacks. Their chance to reach the main/support lines is `penetration * (1 - screening efficiency)`; complete screening blocks penetration.
 - Select a friendly card in the live battle panel to order a two-second line change. Repositioning units remain exposed but cannot attack, screen or support until the timer completes.
 - Reserve units cannot attack, be targeted, screen or provide support. They automatically deploy when a slot becomes available.
+- Opening the battle panel suppresses map-space unit names, health bars and combat IDs so tactical overlays never cover the panel.
+- Enemy scouts, guards and the fortress use reinforced prototype durability and attack values, giving line changes and reserve deployment time to affect the battle.
 - These formation rules and values are code-only prototype assumptions and have not been written back to Feishu revision 6.
 
 ## Configurable prototype assumptions

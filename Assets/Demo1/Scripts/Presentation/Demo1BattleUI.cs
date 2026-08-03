@@ -95,7 +95,7 @@ namespace SWRTS.Demo1
             canvasObject.transform.SetParent(transform, false);
             _canvas = canvasObject.GetComponent<Canvas>();
             _canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            _canvas.sortingOrder = 50;
+            _canvas.sortingOrder = 1000;
             CanvasScaler scaler = canvasObject.GetComponent<CanvasScaler>();
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
             scaler.referenceResolution = new Vector2(1920f, 1080f);
