@@ -4,6 +4,9 @@ namespace SWRTS.Demo1
 {
     public static class Demo1Drawing
     {
+        private static Shader _flatColorShader;
+        private static Shader _lineColorShader;
+
         public static LineRenderer CreateCircle(Transform parent, string name, Color color, float width, int segments = 64)
         {
             GameObject circle = new GameObject(name);
@@ -54,32 +57,36 @@ namespace SWRTS.Demo1
 
         public static Material CreateMaterial(Color color)
         {
-            Shader shader = Shader.Find("Universal Render Pipeline/Lit");
-            if (shader == null)
-                shader = Shader.Find("Universal Render Pipeline/Simple Lit");
-            if (shader == null)
-                shader = Shader.Find("Universal Render Pipeline/Unlit");
-            if (shader == null)
-                shader = Shader.Find("Standard");
+            Shader shader = LoadShader(ref _flatColorShader, "Demo1FlatColor", "SWRTS/Demo1/FlatColor");
             if (shader == null)
                 return null;
             Material material = new Material(shader);
-            material.color = color;
+            material.SetColor("_BaseColor", color);
             return material;
         }
 
         private static Material CreateLineMaterial(Color color)
         {
-            Shader shader = Shader.Find("Sprites/Default");
-            if (shader == null)
-                shader = Shader.Find("Universal Render Pipeline/Unlit");
-            if (shader == null)
-                shader = Shader.Find("UI/Default");
+            Shader shader = LoadShader(ref _lineColorShader, "Demo1LineColor", "SWRTS/Demo1/LineColor");
             if (shader == null)
                 return null;
             Material material = new Material(shader);
-            material.color = color;
+            material.SetColor("_BaseColor", Color.white);
             return material;
+        }
+
+        private static Shader LoadShader(ref Shader cache, string resourceName, string shaderName)
+        {
+            if (cache != null)
+                return cache;
+            cache = Resources.Load<Shader>(resourceName);
+            if (cache == null)
+                cache = Shader.Find(shaderName);
+            if (cache == null)
+                Debug.LogError($"Demo1 shader is missing from the player build: {shaderName}");
+            else if (!cache.isSupported)
+                Debug.LogError($"Demo1 shader is unsupported on this graphics device: {shaderName}");
+            return cache;
         }
     }
 }
