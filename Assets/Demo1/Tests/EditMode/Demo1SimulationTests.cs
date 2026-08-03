@@ -157,7 +157,7 @@ namespace SWRTS.Demo1.Tests
         }
 
         [Test]
-        public void BattleLines_AssignPreferredSlotsAndOverflowToReserve()
+        public void BattleLines_HaveUnlimitedCapacityAndKeepPreferredLine()
         {
             Demo1Simulation simulation = new Demo1Simulation();
             DemoUnitStats harmless = BasicStats(0f);
@@ -171,11 +171,15 @@ namespace SWRTS.Demo1.Tests
                 .Select(index => simulation.AddUnit($"reinforcement-{index}", DemoTeam.Player, DemoUnitRole.Witch, harmless, combat.Center))
                 .ToArray();
             simulation.RequestReinforcement(reinforcements.Select(unit => unit.Id), combat.Id);
+            DemoUnitStats mainStats = harmless.Clone();
+            mainStats.PreferredBattleLine = DemoBattleLine.Main;
+            DemoUnitModel mainUnit = simulation.AddUnit("main-reinforcement", DemoTeam.Player, DemoUnitRole.Artillery, mainStats, combat.Center);
+            simulation.RequestReinforcement(new[] { mainUnit.Id }, combat.Id);
 
-            Assert.That(combat.Participants.Select(simulation.GetUnit).Count(unit => unit.Team == DemoTeam.Player && combat.GetAssignment(unit.Id).Line == DemoBattleLine.Vanguard), Is.EqualTo(2));
-            Assert.That(combat.Participants.Select(simulation.GetUnit).Count(unit => unit.Team == DemoTeam.Player && combat.GetAssignment(unit.Id).Line == DemoBattleLine.Main), Is.EqualTo(2));
-            Assert.That(combat.Participants.Select(simulation.GetUnit).Count(unit => unit.Team == DemoTeam.Player && combat.GetAssignment(unit.Id).Line == DemoBattleLine.Support), Is.EqualTo(2));
-            Assert.That(combat.Participants.Select(simulation.GetUnit).Count(unit => unit.Team == DemoTeam.Player && combat.GetAssignment(unit.Id).Line == DemoBattleLine.Reserve), Is.EqualTo(1));
+            Assert.That(combat.Participants.Select(simulation.GetUnit).Count(unit => unit.Team == DemoTeam.Player && combat.GetAssignment(unit.Id).Line == DemoBattleLine.Vanguard), Is.EqualTo(7));
+            Assert.That(simulation.RequestBattleLineChange(mainUnit.Id, DemoBattleLine.Vanguard).Success, Is.True);
+            Assert.That(combat.Participants.Select(simulation.GetUnit).Count(unit => unit.Team == DemoTeam.Player && combat.GetAssignment(unit.Id).Line == DemoBattleLine.Vanguard), Is.EqualTo(8));
+            Assert.That(combat.Participants.Select(simulation.GetUnit).Any(unit => unit.Team == DemoTeam.Player && combat.GetAssignment(unit.Id).Line != DemoBattleLine.Vanguard), Is.False);
         }
 
         [Test]

@@ -25,8 +25,7 @@ namespace SWRTS.Demo1
     {
         Vanguard,
         Main,
-        Support,
-        Reserve
+        Support
     }
 
     public enum DemoAttackProfile
@@ -62,7 +61,6 @@ namespace SWRTS.Demo1
         public float ShieldMagicCostPerDamage = 0.55f;
         public float ReinforcementRadius = 13f;
         public float ForcedEngagementRadius = 6f;
-        public int BattleLineCapacity = 2;
         public float ScreenRequiredPerProtectedUnit = 1f;
         public float BattleLineChangeDuration = 2f;
         public float RetreatBaseDuration = 4.5f;
@@ -405,18 +403,14 @@ namespace SWRTS.Demo1
                 return DemoCommandResult.Fail("单位尚未加入战斗");
             if (unit.Activity == DemoUnitActivity.Retreating)
                 return DemoCommandResult.Fail("撤退中的单位不能调整阵位");
-            if (targetLine == DemoBattleLine.Reserve)
-                return DemoCommandResult.Fail("不能主动退入预备队");
-
+            if (targetLine != DemoBattleLine.Vanguard && targetLine != DemoBattleLine.Main && targetLine != DemoBattleLine.Support)
+                return DemoCommandResult.Fail("目标阵线无效");
             DemoCombatModel combat = GetCombat(unit.CombatId);
             DemoCombatParticipantState state = combat?.GetAssignment(unitId);
             if (combat == null || combat.IsFinished || state == null)
                 return DemoCommandResult.Fail("目标战斗已经结束");
             if (state.Line == targetLine && !state.IsRepositioning)
                 return DemoCommandResult.Fail("单位已经位于该阵线");
-            if (CountLineOccupants(combat, unit.Team, targetLine, unitId) >= Balance.BattleLineCapacity)
-                return DemoCommandResult.Fail($"{BattleLineName(targetLine)}已满");
-
             state.Line = targetLine;
             state.TargetLine = targetLine;
             state.RepositionRemaining = Balance.BattleLineChangeDuration;
@@ -659,7 +653,6 @@ namespace SWRTS.Demo1
                 ForceNearbyUnitsIntoCombat(combat);
                 TickRetreats(combat, dt);
                 TickBattleLines(combat, dt);
-                PromoteReserves(combat);
 
                 List<DemoUnitModel> attackers = combat.Participants
                     .Select(GetUnit)
@@ -730,35 +723,12 @@ namespace SWRTS.Demo1
             }
         }
 
-        private void PromoteReserves(DemoCombatModel combat)
-        {
-            foreach (DemoTeam team in new[] { DemoTeam.Player, DemoTeam.Enemy })
-            {
-                List<DemoUnitModel> reserves = combat.Participants
-                    .Select(GetUnit)
-                    .Where(unit => IsParticipantOnLine(combat, unit, team, DemoBattleLine.Reserve))
-                    .OrderBy(unit => unit.Id)
-                    .ToList();
-                foreach (DemoUnitModel unit in reserves)
-                {
-                    DemoBattleLine line = FindAutomaticBattleLine(combat, unit);
-                    if (line == DemoBattleLine.Reserve)
-                        continue;
-                    DemoCombatParticipantState state = combat.GetAssignment(unit.Id);
-                    state.Line = line;
-                    state.TargetLine = line;
-                    state.RepositionRemaining = Balance.BattleLineChangeDuration;
-                    Raise($"{unit.DisplayName} 从预备队进入{BattleLineName(line)}", combat.Center, false, combat.Id);
-                }
-            }
-        }
-
         private bool CanAttackFromBattleLine(DemoCombatModel combat, DemoUnitModel unit)
         {
             if (unit == null || !unit.IsAlive || unit.Activity != DemoUnitActivity.Fighting)
                 return false;
             DemoCombatParticipantState state = combat.GetAssignment(unit.Id);
-            return state != null && state.Line != DemoBattleLine.Reserve && !state.IsRepositioning;
+            return state != null && !state.IsRepositioning;
         }
 
         private bool ProvidesBattleSupport(DemoCombatModel combat, DemoUnitModel unit, DemoTeam team)
@@ -766,15 +736,14 @@ namespace SWRTS.Demo1
             if (unit == null || !unit.IsAlive || unit.Team != team || unit.Activity != DemoUnitActivity.Fighting)
                 return false;
             DemoCombatParticipantState state = combat.GetAssignment(unit.Id);
-            return state != null && state.Line != DemoBattleLine.Reserve && !state.IsRepositioning;
+            return state != null && !state.IsRepositioning;
         }
 
         private DemoUnitModel SelectBattleTarget(DemoCombatModel combat, DemoUnitModel attacker)
         {
             List<DemoUnitModel> candidates = combat.Participants
                 .Select(GetUnit)
-                .Where(unit => unit != null && unit.IsAlive && unit.Team != attacker.Team &&
-                               combat.GetAssignment(unit.Id)?.Line != DemoBattleLine.Reserve)
+                .Where(unit => unit != null && unit.IsAlive && unit.Team != attacker.Team)
                 .ToList();
             if (candidates.Count == 0)
                 return null;
@@ -864,46 +833,13 @@ namespace SWRTS.Demo1
                 return;
             if (!combat.Participants.Add(unit.Id))
                 return;
-            DemoBattleLine line = FindAutomaticBattleLine(combat, unit);
+            DemoBattleLine line = unit.Stats.PreferredBattleLine;
             combat.Assignments[unit.Id] = new DemoCombatParticipantState(unit.Id, line);
             unit.CombatId = combat.Id;
             unit.PendingReinforcementBattleId = -1;
             unit.HasDestination = false;
             unit.Activity = DemoUnitActivity.Fighting;
             Raise($"{unit.DisplayName} 进入{BattleLineName(line)}", combat.Center, false, combat.Id);
-        }
-
-        private DemoBattleLine FindAutomaticBattleLine(DemoCombatModel combat, DemoUnitModel unit)
-        {
-            DemoBattleLine[] order;
-            switch (unit.Stats.PreferredBattleLine)
-            {
-                case DemoBattleLine.Main:
-                    order = new[] { DemoBattleLine.Main, DemoBattleLine.Vanguard, DemoBattleLine.Support };
-                    break;
-                case DemoBattleLine.Support:
-                    order = unit.IsFixed
-                        ? new[] { DemoBattleLine.Support }
-                        : new[] { DemoBattleLine.Support, DemoBattleLine.Main, DemoBattleLine.Vanguard };
-                    break;
-                default:
-                    order = new[] { DemoBattleLine.Vanguard, DemoBattleLine.Main, DemoBattleLine.Support };
-                    break;
-            }
-
-            foreach (DemoBattleLine line in order)
-            {
-                if (CountLineOccupants(combat, unit.Team, line, unit.Id) < Balance.BattleLineCapacity)
-                    return line;
-            }
-            return DemoBattleLine.Reserve;
-        }
-
-        private int CountLineOccupants(DemoCombatModel combat, DemoTeam team, DemoBattleLine line, int ignoredUnitId = -1)
-        {
-            return combat.Participants.Select(GetUnit).Count(unit =>
-                unit != null && unit.Id != ignoredUnitId && unit.IsAlive && unit.Team == team &&
-                combat.GetAssignment(unit.Id)?.Line == line);
         }
 
         private bool IsParticipantOnLine(DemoCombatModel combat, DemoUnitModel unit, DemoTeam team, DemoBattleLine line)
@@ -919,7 +855,6 @@ namespace SWRTS.Demo1
                 case DemoBattleLine.Vanguard: return "前卫线";
                 case DemoBattleLine.Main: return "主战线";
                 case DemoBattleLine.Support: return "支援线";
-                case DemoBattleLine.Reserve: return "预备队";
                 default: return line.ToString();
             }
         }

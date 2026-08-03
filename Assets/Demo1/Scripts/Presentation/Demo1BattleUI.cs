@@ -16,6 +16,7 @@ namespace SWRTS.Demo1
         }
 
         private readonly Dictionary<int, BubbleView> _bubbles = new Dictionary<int, BubbleView>();
+        private readonly Dictionary<string, float> _lineScrollPositions = new Dictionary<string, float>();
         private Demo1GameController _controller;
         private Canvas _canvas;
         private RectTransform _canvasRect;
@@ -69,6 +70,7 @@ namespace SWRTS.Demo1
                 return;
             _openCombatId = combatId;
             _selectedUnitId = -1;
+            _lineScrollPositions.Clear();
             _panel.SetActive(true);
             RebuildPanel(combat);
         }
@@ -219,9 +221,8 @@ namespace SWRTS.Demo1
             DrawBattleLine(combat, DemoBattleLine.Vanguard, 190f);
             DrawBattleLine(combat, DemoBattleLine.Main, 72f);
             DrawBattleLine(combat, DemoBattleLine.Support, -46f);
-            DrawReserve(combat, -147f);
-            DrawEvents(combat, -245f);
-            DrawCommands(combat, -342f);
+            DrawEvents(combat, -176f);
+            DrawCommands(combat, -282f);
         }
 
         private void DrawBattleLine(DemoCombatModel combat, DemoBattleLine line, float y)
@@ -232,29 +233,62 @@ namespace SWRTS.Demo1
 
             List<DemoUnitModel> players = UnitsOnLine(combat, DemoTeam.Player, line);
             List<DemoUnitModel> enemies = UnitsOnLine(combat, DemoTeam.Enemy, line);
-            for (int i = 0; i < 2; i++)
-            {
-                float leftX = -450f + i * 220f;
-                float rightX = 230f + i * 220f;
-                if (i < players.Count)
-                    DrawUnitCard(combat, players[i], new Vector2(leftX, y));
-                else
-                    DrawEmptySlot(new Vector2(leftX, y), DemoTeam.Player);
-                if (i < enemies.Count)
-                    DrawUnitCard(combat, enemies[i], new Vector2(rightX, y));
-                else
-                    DrawEmptySlot(new Vector2(rightX, y), DemoTeam.Enemy);
-            }
+            AddText(_panelContent, $"{line} Counts", $"{players.Count} 人  /  {enemies.Count} 人\n拖动浏览", new Vector2(0f, y - 27f), new Vector2(112f, 34f), 11, TextAnchor.MiddleCenter, new Color(0.5f, 0.62f, 0.66f));
+            DrawLineSide(combat, players, DemoTeam.Player, line, new Vector2(-340f, y));
+            DrawLineSide(combat, enemies, DemoTeam.Enemy, line, new Vector2(340f, y));
         }
 
-        private void DrawUnitCard(DemoCombatModel combat, DemoUnitModel unit, Vector2 position)
+        private void DrawLineSide(DemoCombatModel combat, List<DemoUnitModel> units, DemoTeam team, DemoBattleLine line, Vector2 position)
+        {
+            GameObject viewportObject = new GameObject($"{team} {line} Viewport", typeof(RectTransform), typeof(Image), typeof(RectMask2D), typeof(ScrollRect));
+            viewportObject.transform.SetParent(_panelContent, false);
+            RectTransform viewport = viewportObject.GetComponent<RectTransform>();
+            viewport.anchorMin = viewport.anchorMax = new Vector2(0.5f, 0.5f);
+            viewport.sizeDelta = new Vector2(424f, 94f);
+            viewport.anchoredPosition = position;
+            Image viewportImage = viewportObject.GetComponent<Image>();
+            viewportImage.color = new Color(0f, 0f, 0f, 0.001f);
+
+            GameObject contentObject = new GameObject("Scrollable Units", typeof(RectTransform));
+            contentObject.transform.SetParent(viewport, false);
+            RectTransform content = contentObject.GetComponent<RectTransform>();
+            content.anchorMin = content.anchorMax = new Vector2(0.5f, 0.5f);
+            content.pivot = new Vector2(0.5f, 0.5f);
+            float contentWidth = Mathf.Max(424f, units.Count * 212f - 8f);
+            content.sizeDelta = new Vector2(contentWidth, 88f);
+            content.anchoredPosition = Vector2.zero;
+
+            ScrollRect scroll = viewportObject.GetComponent<ScrollRect>();
+            scroll.viewport = viewport;
+            scroll.content = content;
+            scroll.horizontal = true;
+            scroll.vertical = false;
+            scroll.movementType = ScrollRect.MovementType.Clamped;
+            scroll.inertia = false;
+            string scrollKey = $"{team}:{line}";
+            float scrollPosition;
+            scroll.horizontalNormalizedPosition = _lineScrollPositions.TryGetValue(scrollKey, out scrollPosition) ? scrollPosition : 0f;
+            scroll.onValueChanged.AddListener(value => _lineScrollPositions[scrollKey] = value.x);
+
+            if (units.Count == 0)
+            {
+                DrawEmptySlot(content, Vector2.zero, team);
+                return;
+            }
+
+            float firstCardX = -contentWidth * 0.5f + 102f;
+            for (int i = 0; i < units.Count; i++)
+                DrawUnitCard(content, combat, units[i], new Vector2(firstCardX + i * 212f, 0f));
+        }
+
+        private void DrawUnitCard(Transform parent, DemoCombatModel combat, DemoUnitModel unit, Vector2 position)
         {
             DemoCombatParticipantState state = combat.GetAssignment(unit.Id);
             bool selected = unit.Id == _selectedUnitId;
             Color color = unit.Team == DemoTeam.Player
                 ? selected ? new Color(0.08f, 0.46f, 0.58f, 1f) : new Color(0.07f, 0.24f, 0.32f, 1f)
                 : new Color(0.34f, 0.09f, 0.11f, 1f);
-            Button button = AddButton(_panelContent, $"Unit {unit.Id}", string.Empty, position, new Vector2(204f, 88f),
+            Button button = AddButton(parent, $"Unit {unit.Id}", string.Empty, position, new Vector2(204f, 88f),
                 unit.Team == DemoTeam.Player ? (UnityEngine.Events.UnityAction)(() => SelectUnit(unit.Id)) : null, color);
             Transform root = button.transform;
             AddText(root, "Name", $"{unit.DisplayName}  ·  {RoleName(unit.Role)}", new Vector2(0f, 28f), new Vector2(190f, 22f), 14, TextAnchor.MiddleLeft, Color.white);
@@ -271,19 +305,11 @@ namespace SWRTS.Demo1
             AddBar(root, "盾", unit.ShieldRatio, new Vector2(0f, -47f), new Color(0.18f, 0.9f, 0.95f));
         }
 
-        private void DrawEmptySlot(Vector2 position, DemoTeam team)
+        private void DrawEmptySlot(Transform parent, Vector2 position, DemoTeam team)
         {
             Color color = team == DemoTeam.Player ? new Color(0.05f, 0.14f, 0.18f, 0.55f) : new Color(0.18f, 0.06f, 0.07f, 0.55f);
-            AddImage(_panelContent, "Empty Slot", position, new Vector2(204f, 88f), color);
-            AddText(_panelContent, "Empty", "— 空位 —", position, new Vector2(190f, 30f), 13, TextAnchor.MiddleCenter, new Color(0.45f, 0.52f, 0.55f));
-        }
-
-        private void DrawReserve(DemoCombatModel combat, float y)
-        {
-            AddImage(_panelContent, "Reserve Strip", new Vector2(0f, y), new Vector2(1080f, 66f), new Color(0.06f, 0.085f, 0.105f, 0.92f));
-            AddText(_panelContent, "Reserve Name", "预备队", new Vector2(0f, y), new Vector2(100f, 30f), 17, TextAnchor.MiddleCenter, new Color(0.72f, 0.78f, 0.8f));
-            AddText(_panelContent, "Player Reserve", ReserveNames(combat, DemoTeam.Player), new Vector2(-330f, y), new Vector2(390f, 45f), 14, TextAnchor.MiddleLeft, new Color(0.35f, 0.78f, 1f));
-            AddText(_panelContent, "Enemy Reserve", ReserveNames(combat, DemoTeam.Enemy), new Vector2(330f, y), new Vector2(390f, 45f), 14, TextAnchor.MiddleRight, new Color(1f, 0.45f, 0.42f));
+            AddImage(parent, "Empty Slot", position, new Vector2(204f, 88f), color);
+            AddText(parent, "Empty", "— 本阵线暂无单位 —", position, new Vector2(190f, 30f), 13, TextAnchor.MiddleCenter, new Color(0.45f, 0.52f, 0.55f));
         }
 
         private void DrawEvents(DemoCombatModel combat, float y)
@@ -339,12 +365,6 @@ namespace SWRTS.Demo1
             return combat.Participants.Select(_controller.Simulation.GetUnit)
                 .Where(unit => unit != null && unit.IsAlive && unit.Team == team && combat.GetAssignment(unit.Id)?.Line == line)
                 .OrderBy(unit => unit.Id).ToList();
-        }
-
-        private string ReserveNames(DemoCombatModel combat, DemoTeam team)
-        {
-            List<DemoUnitModel> units = UnitsOnLine(combat, team, DemoBattleLine.Reserve);
-            return units.Count == 0 ? "无" : string.Join("、", units.Select(unit => unit.DisplayName));
         }
 
         private int CountTeam(DemoCombatModel combat, DemoTeam team)

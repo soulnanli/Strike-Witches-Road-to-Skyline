@@ -18,12 +18,11 @@ Open `Assets/Demo1/Scenes/Demo1.unity` and enter Play Mode.
 
 ## Three-line battle prototype
 
-- Each side has two slots in the vanguard, main and support lines; overflow participants wait in reserve.
+- Vanguard, main and support lines have no participant limit; every reinforcement enters its preferred line directly.
 - Witches and guards prefer the vanguard, artillery and scouts prefer the main line, and support units and fortresses prefer the support line.
 - Ordinary attacks must target the nearest occupied enemy line. Vanguard units provide screening for units behind them.
 - Artillery and scouts use screen-piercing attacks. Their chance to reach the main/support lines is `penetration * (1 - screening efficiency)`; complete screening blocks penetration.
 - Select a friendly card in the live battle panel to order a two-second line change. Repositioning units remain exposed but cannot attack, screen or support until the timer completes.
-- Reserve units cannot attack, be targeted, screen or provide support. They automatically deploy when a slot becomes available.
 - Opening the battle panel suppresses map-space unit names, health bars and combat IDs so tactical overlays never cover the panel.
 - Enemy scouts, guards and the fortress use reinforced prototype durability and attack values, giving line changes and reserve deployment time to affect the battle.
 - These formation rules and values are code-only prototype assumptions and have not been written back to Feishu revision 6.
