@@ -83,9 +83,17 @@ namespace SWRTS.Demo1.PlayModeTests
             yield return null;
             Demo1BattleUI battleUi = Object.FindFirstObjectByType<Demo1BattleUI>();
             Assert.That(battleUi, Is.Not.Null);
-            Assert.That(GameObject.Find($"Battle Bubble {activeCombat.Id}"), Is.Not.Null, "An active battle should create a clickable map bubble.");
+            GameObject battleBubble = GameObject.Find($"Battle Bubble {activeCombat.Id}");
+            Assert.That(battleBubble, Is.Not.Null, "An active battle should create a clickable map bubble.");
+            Assert.That(battleBubble.GetComponent<RectTransform>().sizeDelta, Is.EqualTo(new Vector2(178f, 70f)),
+                "The refreshed bubble should have enough room for trend, force count and screening information.");
             battleUi.OpenPanel(activeCombat.Id);
             Assert.That(battleUi.IsPanelOpen, Is.True);
+            Assert.That(GameObject.Find("Battle Panel").GetComponent<RectTransform>().sizeDelta, Is.EqualTo(new Vector2(1180f, 800f)));
+            Assert.That(GameObject.Find("Header"), Is.Not.Null);
+            Assert.That(GameObject.Find("Player Team"), Is.Not.Null);
+            Assert.That(GameObject.Find("Enemy Team"), Is.Not.Null);
+            Assert.That(GameObject.Find("Events Accent"), Is.Not.Null);
             Assert.That(controller.CharacterDetailUnitId, Is.EqualTo(-1), "The battle panel should take priority over the right-side detail panel.");
             DemoCommandResult lineChange = controller.CommandBattleLineChange(mover.Id, DemoBattleLine.Main);
             Assert.That(lineChange.Success, Is.True, lineChange.Message);
@@ -154,6 +162,10 @@ namespace SWRTS.Demo1.PlayModeTests
 
             Assert.That(battleUi.SelectedUnitId, Is.EqualTo(player.Id));
             Assert.That(controller.SelectedUnitIds, Is.EquivalentTo(new[] { player.Id }));
+            Button selectedUnitButton = GameObject.Find($"Unit {player.Id}").GetComponent<Button>();
+            Outline selectedOutline = selectedUnitButton.GetComponent<Outline>();
+            Assert.That(selectedOutline, Is.Not.Null);
+            Assert.That(selectedOutline.effectDistance, Is.EqualTo(new Vector2(3f, -3f)), "The chosen battle card needs a strong selected state.");
 
             Button mainButton = GameObject.Find("Main").GetComponent<Button>();
             ExecuteEvents.Execute(mainButton.gameObject, pointer, ExecuteEvents.pointerClickHandler);

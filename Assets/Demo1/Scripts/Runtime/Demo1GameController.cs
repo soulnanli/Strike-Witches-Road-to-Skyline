@@ -62,9 +62,26 @@ namespace SWRTS.Demo1
         private GUIStyle _detailHeaderStyle;
         private GUIStyle _detailValueStyle;
         private GUIStyle _detailMutedStyle;
+        private GUIStyle _hudButtonStyle;
+        private GUIStyle _hudPrimaryButtonStyle;
+        private GUIStyle _hudDangerButtonStyle;
+        private GUIStyle _eventButtonStyle;
+        private GUIStyle _unitCardStyle;
+        private GUIStyle _unitNameStyle;
+        private GUIStyle _tagStyle;
+        private GUIStyle _barTextStyle;
         private Vector2 _detailScroll;
         private Texture2D _selectionTexture;
+        private Texture2D _hudCardTexture;
+        private Texture2D _hudSectionTexture;
         private const float PanelWidth = 340f;
+        private const float TopBarHeight = 52f;
+        private static readonly Color HudPanelColor = new Color(0.025f, 0.045f, 0.062f, 1f);
+        private static readonly Color HudCardColor = new Color(0.055f, 0.09f, 0.115f, 0.98f);
+        private static readonly Color HudSectionColor = new Color(0.075f, 0.13f, 0.16f, 0.98f);
+        private static readonly Color PlayerAccent = new Color(0.18f, 0.78f, 0.96f, 1f);
+        private static readonly Color EnemyAccent = new Color(0.95f, 0.28f, 0.25f, 1f);
+        private static readonly Color WarningAccent = new Color(1f, 0.66f, 0.2f, 1f);
         private const string BalanceResourcePath = "Configs/Demo1Balance";
         private const string UnitResourcePath = "Configs/Units";
 
@@ -819,68 +836,95 @@ namespace SWRTS.Demo1
 
         private void DrawTopBar()
         {
-            GUI.Box(new Rect(0f, 0f, Screen.width, 44f), string.Empty);
-            GUI.Label(new Rect(16f, 8f, 430f, 30f), "DEMO 1.0  ·  多佛海峡防卫战", _titleStyle);
+            FillRect(new Rect(0f, 0f, Screen.width, TopBarHeight), new Color(0.018f, 0.034f, 0.048f, 0.99f));
+            FillRect(new Rect(0f, TopBarHeight - 2f, Screen.width, 2f), new Color(0.12f, 0.42f, 0.52f, 0.9f));
+            FillRect(new Rect(16f, 12f, 4f, 28f), PlayerAccent);
+            GUI.Label(new Rect(30f, 8f, 470f, 34f), "DEMO 1.0  ·  多佛海峡防卫战", _titleStyle);
             string state = _paused ? "已暂停" : "进行中";
-            GUI.Label(new Rect(Screen.width - 320f, 10f, 300f, 25f), $"{state}  |  T+ {_simulation.SimulationTime:0.0}s", _centerStyle);
+            Color stateColor = _paused ? WarningAccent : new Color(0.3f, 0.95f, 0.62f, 1f);
+            Rect stateRect = new Rect(Screen.width - 254f, 10f, 230f, 32f);
+            FillRect(stateRect, _paused ? new Color(0.24f, 0.17f, 0.06f, 0.98f) : new Color(0.04f, 0.2f, 0.15f, 0.98f));
+            FillRect(new Rect(stateRect.x, stateRect.y, 4f, stateRect.height), stateColor);
+            Color previous = GUI.color;
+            GUI.color = stateColor;
+            GUI.Label(stateRect, $"{state}    T+ {_simulation.SimulationTime:0.0}s", _centerStyle);
+            GUI.color = previous;
         }
 
         private void DrawSidePanel()
         {
-            GUI.Box(new Rect(0f, 44f, PanelWidth, Screen.height - 44f), string.Empty);
-            float y = 58f;
-            GUI.Label(new Rect(14f, y, PanelWidth - 28f, 46f), "目标：摧毁东侧异形军巢穴\n战斗自动结算；每名魔女独立移动。", _smallStyle);
-            y += 52f;
+            FillRect(new Rect(0f, TopBarHeight, PanelWidth, Screen.height - TopBarHeight), HudPanelColor);
+            FillRect(new Rect(PanelWidth - 1f, TopBarHeight, 1f, Screen.height - TopBarHeight), new Color(0.16f, 0.34f, 0.4f, 0.75f));
+            float y = TopBarHeight + 12f;
+            Rect missionRect = new Rect(12f, y, PanelWidth - 24f, 64f);
+            FillRect(missionRect, HudCardColor);
+            FillRect(new Rect(missionRect.x, missionRect.y, 4f, missionRect.height), PlayerAccent);
+            GUI.Label(new Rect(26f, y + 7f, 130f, 20f), "当前任务", _detailHeaderStyle);
+            GUI.Label(new Rect(26f, y + 28f, PanelWidth - 54f, 30f), "摧毁东侧异形军巢穴  ·  自动战斗", _smallStyle);
+            y += 76f;
 
-            if (GUI.Button(new Rect(14f, y, 98f, 32f), _paused ? "继续 [Space]" : "暂停 [Space]")) TogglePause();
-            if (GUI.Button(new Rect(120f, y, 98f, 32f), "聚焦 [F]")) FocusSelection();
-            if (GUI.Button(new Rect(226f, y, 98f, 32f), "撤退 [R]")) ApplyResult(_simulation.RequestRetreat(_selection));
-            y += 40f;
-            if (GUI.Button(new Rect(14f, y, 98f, 32f), "交战 [A]"))
+            GUI.Label(new Rect(14f, y, 180f, 22f), "战术命令", _detailHeaderStyle);
+            y += 27f;
+            if (DrawHudButton(new Rect(14f, y, 98f, 34f), _paused ? "继续  Space" : "暂停  Space", _hudButtonStyle, new Color(0.09f, 0.16f, 0.2f), new Color(0.13f, 0.25f, 0.3f))) TogglePause();
+            if (DrawHudButton(new Rect(120f, y, 98f, 34f), "聚焦  F", _hudButtonStyle, new Color(0.09f, 0.16f, 0.2f), new Color(0.13f, 0.25f, 0.3f))) FocusSelection();
+            if (DrawHudButton(new Rect(226f, y, 98f, 34f), "撤退  R", _hudDangerButtonStyle, new Color(0.34f, 0.1f, 0.1f), new Color(0.52f, 0.15f, 0.13f))) ApplyResult(_simulation.RequestRetreat(_selection));
+            y += 42f;
+            if (DrawHudButton(new Rect(14f, y, 98f, 34f), "交战  A", _hudPrimaryButtonStyle, new Color(0.07f, 0.31f, 0.4f), new Color(0.08f, 0.46f, 0.58f)))
             {
                 _commandMode = CommandMode.Engage;
                 _statusMessage = "交战模式：点击敌方目标";
             }
-            if (GUI.Button(new Rect(120f, y, 98f, 32f), "增援 [G]")) ReinforceNearestBattle();
-            if (GUI.Button(new Rect(226f, y, 98f, 32f), "打击 [B]"))
+            if (DrawHudButton(new Rect(120f, y, 98f, 34f), "增援  G", _hudPrimaryButtonStyle, new Color(0.07f, 0.31f, 0.4f), new Color(0.08f, 0.46f, 0.58f))) ReinforceNearestBattle();
+            if (DrawHudButton(new Rect(226f, y, 98f, 34f), "打击  B", _hudButtonStyle, new Color(0.09f, 0.16f, 0.2f), new Color(0.13f, 0.25f, 0.3f)))
                 EnterRemoteStrikeMode();
-            y += 43f;
+            y += 46f;
 
-            GUI.Label(new Rect(14f, y, PanelWidth - 28f, 42f), _statusMessage, _smallStyle);
-            y += 48f;
-            GUI.Label(new Rect(14f, y, 150f, 24f), $"已选择 {_selection.Count} 个单位", _titleStyle);
-            y += 27f;
+            Rect feedbackRect = new Rect(14f, y, PanelWidth - 28f, 42f);
+            FillRect(feedbackRect, new Color(0.035f, 0.075f, 0.095f, 0.98f));
+            FillRect(new Rect(feedbackRect.x, feedbackRect.y, 3f, feedbackRect.height), WarningAccent);
+            GUI.Label(new Rect(feedbackRect.x + 10f, feedbackRect.y + 5f, feedbackRect.width - 18f, feedbackRect.height - 8f), _statusMessage, _smallStyle);
+            y += 52f;
+            GUI.Label(new Rect(14f, y, 210f, 24f), $"已选择  {_selection.Count}", _detailHeaderStyle);
+            GUI.Label(new Rect(218f, y + 1f, 106f, 22f), "独立行动单位", _detailMutedStyle);
+            y += 29f;
 
-            List<DemoUnitModel> selected = _selection.Select(_simulation.GetUnit).Where(unit => unit != null).Take(4).ToList();
+            float eventTop = Mathf.Max(500f, Screen.height - 214f);
+            int visibleCards = Mathf.Clamp(Mathf.FloorToInt((eventTop - y - 8f) / 74f), 1, 4);
+            List<DemoUnitModel> selected = _selection.Select(_simulation.GetUnit).Where(unit => unit != null).Take(visibleCards).ToList();
             foreach (DemoUnitModel unit in selected)
             {
                 DrawUnitCard(unit, y);
-                y += 70f;
+                y += 74f;
             }
 
-            y = Mathf.Max(y + 4f, Screen.height - 218f);
-            GUI.Label(new Rect(14f, y, 200f, 24f), "事件（点击可定位）", _titleStyle);
-            y += 27f;
+            y = Mathf.Max(y + 4f, Screen.height - 214f);
+            FillRect(new Rect(12f, y - 7f, PanelWidth - 24f, 1f), new Color(0.18f, 0.36f, 0.42f, 0.7f));
+            GUI.Label(new Rect(14f, y, 220f, 24f), "战场事件", _detailHeaderStyle);
+            GUI.Label(new Rect(218f, y + 1f, 106f, 22f), "点击快速定位", _detailMutedStyle);
+            y += 28f;
             foreach (DemoBattleEvent battleEvent in _events.Take(5))
             {
-                if (GUI.Button(new Rect(14f, y, PanelWidth - 28f, 27f), $"{battleEvent.Time:000.0}  {battleEvent.Message}"))
+                if (DrawHudButton(new Rect(14f, y, PanelWidth - 28f, 28f), $"{battleEvent.Time:000.0}   {battleEvent.Message}", _eventButtonStyle, new Color(0.04f, 0.08f, 0.105f), new Color(0.08f, 0.18f, 0.22f)))
                     _cameraController.Focus(battleEvent.Position);
-                y += 30f;
+                y += 31f;
             }
         }
 
         private void DrawUnitCard(DemoUnitModel unit, float y)
         {
-            GUI.Box(new Rect(14f, y, PanelWidth - 28f, 64f), string.Empty);
-            GUI.Label(new Rect(22f, y + 4f, 190f, 22f), $"{unit.DisplayName}  ·  {ActivityName(unit.Activity)}", _smallStyle);
-            GUI.Label(new Rect(196f, y + 4f, 118f, 22f), $"{unit.Role} / {VisionTypeName(unit.Stats.WitchVisionType)}", _smallStyle);
-            DrawBar(new Rect(22f, y + 29f, 88f, 11f), unit.HealthRatio, new Color(0.9f, 0.22f, 0.2f), $"HP {unit.Health:0}");
-            DrawBar(new Rect(118f, y + 29f, 88f, 11f), unit.MagicRatio, new Color(0.35f, 0.55f, 1f), $"MP {unit.Magic:0}");
-            DrawBar(new Rect(214f, y + 29f, 88f, 11f), unit.ShieldRatio, new Color(0.2f, 0.9f, 0.95f), $"盾 {unit.Shield:0}");
+            Rect card = new Rect(14f, y, PanelWidth - 28f, 68f);
+            GUI.Box(card, string.Empty, _unitCardStyle);
+            Color stateAccent = unit.Activity == DemoUnitActivity.Retreating ? WarningAccent : PlayerAccent;
+            FillRect(new Rect(card.x, card.y, 4f, card.height), stateAccent);
+            GUI.Label(new Rect(24f, y + 5f, 190f, 22f), unit.DisplayName, _unitNameStyle);
+            GUI.Label(new Rect(212f, y + 5f, 96f, 22f), $"{ActivityName(unit.Activity)}  ·  {VisionTypeName(unit.Stats.WitchVisionType)}", _tagStyle);
+            DrawBar(new Rect(24f, y + 32f, 88f, 15f), unit.HealthRatio, new Color(0.88f, 0.24f, 0.22f), $"HP {unit.Health:0}");
+            DrawBar(new Rect(120f, y + 32f, 88f, 15f), unit.MagicRatio, new Color(0.3f, 0.52f, 0.96f), $"MP {unit.Magic:0}");
+            DrawBar(new Rect(216f, y + 32f, 88f, 15f), unit.ShieldRatio, new Color(0.12f, 0.72f, 0.84f), $"盾 {unit.Shield:0}");
             if (unit.Activity == DemoUnitActivity.Retreating)
-                GUI.Label(new Rect(22f, y + 44f, 280f, 18f), $"撤退进度 {unit.RetreatProgress:P0}", _smallStyle);
+                GUI.Label(new Rect(24f, y + 49f, 280f, 17f), $"撤退进度  {unit.RetreatProgress:P0}", _detailMutedStyle);
             else if (unit.Stats.CanRemoteStrike)
-                GUI.Label(new Rect(22f, y + 44f, 280f, 18f), $"远程打击冷却 {unit.RemoteStrikeCooldown:0.0}s", _smallStyle);
+                GUI.Label(new Rect(24f, y + 49f, 280f, 17f), $"远程打击冷却  {unit.RemoteStrikeCooldown:0.0}s", _detailMutedStyle);
         }
 
         private void DrawCharacterDetailPanel()
@@ -889,7 +933,9 @@ namespace SWRTS.Demo1
                 return;
 
             Rect panel = GetCharacterDetailRect();
-            GUI.Box(panel, string.Empty);
+            FillRect(panel, HudPanelColor);
+            FillRect(new Rect(panel.x, panel.y, panel.width, 2f), PlayerAccent);
+            FillRect(new Rect(panel.x, panel.y, 1f, panel.height), new Color(0.2f, 0.48f, 0.56f, 0.8f));
             GUI.BeginGroup(panel);
             Rect viewport = new Rect(4f, 4f, panel.width - 8f, panel.height - 8f);
             float contentHeight = 660f;
@@ -957,13 +1003,10 @@ namespace SWRTS.Demo1
 
         private void DrawDetailBar(Rect rect, float ratio, Color color, string text)
         {
-            Color previous = GUI.color;
-            GUI.color = new Color(0.025f, 0.04f, 0.05f, 0.9f);
-            GUI.DrawTexture(rect, Texture2D.whiteTexture);
-            GUI.color = color;
-            GUI.DrawTexture(new Rect(rect.x, rect.y, rect.width * Mathf.Clamp01(ratio), rect.height), Texture2D.whiteTexture);
-            GUI.color = previous;
-            GUI.Label(rect, text, _centerStyle);
+            FillRect(rect, new Color(0.012f, 0.025f, 0.034f, 0.95f));
+            FillRect(new Rect(rect.x, rect.y, rect.width * Mathf.Clamp01(ratio), rect.height), color);
+            FillRect(new Rect(rect.x, rect.yMax - 1f, rect.width, 1f), new Color(1f, 1f, 1f, 0.16f));
+            GUI.Label(rect, text, _barTextStyle);
         }
 
         private void DrawDetailStatRow(ref float y, float contentWidth, string leftName, string leftValue, string rightName, string rightValue)
@@ -1034,8 +1077,8 @@ namespace SWRTS.Demo1
         private static Rect GetCharacterDetailRect()
         {
             float width = Mathf.Clamp(Screen.width * 0.22f, 280f, 340f);
-            float height = Mathf.Clamp(Screen.height - 64f, 360f, 660f);
-            return new Rect(Screen.width - width - 12f, 54f, width, height);
+            float height = Mathf.Clamp(Screen.height - 74f, 360f, 660f);
+            return new Rect(Screen.width - width - 12f, TopBarHeight + 10f, width, height);
         }
 
         private void DrawWorldLabels()
@@ -1098,43 +1141,92 @@ namespace SWRTS.Demo1
 
         private void DrawBar(Rect rect, float ratio, Color color, string text)
         {
-            Color old = GUI.color;
-            GUI.color = new Color(0f, 0f, 0f, 0.7f);
-            GUI.DrawTexture(rect, Texture2D.whiteTexture);
-            GUI.color = color;
-            GUI.DrawTexture(new Rect(rect.x, rect.y, rect.width * Mathf.Clamp01(ratio), rect.height), Texture2D.whiteTexture);
-            GUI.color = old;
+            FillRect(rect, new Color(0.01f, 0.02f, 0.028f, 0.95f));
+            FillRect(new Rect(rect.x, rect.y, rect.width * Mathf.Clamp01(ratio), rect.height), color);
             if (!string.IsNullOrEmpty(text))
-                GUI.Label(new Rect(rect.x, rect.y - 2f, rect.width, 18f), text, _smallStyle);
+                GUI.Label(rect, text, _barTextStyle);
         }
 
         private void EnsureGuiStyles()
         {
+            if (_hudCardTexture == null) _hudCardTexture = CreateGuiTexture(HudCardColor);
+            if (_hudSectionTexture == null) _hudSectionTexture = CreateGuiTexture(HudSectionColor);
             if (_titleStyle != null)
+            {
+                RefreshGuiStylePalette();
                 return;
-            _titleStyle = new GUIStyle(GUI.skin.label) { fontSize = 17, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleLeft };
-            _smallStyle = new GUIStyle(GUI.skin.label) { fontSize = 12, wordWrap = true, alignment = TextAnchor.UpperLeft };
-            _centerStyle = new GUIStyle(GUI.skin.label) { fontSize = 14, alignment = TextAnchor.MiddleCenter };
+            }
+            _titleStyle = new GUIStyle(GUI.skin.label)
+            {
+                fontSize = 18,
+                fontStyle = FontStyle.Bold,
+                alignment = TextAnchor.MiddleLeft,
+                normal = { textColor = new Color(0.92f, 0.97f, 1f) }
+            };
+            _smallStyle = new GUIStyle(GUI.skin.label)
+            {
+                fontSize = 12,
+                wordWrap = true,
+                alignment = TextAnchor.UpperLeft,
+                normal = { textColor = new Color(0.82f, 0.88f, 0.9f) }
+            };
+            _centerStyle = new GUIStyle(GUI.skin.label)
+            {
+                fontSize = 14,
+                fontStyle = FontStyle.Bold,
+                alignment = TextAnchor.MiddleCenter,
+                normal = { textColor = Color.white }
+            };
             _detailHeaderStyle = new GUIStyle(GUI.skin.label)
             {
                 fontSize = 14,
                 fontStyle = FontStyle.Bold,
                 alignment = TextAnchor.MiddleLeft,
-                normal = { textColor = new Color(0.62f, 0.88f, 0.95f) }
+                padding = new RectOffset(7, 4, 1, 1),
+                normal = { background = _hudSectionTexture, textColor = new Color(0.64f, 0.9f, 0.98f) }
             };
             _detailValueStyle = new GUIStyle(GUI.skin.label)
             {
-                fontSize = 18,
+                fontSize = 20,
                 fontStyle = FontStyle.Bold,
-                alignment = TextAnchor.MiddleLeft
+                alignment = TextAnchor.MiddleLeft,
+                normal = { textColor = Color.white }
             };
             _detailMutedStyle = new GUIStyle(GUI.skin.label)
             {
                 fontSize = 12,
                 wordWrap = true,
                 alignment = TextAnchor.UpperLeft,
-                normal = { textColor = new Color(0.67f, 0.74f, 0.76f) }
+                normal = { textColor = new Color(0.62f, 0.72f, 0.76f) }
             };
+            _unitCardStyle = new GUIStyle(GUI.skin.box) { normal = { background = _hudCardTexture } };
+            _unitNameStyle = new GUIStyle(_smallStyle)
+            {
+                fontSize = 14,
+                fontStyle = FontStyle.Bold,
+                alignment = TextAnchor.MiddleLeft,
+                normal = { textColor = Color.white }
+            };
+            _tagStyle = new GUIStyle(_smallStyle)
+            {
+                fontSize = 11,
+                alignment = TextAnchor.MiddleRight,
+                normal = { textColor = new Color(0.58f, 0.8f, 0.86f) }
+            };
+            _barTextStyle = new GUIStyle(GUI.skin.label)
+            {
+                fontSize = 10,
+                fontStyle = FontStyle.Bold,
+                alignment = TextAnchor.MiddleCenter,
+                normal = { textColor = Color.white }
+            };
+            _hudButtonStyle = CreateHudButtonStyle();
+            _hudPrimaryButtonStyle = CreateHudButtonStyle();
+            _hudDangerButtonStyle = CreateHudButtonStyle();
+            _eventButtonStyle = CreateHudButtonStyle();
+            _eventButtonStyle.alignment = TextAnchor.MiddleLeft;
+            _eventButtonStyle.fontSize = 11;
+            _eventButtonStyle.padding = new RectOffset(9, 6, 2, 2);
             _worldLabelStyle = new GUIStyle(GUI.skin.label)
             {
                 fontSize = 12,
@@ -1142,9 +1234,82 @@ namespace SWRTS.Demo1
                 alignment = TextAnchor.MiddleCenter,
                 normal = { textColor = Color.white }
             };
+            RefreshGuiStylePalette();
             _selectionTexture = new Texture2D(1, 1);
             _selectionTexture.SetPixel(0, 0, new Color(0.12f, 0.8f, 1f, 0.18f));
             _selectionTexture.Apply();
+        }
+
+        private static GUIStyle CreateHudButtonStyle()
+        {
+            GUIStyle style = new GUIStyle(GUI.skin.label)
+            {
+                fontSize = 12,
+                fontStyle = FontStyle.Bold,
+                alignment = TextAnchor.MiddleCenter,
+                padding = new RectOffset(4, 4, 3, 3)
+            };
+            style.normal.textColor = new Color(0.88f, 0.94f, 0.96f);
+            style.hover.textColor = Color.white;
+            style.active.textColor = Color.white;
+            return style;
+        }
+
+        private static void SetStyleTextColor(GUIStyle style, Color color)
+        {
+            style.normal.textColor = color;
+            style.hover.textColor = color;
+            style.active.textColor = color;
+            style.focused.textColor = color;
+            style.onNormal.textColor = color;
+            style.onHover.textColor = color;
+            style.onActive.textColor = color;
+            style.onFocused.textColor = color;
+        }
+
+        private void RefreshGuiStylePalette()
+        {
+            SetStyleTextColor(_titleStyle, new Color(0.92f, 0.97f, 1f));
+            SetStyleTextColor(_smallStyle, new Color(0.82f, 0.88f, 0.9f));
+            SetStyleTextColor(_centerStyle, Color.white);
+            SetStyleTextColor(_detailHeaderStyle, new Color(0.64f, 0.9f, 0.98f));
+            _detailHeaderStyle.normal.background = _hudSectionTexture;
+            SetStyleTextColor(_detailValueStyle, Color.white);
+            SetStyleTextColor(_detailMutedStyle, new Color(0.62f, 0.72f, 0.76f));
+            _unitCardStyle.normal.background = _hudCardTexture;
+            SetStyleTextColor(_unitNameStyle, Color.white);
+            SetStyleTextColor(_tagStyle, new Color(0.58f, 0.8f, 0.86f));
+            SetStyleTextColor(_barTextStyle, Color.white);
+            SetStyleTextColor(_hudButtonStyle, new Color(0.88f, 0.94f, 0.96f));
+            SetStyleTextColor(_hudPrimaryButtonStyle, Color.white);
+            SetStyleTextColor(_hudDangerButtonStyle, Color.white);
+            SetStyleTextColor(_eventButtonStyle, new Color(0.78f, 0.86f, 0.89f));
+            SetStyleTextColor(_worldLabelStyle, Color.white);
+        }
+
+        private static bool DrawHudButton(Rect rect, string label, GUIStyle style, Color normalColor, Color hoverColor)
+        {
+            bool hover = rect.Contains(Event.current.mousePosition);
+            FillRect(rect, hover ? hoverColor : normalColor);
+            FillRect(new Rect(rect.x, rect.yMax - 2f, rect.width, 2f), new Color(0.35f, 0.72f, 0.8f, hover ? 0.9f : 0.38f));
+            return GUI.Button(rect, label, style);
+        }
+
+        private static Texture2D CreateGuiTexture(Color color)
+        {
+            Texture2D texture = new Texture2D(1, 1, TextureFormat.RGBA32, false);
+            texture.hideFlags = HideFlags.HideAndDontSave;
+            texture.SetPixel(0, 0, color);
+            texture.Apply();
+            return texture;
+        }
+
+        private static void FillRect(Rect rect, Color color)
+        {
+            Color previous = GUI.color;
+            GUI.color = color;
+            GUI.DrawTexture(rect, Texture2D.whiteTexture);
+            GUI.color = previous;
         }
 
         private Demo1UnitView RaycastUnit(Vector3 screenPoint)
@@ -1176,7 +1341,7 @@ namespace SWRTS.Demo1
         private bool IsPointerOverHud()
         {
             Vector3 mouse = Input.mousePosition;
-            if (mouse.x <= PanelWidth || mouse.y >= Screen.height - 44f)
+            if (mouse.x <= PanelWidth || mouse.y >= Screen.height - TopBarHeight)
                 return true;
             Vector2 guiMouse = new Vector2(mouse.x, Screen.height - mouse.y);
             return IsCharacterDetailVisible(out _) && GetCharacterDetailRect().Contains(guiMouse);

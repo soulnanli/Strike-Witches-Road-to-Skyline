@@ -24,6 +24,16 @@ After the doubled values proved too strong, HP, attack, defense, magic, shield a
 
 These values remain code-prototype balance and are not additions to Feishu revision 6.
 
+### Interface presentation pass
+
+- The strategic HUD uses a unified dark tactical palette with cyan player, red enemy, amber warning and green success semantics. Mission, commands, feedback, selected units and recent events are visually separated instead of relying on Unity's default controls.
+- Selected-unit cards prioritize name, activity and the three live resources. Single selection keeps the detailed character panel on the right; multi-selection remains summarized on the left.
+- Battle bubbles now expose battle trend, team counts and screening status at a glance. Screening below 50% is shown as a warning.
+- The live battle panel has a stronger header, mirrored player/enemy lanes, explicit battle balance, compact unit states, selected-card outlines, a dedicated event area and grouped commands.
+- The battle panel offsets itself from the fixed 340-pixel strategic HUD after Canvas scaling so that it remains usable in both 16:9 and smaller Game Views.
+
+This visual pass implements the information requirements of Feishu revision 6 without defining a final production art direction.
+
 ## Controls
 
 - The full squad is selected on entry so a move or attack can be issued immediately.
