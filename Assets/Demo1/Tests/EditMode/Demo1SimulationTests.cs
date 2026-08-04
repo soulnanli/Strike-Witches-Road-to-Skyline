@@ -268,5 +268,176 @@ namespace SWRTS.Demo1.Tests
             Assert.That(simulation.GetScreeningEfficiency(combat.Id, DemoTeam.Enemy), Is.EqualTo(0f));
             Assert.That(rear.Health, Is.LessThan(rearHealth));
         }
+
+        [Test]
+        public void BattleLines_ApplyDistinctAttackDefenseAndSupportTradeoffs()
+        {
+            Demo1Simulation simulation = new Demo1Simulation();
+
+            Assert.That(simulation.GetBattleLineAttackMultiplier(DemoBattleLine.Vanguard), Is.EqualTo(0.9f).Within(0.001f));
+            Assert.That(simulation.GetBattleLineDamageTakenMultiplier(DemoBattleLine.Vanguard), Is.EqualTo(0.85f).Within(0.001f));
+            Assert.That(simulation.GetBattleLineAttackMultiplier(DemoBattleLine.Main), Is.EqualTo(1.15f).Within(0.001f));
+            Assert.That(simulation.GetBattleLineAttackMultiplier(DemoBattleLine.Support), Is.EqualTo(0.8f).Within(0.001f));
+            Assert.That(simulation.Balance.SupportEffectMultiplier, Is.EqualTo(1.5f).Within(0.001f));
+        }
+
+        [Test]
+        public void Witch_PrioritizesScreenPiercingThreatOnExposedLine()
+        {
+            Demo1Simulation simulation = new Demo1Simulation();
+            DemoUnitStats harmless = BasicStats(0f);
+            DemoUnitModel witch = simulation.AddUnit("witch", DemoTeam.Player, DemoUnitRole.Witch, BasicStats(10f), Vector3.zero);
+            DemoUnitModel guard = simulation.AddUnit("guard", DemoTeam.Enemy, DemoUnitRole.Guard, harmless, Vector3.right * 2f);
+            guard.IsRevealedToPlayer = true;
+            simulation.StartCombat(witch.Id, guard.Id);
+            DemoCombatModel combat = simulation.Combats.Single();
+            DemoUnitStats piercing = harmless.Clone();
+            piercing.AttackProfile = DemoAttackProfile.ScreenPiercing;
+            DemoUnitModel artillery = simulation.AddUnit("artillery", DemoTeam.Enemy, DemoUnitRole.Artillery, piercing, combat.Center);
+            simulation.RequestReinforcement(new[] { artillery.Id }, combat.Id);
+
+            simulation.Advance(0.1f);
+
+            Assert.That(combat.GetAssignment(witch.Id).LastTargetId, Is.EqualTo(artillery.Id));
+        }
+
+        [Test]
+        public void Artillery_EveryThirdAttackUsesCalibratedSalvo()
+        {
+            Demo1Simulation simulation = new Demo1Simulation();
+            DemoUnitStats artilleryStats = BasicStats(10f);
+            artilleryStats.PreferredBattleLine = DemoBattleLine.Main;
+            DemoUnitModel artillery = simulation.AddUnit("artillery", DemoTeam.Player, DemoUnitRole.Artillery, artilleryStats, Vector3.zero);
+            DemoUnitStats targetStats = BasicStats(0f);
+            targetStats.MaxHealth = 1000f;
+            DemoUnitModel target = simulation.AddUnit("target", DemoTeam.Enemy, DemoUnitRole.Guard, targetStats, Vector3.right * 2f);
+            target.IsRevealedToPlayer = true;
+            target.Shield = 0f;
+            target.Magic = 0f;
+            simulation.StartCombat(artillery.Id, target.Id);
+
+            float before = target.Health;
+            simulation.Advance(0.1f);
+            float firstDamage = before - target.Health;
+            before = target.Health;
+            simulation.Advance(1f);
+            float secondDamage = before - target.Health;
+            before = target.Health;
+            simulation.Advance(1f);
+            float thirdDamage = before - target.Health;
+
+            Assert.That(secondDamage, Is.EqualTo(firstDamage).Within(0.01f));
+            Assert.That(thirdDamage, Is.GreaterThan(firstDamage * 1.4f));
+        }
+
+        [Test]
+        public void Scout_MarksTargetAndAmplifiesFollowingAlliedAttack()
+        {
+            Demo1Simulation simulation = new Demo1Simulation();
+            DemoUnitStats scoutStats = BasicStats(0f);
+            scoutStats.PreferredBattleLine = DemoBattleLine.Main;
+            DemoUnitModel scout = simulation.AddUnit("scout", DemoTeam.Player, DemoUnitRole.Scout, scoutStats, Vector3.zero);
+            DemoUnitStats targetStats = BasicStats(0f);
+            targetStats.MaxHealth = 1000f;
+            DemoUnitModel target = simulation.AddUnit("target", DemoTeam.Enemy, DemoUnitRole.Guard, targetStats, Vector3.right * 2f);
+            target.IsRevealedToPlayer = true;
+            target.Shield = 0f;
+            target.Magic = 0f;
+            simulation.StartCombat(scout.Id, target.Id);
+            DemoCombatModel combat = simulation.Combats.Single();
+            DemoUnitStats allyStats = BasicStats(10f);
+            allyStats.PreferredBattleLine = DemoBattleLine.Main;
+            DemoUnitModel ally = simulation.AddUnit("ally", DemoTeam.Player, DemoUnitRole.Witch, allyStats, combat.Center);
+            simulation.RequestReinforcement(new[] { ally.Id }, combat.Id);
+
+            float before = target.Health;
+            simulation.Advance(0.1f);
+            float totalDamage = before - target.Health;
+
+            Assert.That(simulation.GetMarkRemaining(combat.Id, target.Id), Is.GreaterThan(3.8f));
+            Assert.That(totalDamage, Is.GreaterThan(12f), "The allied attack in the same combat tick should consume the scout's mark bonus.");
+        }
+
+        [Test]
+        public void Support_PulsesOnlyWhileActiveOnSupportLine()
+        {
+            Demo1Balance balance = new Demo1Balance { SupportPulseInterval = 0.5f };
+            Demo1Simulation simulation = new Demo1Simulation(balance);
+            DemoUnitStats supportStats = BasicStats(0f);
+            supportStats.PreferredBattleLine = DemoBattleLine.Support;
+            supportStats.GlobalShieldBonus = 0.25f;
+            DemoUnitModel support = simulation.AddUnit("support", DemoTeam.Player, DemoUnitRole.Support, supportStats, Vector3.zero);
+            DemoUnitModel enemy = simulation.AddUnit("enemy", DemoTeam.Enemy, DemoUnitRole.Guard, BasicStats(0f), Vector3.right * 2f);
+            enemy.IsRevealedToPlayer = true;
+            simulation.StartCombat(support.Id, enemy.Id);
+            DemoCombatModel combat = simulation.Combats.Single();
+            DemoUnitModel ally = simulation.AddUnit("ally", DemoTeam.Player, DemoUnitRole.Witch, BasicStats(0f), combat.Center);
+            ally.Shield = 0f;
+            ally.Magic = 0f;
+            simulation.RequestReinforcement(new[] { ally.Id }, combat.Id);
+
+            simulation.Advance(0.6f);
+            Assert.That(ally.Shield, Is.GreaterThan(0f));
+            Assert.That(ally.Magic, Is.GreaterThan(0f));
+
+            simulation.RequestBattleLineChange(support.Id, DemoBattleLine.Main);
+            simulation.Advance(balance.BattleLineChangeDuration + 0.1f);
+            ally.Shield = 0f;
+            ally.Magic = 0f;
+            simulation.Advance(0.6f);
+            Assert.That(ally.Shield, Is.EqualTo(0f));
+            Assert.That(ally.Magic, Is.EqualTo(0f));
+        }
+
+        [Test]
+        public void Guard_InterceptsSuccessfulRearLinePenetration()
+        {
+            Demo1Balance balance = new Demo1Balance { GuardInterceptionChance = 1f };
+            Demo1Simulation simulation = new Demo1Simulation(balance);
+            DemoUnitStats piercing = BasicStats(10f);
+            piercing.PreferredBattleLine = DemoBattleLine.Main;
+            piercing.AttackProfile = DemoAttackProfile.ScreenPiercing;
+            piercing.ScreenPenetration = 1f;
+            DemoUnitModel attacker = simulation.AddUnit("piercer", DemoTeam.Player, DemoUnitRole.Artillery, piercing, Vector3.zero);
+            DemoUnitStats guardStats = BasicStats(0f);
+            guardStats.ScreenPower = 0f;
+            DemoUnitModel guard = simulation.AddUnit("guard", DemoTeam.Enemy, DemoUnitRole.Guard, guardStats, Vector3.right * 2f);
+            guard.IsRevealedToPlayer = true;
+            simulation.StartCombat(attacker.Id, guard.Id);
+            DemoCombatModel combat = simulation.Combats.Single();
+            DemoUnitStats rearStats = BasicStats(0f);
+            rearStats.PreferredBattleLine = DemoBattleLine.Support;
+            DemoUnitModel rear = simulation.AddUnit("rear", DemoTeam.Enemy, DemoUnitRole.Support, rearStats, combat.Center);
+            simulation.RequestReinforcement(new[] { rear.Id }, combat.Id);
+            string interceptEvent = null;
+            simulation.EventRaised += item =>
+            {
+                if (item.Message.Contains("拦截")) interceptEvent = item.Message;
+            };
+
+            simulation.Advance(0.1f);
+
+            Assert.That(combat.GetAssignment(attacker.Id).LastTargetId, Is.EqualTo(guard.Id));
+            Assert.That(interceptEvent, Does.Contain("拦截"));
+        }
+
+        [Test]
+        public void Fortress_EntersFasterEmergencyBarrageBelowHalfHealth()
+        {
+            Demo1Simulation simulation = new Demo1Simulation();
+            DemoUnitModel attacker = simulation.AddUnit("attacker", DemoTeam.Player, DemoUnitRole.Witch, BasicStats(0f), Vector3.zero);
+            DemoUnitStats fortressStats = BasicStats(20f);
+            fortressStats.MaxHealth = 500f;
+            fortressStats.PreferredBattleLine = DemoBattleLine.Support;
+            DemoUnitModel fortress = simulation.AddUnit("fortress", DemoTeam.Enemy, DemoUnitRole.Fortress, fortressStats, Vector3.right * 2f);
+            fortress.IsRevealedToPlayer = true;
+            fortress.Health = fortress.Stats.MaxHealth * 0.49f;
+            simulation.StartCombat(attacker.Id, fortress.Id);
+
+            simulation.Advance(0.1f);
+
+            Assert.That(simulation.Combats.Single().GetAssignment(fortress.Id).FortressBarrageAnnounced, Is.True);
+            Assert.That(fortress.AttackCooldown, Is.EqualTo(fortress.Stats.AttackInterval * simulation.Balance.FortressBarrageIntervalMultiplier).Within(0.01f));
+        }
     }
 }

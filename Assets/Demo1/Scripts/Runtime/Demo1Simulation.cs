@@ -63,6 +63,23 @@ namespace SWRTS.Demo1
         public float ForcedEngagementRadius = 6f;
         public float ScreenRequiredPerProtectedUnit = 1f;
         public float BattleLineChangeDuration = 2f;
+        public float VanguardAttackMultiplier = 0.9f;
+        public float VanguardDamageTakenMultiplier = 0.85f;
+        public float VanguardScreenMultiplier = 1.25f;
+        public float MainAttackMultiplier = 1.15f;
+        public float SupportAttackMultiplier = 0.8f;
+        public float SupportEffectMultiplier = 1.5f;
+        public int ArtillerySalvoEveryAttacks = 3;
+        public float ArtillerySalvoDamageMultiplier = 1.45f;
+        public float ScoutMarkDuration = 4f;
+        public float ScoutMarkDamageMultiplier = 1.2f;
+        public float SupportPulseInterval = 4f;
+        public float SupportPulseShield = 6f;
+        public float SupportPulseMagic = 4f;
+        public float GuardInterceptionChance = 0.65f;
+        public float FortressBarrageHealthThreshold = 0.5f;
+        public float FortressBarrageDamageMultiplier = 1.15f;
+        public float FortressBarrageIntervalMultiplier = 0.65f;
         public float RetreatBaseDuration = 4.5f;
         public float DisengageProtectionDuration = 5f;
         public float RetreatSafeDistance = 9f;
@@ -174,6 +191,10 @@ namespace SWRTS.Demo1
         public DemoBattleLine TargetLine;
         public float RepositionRemaining;
         public int LastTargetId = -1;
+        public int AttacksPerformed;
+        public float RoleAbilityRemaining;
+        public float MarkedUntil;
+        public bool FortressBarrageAnnounced;
 
         public bool IsRepositioning => RepositionRemaining > 0f;
 
@@ -283,7 +304,8 @@ namespace SWRTS.Demo1
             Demo1Balance balance,
             System.Random random,
             float globalShieldBonus = 0f,
-            float attackMultiplier = 1f)
+            float attackMultiplier = 1f,
+            float damageTakenMultiplier = 1f)
         {
             float raw = attacker.Stats.Attack * Mathf.Max(0f, attackMultiplier);
             float discoveryChance = attacker.Stats.CoreDiscovery /
@@ -296,6 +318,7 @@ namespace SWRTS.Demo1
                 raw *= balance.CriticalMultiplier;
 
             float incoming = Mathf.Max(balance.MinimumDamage, raw - Mathf.Max(0f, target.Stats.Defense));
+            incoming = Mathf.Max(balance.MinimumDamage, incoming * Mathf.Max(0f, damageTakenMultiplier));
             float shieldEfficiency = Mathf.Max(0.1f, 1f + globalShieldBonus);
             float availableShieldAbsorption = target.Shield * shieldEfficiency;
             float availableMagicAbsorption = target.Magic / Mathf.Max(0.01f, balance.ShieldMagicCostPerDamage) * shieldEfficiency;
@@ -375,11 +398,33 @@ namespace SWRTS.Demo1
 
             float screen = combat.Participants
                 .Select(GetUnit)
-                .Where(unit => ProvidesBattleSupport(combat, unit, team) &&
+                .Where(unit => IsActiveParticipant(combat, unit, team) &&
                                combat.GetAssignment(unit.Id).Line == DemoBattleLine.Vanguard)
-                .Sum(unit => Mathf.Max(0f, unit.Stats.ScreenPower));
+                .Sum(unit => Mathf.Max(0f, unit.Stats.ScreenPower) * Balance.VanguardScreenMultiplier);
             float required = protectedUnits.Count * Mathf.Max(0.01f, Balance.ScreenRequiredPerProtectedUnit);
             return Mathf.Clamp01(screen / required);
+        }
+
+        public float GetBattleLineAttackMultiplier(DemoBattleLine line)
+        {
+            switch (line)
+            {
+                case DemoBattleLine.Vanguard: return Balance.VanguardAttackMultiplier;
+                case DemoBattleLine.Main: return Balance.MainAttackMultiplier;
+                case DemoBattleLine.Support: return Balance.SupportAttackMultiplier;
+                default: return 1f;
+            }
+        }
+
+        public float GetBattleLineDamageTakenMultiplier(DemoBattleLine line)
+        {
+            return line == DemoBattleLine.Vanguard ? Balance.VanguardDamageTakenMultiplier : 1f;
+        }
+
+        public float GetMarkRemaining(int combatId, int unitId)
+        {
+            DemoCombatParticipantState state = GetCombat(combatId)?.GetAssignment(unitId);
+            return state == null ? 0f : Mathf.Max(0f, state.MarkedUntil - SimulationTime);
         }
 
         public float GetCombatStrength(int combatId, DemoTeam team)
@@ -653,6 +698,7 @@ namespace SWRTS.Demo1
                 ForceNearbyUnitsIntoCombat(combat);
                 TickRetreats(combat, dt);
                 TickBattleLines(combat, dt);
+                TickRoleMechanics(combat, dt);
 
                 List<DemoUnitModel> attackers = combat.Participants
                     .Select(GetUnit)
@@ -669,14 +715,35 @@ namespace SWRTS.Demo1
 
                     float shieldBonus = combat.Participants
                         .Select(GetUnit)
-                        .Where(unit => ProvidesBattleSupport(combat, unit, target.Team))
-                        .Sum(unit => unit.Stats.GlobalShieldBonus);
-                    DemoDamageResult result = DemoDamageResolver.Resolve(attacker, target, Balance, _random, shieldBonus);
+                        .Where(unit => ProvidesShieldSupport(combat, unit, target.Team))
+                        .Sum(unit => unit.Stats.GlobalShieldBonus * Balance.SupportEffectMultiplier);
                     DemoCombatParticipantState attackerState = combat.GetAssignment(attacker.Id);
-                    if (attackerState != null)
-                        attackerState.LastTargetId = target.Id;
-                    attacker.AttackCooldown = Mathf.Max(0.2f, attacker.Stats.AttackInterval);
+                    DemoCombatParticipantState targetState = combat.GetAssignment(target.Id);
+                    float attackMultiplier = GetBattleLineAttackMultiplier(attackerState.Line);
+                    if (targetState != null && targetState.MarkedUntil > SimulationTime)
+                        attackMultiplier *= Balance.ScoutMarkDamageMultiplier;
+                    int nextAttack = attackerState.AttacksPerformed + 1;
+                    bool artillerySalvo = attacker.Role == DemoUnitRole.Artillery &&
+                                           nextAttack % Mathf.Max(1, Balance.ArtillerySalvoEveryAttacks) == 0;
+                    if (artillerySalvo)
+                        attackMultiplier *= Balance.ArtillerySalvoDamageMultiplier;
+                    bool fortressBarrage = attacker.Role == DemoUnitRole.Fortress &&
+                                           attacker.HealthRatio <= Balance.FortressBarrageHealthThreshold;
+                    if (fortressBarrage)
+                        attackMultiplier *= Balance.FortressBarrageDamageMultiplier;
+
+                    float damageTakenMultiplier = GetBattleLineDamageTakenMultiplier(targetState.Line);
+                    DemoDamageResult result = DemoDamageResolver.Resolve(
+                        attacker, target, Balance, _random, shieldBonus, attackMultiplier, damageTakenMultiplier);
+                    attackerState.LastTargetId = target.Id;
+                    attackerState.AttacksPerformed = nextAttack;
+                    if (attacker.Role == DemoUnitRole.Scout && targetState != null && target.IsAlive)
+                        targetState.MarkedUntil = Mathf.Max(targetState.MarkedUntil, SimulationTime + Balance.ScoutMarkDuration);
+                    float intervalMultiplier = fortressBarrage ? Balance.FortressBarrageIntervalMultiplier : 1f;
+                    attacker.AttackCooldown = Mathf.Max(0.2f, attacker.Stats.AttackInterval * intervalMultiplier);
                     ReportDamage(attacker, target, result, combat.Center, false);
+                    if (artillerySalvo)
+                        Raise($"{attacker.DisplayName} 完成校射齐射", combat.Center, false, combat.Id);
                 }
 
                 foreach (int id in combat.Participants.ToList())
@@ -723,6 +790,51 @@ namespace SWRTS.Demo1
             }
         }
 
+        private void TickRoleMechanics(DemoCombatModel combat, float dt)
+        {
+            foreach (int id in combat.Participants.ToList())
+            {
+                DemoUnitModel unit = GetUnit(id);
+                DemoCombatParticipantState state = combat.GetAssignment(id);
+                if (unit == null || state == null || !unit.IsAlive)
+                    continue;
+
+                if (unit.Role == DemoUnitRole.Fortress &&
+                    unit.HealthRatio <= Balance.FortressBarrageHealthThreshold &&
+                    !state.FortressBarrageAnnounced)
+                {
+                    state.FortressBarrageAnnounced = true;
+                    Raise($"{unit.DisplayName} 进入应急齐射阶段", combat.Center, true, combat.Id);
+                }
+
+                if (unit.Role != DemoUnitRole.Support ||
+                    state.Line != DemoBattleLine.Support ||
+                    !IsActiveParticipant(combat, unit, unit.Team))
+                    continue;
+
+                state.RoleAbilityRemaining -= dt;
+                if (state.RoleAbilityRemaining > 0f)
+                    continue;
+                state.RoleAbilityRemaining = Mathf.Max(0.1f, Balance.SupportPulseInterval);
+
+                bool restoredAny = false;
+                float shieldRestore = Balance.SupportPulseShield * Balance.SupportEffectMultiplier;
+                float magicRestore = Balance.SupportPulseMagic * Balance.SupportEffectMultiplier;
+                foreach (DemoUnitModel ally in combat.Participants.Select(GetUnit)
+                             .Where(ally => ally != null && ally.IsAlive && ally.Team == unit.Team &&
+                                            ally.Activity == DemoUnitActivity.Fighting))
+                {
+                    float oldShield = ally.Shield;
+                    float oldMagic = ally.Magic;
+                    ally.Shield = Mathf.Min(ally.Stats.MaxShield, ally.Shield + shieldRestore);
+                    ally.Magic = Mathf.Min(ally.Stats.MaxMagic, ally.Magic + magicRestore);
+                    restoredAny |= ally.Shield > oldShield || ally.Magic > oldMagic;
+                }
+                if (restoredAny)
+                    Raise($"{unit.DisplayName} 发动护盾支援脉冲", combat.Center, false, combat.Id);
+            }
+        }
+
         private bool CanAttackFromBattleLine(DemoCombatModel combat, DemoUnitModel unit)
         {
             if (unit == null || !unit.IsAlive || unit.Activity != DemoUnitActivity.Fighting)
@@ -731,12 +843,19 @@ namespace SWRTS.Demo1
             return state != null && !state.IsRepositioning;
         }
 
-        private bool ProvidesBattleSupport(DemoCombatModel combat, DemoUnitModel unit, DemoTeam team)
+        private bool IsActiveParticipant(DemoCombatModel combat, DemoUnitModel unit, DemoTeam team)
         {
             if (unit == null || !unit.IsAlive || unit.Team != team || unit.Activity != DemoUnitActivity.Fighting)
                 return false;
             DemoCombatParticipantState state = combat.GetAssignment(unit.Id);
             return state != null && !state.IsRepositioning;
+        }
+
+        private bool ProvidesShieldSupport(DemoCombatModel combat, DemoUnitModel unit, DemoTeam team)
+        {
+            if (!IsActiveParticipant(combat, unit, team) || unit.Role != DemoUnitRole.Support)
+                return false;
+            return combat.GetAssignment(unit.Id).Line == DemoBattleLine.Support;
         }
 
         private DemoUnitModel SelectBattleTarget(DemoCombatModel combat, DemoUnitModel attacker)
@@ -758,20 +877,50 @@ namespace SWRTS.Demo1
                 float chance = Mathf.Clamp01(attacker.Stats.ScreenPenetration) *
                                (1f - GetScreeningEfficiency(combat.Id, candidates[0].Team));
                 if (rear.Count > 0 && _random.NextDouble() < chance)
-                    return rear.OrderBy(unit => unit.HealthRatio).ThenBy(unit => unit.Id).First();
+                {
+                    DemoUnitModel rearTarget = SelectPreferredTarget(attacker, rear);
+                    DemoUnitModel guard = TrySelectGuardInterceptor(combat, candidates[0].Team);
+                    if (guard != null)
+                    {
+                        Raise($"{guard.DisplayName} 拦截了对后排的穿线攻击", combat.Center, false, combat.Id);
+                        return guard;
+                    }
+                    return rearTarget;
+                }
             }
 
             foreach (DemoBattleLine line in new[] { DemoBattleLine.Vanguard, DemoBattleLine.Main, DemoBattleLine.Support })
             {
-                DemoUnitModel target = candidates
-                    .Where(unit => combat.GetAssignment(unit.Id).Line == line)
-                    .OrderBy(unit => unit.HealthRatio)
-                    .ThenBy(unit => unit.Id)
-                    .FirstOrDefault();
+                DemoUnitModel target = SelectPreferredTarget(attacker,
+                    candidates.Where(unit => combat.GetAssignment(unit.Id).Line == line));
                 if (target != null)
                     return target;
             }
             return null;
+        }
+
+        private DemoUnitModel SelectPreferredTarget(DemoUnitModel attacker, IEnumerable<DemoUnitModel> candidates)
+        {
+            IOrderedEnumerable<DemoUnitModel> ordered = attacker.Role == DemoUnitRole.Witch
+                ? candidates.OrderBy(unit => unit.Stats.AttackProfile == DemoAttackProfile.ScreenPiercing ? 0 : 1)
+                    .ThenBy(unit => unit.HealthRatio)
+                    .ThenBy(unit => unit.Id)
+                : candidates.OrderBy(unit => unit.HealthRatio).ThenBy(unit => unit.Id);
+            return ordered.FirstOrDefault();
+        }
+
+        private DemoUnitModel TrySelectGuardInterceptor(DemoCombatModel combat, DemoTeam defendingTeam)
+        {
+            List<DemoUnitModel> guards = combat.Participants.Select(GetUnit)
+                .Where(unit => IsActiveParticipant(combat, unit, defendingTeam) &&
+                               unit.Role == DemoUnitRole.Guard &&
+                               combat.GetAssignment(unit.Id).Line == DemoBattleLine.Vanguard)
+                .OrderBy(unit => unit.HealthRatio)
+                .ThenBy(unit => unit.Id)
+                .ToList();
+            if (guards.Count == 0 || _random.NextDouble() >= Mathf.Clamp01(Balance.GuardInterceptionChance))
+                return null;
+            return guards[0];
         }
 
         private void TickRetreats(DemoCombatModel combat, float dt)
@@ -835,6 +984,8 @@ namespace SWRTS.Demo1
                 return;
             DemoBattleLine line = unit.Stats.PreferredBattleLine;
             combat.Assignments[unit.Id] = new DemoCombatParticipantState(unit.Id, line);
+            if (unit.Role == DemoUnitRole.Support)
+                combat.Assignments[unit.Id].RoleAbilityRemaining = Mathf.Max(0.1f, Balance.SupportPulseInterval);
             unit.CombatId = combat.Id;
             unit.PendingReinforcementBattleId = -1;
             unit.HasDestination = false;

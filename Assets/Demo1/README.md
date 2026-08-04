@@ -23,8 +23,16 @@ Open `Assets/Demo1/Scenes/Demo1.unity` and enter Play Mode.
 - Ordinary attacks must target the nearest occupied enemy line. Vanguard units provide screening for units behind them.
 - Artillery and scouts use screen-piercing attacks. Their chance to reach the main/support lines is `penetration * (1 - screening efficiency)`; complete screening blocks penetration.
 - Select a friendly card in the live battle panel to order a two-second line change. Repositioning units remain exposed but cannot attack, screen or support until the timer completes.
+- The lines now have explicit tradeoffs: vanguard deals 10% less damage but takes 15% less damage and provides 25% more screening; main deals 15% more damage; support deals 20% less damage but multiplies active support effects by 1.5. Global shield support only works from the support line.
+- Every role has a combat identity beyond base stats:
+  - witches prioritize enemy screen-piercing threats on the currently exposed line;
+  - artillery performs a 1.45x calibrated salvo every third attack;
+  - scouts mark hit targets for four seconds, causing 20% more incoming damage;
+  - support witches pulse allied shield and magic every four seconds while active on the support line;
+  - guards on the vanguard have a 65% chance to intercept a successful attack that pierced toward the rear;
+  - fortresses enter an emergency barrage below 50% health, attacking 35% faster and dealing 15% more damage.
 - Opening the battle panel suppresses map-space unit names, health bars and combat IDs so tactical overlays never cover the panel.
-- Enemy scouts, guards and the fortress use reinforced prototype durability and attack values, giving line changes and reserve deployment time to affect the battle.
+- Enemy scouts, guards and the fortress use reinforced prototype durability and attack values, giving line changes and reinforcement deployment time to affect the battle.
 - These formation rules and values are code-only prototype assumptions and have not been written back to Feishu revision 6.
 
 ## Configurable prototype assumptions

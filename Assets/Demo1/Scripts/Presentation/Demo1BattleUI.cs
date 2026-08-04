@@ -233,7 +233,7 @@ namespace SWRTS.Demo1
 
             List<DemoUnitModel> players = UnitsOnLine(combat, DemoTeam.Player, line);
             List<DemoUnitModel> enemies = UnitsOnLine(combat, DemoTeam.Enemy, line);
-            AddText(_panelContent, $"{line} Counts", $"{players.Count} 人  /  {enemies.Count} 人\n拖动浏览", new Vector2(0f, y - 27f), new Vector2(112f, 34f), 11, TextAnchor.MiddleCenter, new Color(0.5f, 0.62f, 0.66f));
+            AddText(_panelContent, $"{line} Counts", $"{players.Count} 人 / {enemies.Count} 人\n{LineTrait(line)}", new Vector2(0f, y - 27f), new Vector2(112f, 38f), 10, TextAnchor.MiddleCenter, new Color(0.55f, 0.7f, 0.74f));
             DrawLineSide(combat, players, DemoTeam.Player, line, new Vector2(-340f, y));
             DrawLineSide(combat, enemies, DemoTeam.Enemy, line, new Vector2(340f, y));
         }
@@ -293,6 +293,9 @@ namespace SWRTS.Demo1
             Transform root = button.transform;
             AddText(root, "Name", $"{unit.DisplayName}  ·  {RoleName(unit.Role)}", new Vector2(0f, 28f), new Vector2(190f, 22f), 14, TextAnchor.MiddleLeft, Color.white);
             string stateText = state.IsRepositioning ? $"换位 {state.RepositionRemaining:0.0}s" : unit.Activity == DemoUnitActivity.Retreating ? $"撤退 {unit.RetreatProgress:P0}" : "交战中";
+            string roleStatus = RoleStatus(combat, unit, state);
+            if (!string.IsNullOrEmpty(roleStatus))
+                stateText += $" · {roleStatus}";
             if (state.LastTargetId >= 0)
             {
                 DemoUnitModel target = _controller.Simulation.GetUnit(state.LastTargetId);
@@ -383,6 +386,48 @@ namespace SWRTS.Demo1
                 case DemoUnitRole.Guard: return "护卫";
                 case DemoUnitRole.Fortress: return "固定目标";
                 default: return role.ToString();
+            }
+        }
+
+        private string RoleStatus(DemoCombatModel combat, DemoUnitModel unit, DemoCombatParticipantState state)
+        {
+            float markRemaining = _controller.Simulation.GetMarkRemaining(combat.Id, unit.Id);
+            if (markRemaining > 0f)
+                return $"被标记 {markRemaining:0.0}s";
+            switch (unit.Role)
+            {
+                case DemoUnitRole.Witch:
+                    return "优先猎杀穿线单位";
+                case DemoUnitRole.Artillery:
+                    return $"校射 {state.AttacksPerformed % Mathf.Max(1, _controller.Simulation.Balance.ArtillerySalvoEveryAttacks)}/{Mathf.Max(1, _controller.Simulation.Balance.ArtillerySalvoEveryAttacks)}";
+                case DemoUnitRole.Scout:
+                    return "攻击施加侦察标记";
+                case DemoUnitRole.Support:
+                    return state.Line == DemoBattleLine.Support && !state.IsRepositioning
+                        ? $"护盾脉冲 {Mathf.Max(0f, state.RoleAbilityRemaining):0.0}s"
+                        : "支援能力未生效";
+                case DemoUnitRole.Guard:
+                    return state.Line == DemoBattleLine.Vanguard && !state.IsRepositioning ? "穿线拦截警戒" : "拦截能力未生效";
+                case DemoUnitRole.Fortress:
+                    return unit.HealthRatio <= _controller.Simulation.Balance.FortressBarrageHealthThreshold ? "应急齐射" : "半血后进入应急齐射";
+                default:
+                    return string.Empty;
+            }
+        }
+
+        private string LineTrait(DemoBattleLine line)
+        {
+            Demo1Balance balance = _controller.Simulation.Balance;
+            switch (line)
+            {
+                case DemoBattleLine.Vanguard:
+                    return $"屏卫×{balance.VanguardScreenMultiplier:0.##} 防护{1f - balance.VanguardDamageTakenMultiplier:P0}";
+                case DemoBattleLine.Main:
+                    return $"火力+{balance.MainAttackMultiplier - 1f:P0}";
+                case DemoBattleLine.Support:
+                    return $"支援×{balance.SupportEffectMultiplier:0.##} 火力{balance.SupportAttackMultiplier - 1f:P0}";
+                default:
+                    return string.Empty;
             }
         }
 
