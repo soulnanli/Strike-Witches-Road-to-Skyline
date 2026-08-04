@@ -12,15 +12,15 @@ Open `Assets/Demo1/Scenes/Demo1.unity` and enter Play Mode.
 
 ### Player witch balance pass
 
-The first post-migration tuning pass raises player durability and damage while keeping attack intervals, critical rates, traits, vision and movement unchanged:
+A follow-up tuning pass doubles HP, attack, defense, magic, shield and magic recovery from the previous values (+100%) while keeping attack intervals, critical rates, traits, vision and movement unchanged:
 
 | Witch | HP | Attack | Defense | Magic | Shield | Magic recovery |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Miyafuji | 135 | 20 | 8 | 135 | 72 | 7 |
-| Sakamoto | 165 | 33 | 9 | 90 | 55 | 4 |
-| Lynette | 130 | 27 | 8 | 90 | 50 | 4 |
-| Perrine | 140 | 28 | 9 | 90 | 55 | 4 |
-| Sanya | 135 | 26 | 8 | 125 | 68 | 5 |
+| Miyafuji | 270 | 40 | 16 | 270 | 144 | 14 |
+| Sakamoto | 330 | 66 | 18 | 180 | 110 | 8 |
+| Lynette | 260 | 54 | 16 | 180 | 100 | 8 |
+| Perrine | 280 | 56 | 18 | 180 | 110 | 8 |
+| Sanya | 270 | 52 | 16 | 250 | 136 | 10 |
 
 These values remain code-prototype balance and are not additions to Feishu revision 6.
 
