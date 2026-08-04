@@ -6,6 +6,52 @@ using UnityEngine.UI;
 
 namespace SWRTS.Demo1
 {
+    internal sealed class Demo1BattlePointerGuard : MonoBehaviour, IPointerDownHandler, IPointerUpHandler, ICancelHandler
+    {
+        private Demo1BattleUI _owner;
+        private int _pointerId;
+        private bool _isTracking;
+
+        public void Initialize(Demo1BattleUI owner)
+        {
+            _owner = owner;
+        }
+
+        public void OnPointerDown(PointerEventData eventData)
+        {
+            if (eventData.button != PointerEventData.InputButton.Left)
+                return;
+
+            _pointerId = eventData.pointerId;
+            _isTracking = true;
+            _owner?.BeginPanelPointer(_pointerId);
+        }
+
+        public void OnPointerUp(PointerEventData eventData)
+        {
+            EndTracking();
+        }
+
+        public void OnCancel(BaseEventData eventData)
+        {
+            EndTracking();
+        }
+
+        private void OnDisable()
+        {
+            EndTracking();
+        }
+
+        private void EndTracking()
+        {
+            if (!_isTracking)
+                return;
+
+            _isTracking = false;
+            _owner?.EndPanelPointer(_pointerId);
+        }
+    }
+
     public sealed class Demo1BattleUI : MonoBehaviour
     {
         private sealed class BubbleView
@@ -17,6 +63,7 @@ namespace SWRTS.Demo1
 
         private readonly Dictionary<int, BubbleView> _bubbles = new Dictionary<int, BubbleView>();
         private readonly Dictionary<string, float> _lineScrollPositions = new Dictionary<string, float>();
+        private readonly HashSet<int> _activePanelPointers = new HashSet<int>();
         private Demo1GameController _controller;
         private Canvas _canvas;
         private RectTransform _canvasRect;
@@ -27,9 +74,13 @@ namespace SWRTS.Demo1
         private int _openCombatId = -1;
         private int _selectedUnitId = -1;
         private float _nextPanelRefresh;
+        private bool _panelDirty;
+        private bool _commandFeedbackSuccess = true;
+        private string _commandFeedback = string.Empty;
 
         public bool IsPanelOpen => _panel != null && _panel.activeSelf;
         public int OpenCombatId => _openCombatId;
+        public int SelectedUnitId => _selectedUnitId;
 
         public void Initialize(Demo1GameController controller)
         {
@@ -56,9 +107,10 @@ namespace SWRTS.Demo1
                 return;
             }
 
-            if (Time.unscaledTime >= _nextPanelRefresh)
+            if ((_panelDirty || Time.unscaledTime >= _nextPanelRefresh) && !IsPanelPointerBusy())
             {
                 _nextPanelRefresh = Time.unscaledTime + 0.1f;
+                _panelDirty = false;
                 RebuildPanel(combat);
             }
         }
@@ -71,6 +123,11 @@ namespace SWRTS.Demo1
             _openCombatId = combatId;
             _selectedUnitId = -1;
             _lineScrollPositions.Clear();
+            _activePanelPointers.Clear();
+            _commandFeedback = "请先选择一名己方参战单位";
+            _commandFeedbackSuccess = true;
+            _panelDirty = false;
+            _nextPanelRefresh = Time.unscaledTime + 0.1f;
             _panel.SetActive(true);
             RebuildPanel(combat);
         }
@@ -79,8 +136,26 @@ namespace SWRTS.Demo1
         {
             _openCombatId = -1;
             _selectedUnitId = -1;
+            _activePanelPointers.Clear();
+            _panelDirty = false;
             if (_panel != null)
                 _panel.SetActive(false);
+        }
+
+        internal void BeginPanelPointer(int pointerId)
+        {
+            _activePanelPointers.Add(pointerId);
+        }
+
+        internal void EndPanelPointer(int pointerId)
+        {
+            _activePanelPointers.Remove(pointerId);
+            _panelDirty = true;
+        }
+
+        private bool IsPanelPointerBusy()
+        {
+            return _activePanelPointers.Count > 0 || Input.GetMouseButton(0) || Input.GetMouseButtonUp(0);
         }
 
         private void EnsureEventSystem()
@@ -328,20 +403,34 @@ namespace SWRTS.Demo1
 
         private void DrawCommands(DemoCombatModel combat, float y)
         {
-            AddButton(_panelContent, "Vanguard", "转移至前卫", new Vector2(-455f, y), new Vector2(145f, 42f), () => ChangeLine(DemoBattleLine.Vanguard), new Color(0.12f, 0.32f, 0.38f, 1f));
-            AddButton(_panelContent, "Main", "转移至主战", new Vector2(-300f, y), new Vector2(145f, 42f), () => ChangeLine(DemoBattleLine.Main), new Color(0.12f, 0.32f, 0.38f, 1f));
-            AddButton(_panelContent, "Support", "转移至支援", new Vector2(-145f, y), new Vector2(145f, 42f), () => ChangeLine(DemoBattleLine.Support), new Color(0.12f, 0.32f, 0.38f, 1f));
+            bool hasSelectedUnit = IsSelectedUnitValid(combat);
+            Button vanguard = AddButton(_panelContent, "Vanguard", "转移至前卫", new Vector2(-455f, y), new Vector2(145f, 42f), () => ChangeLine(DemoBattleLine.Vanguard), new Color(0.12f, 0.32f, 0.38f, 1f));
+            Button main = AddButton(_panelContent, "Main", "转移至主战", new Vector2(-300f, y), new Vector2(145f, 42f), () => ChangeLine(DemoBattleLine.Main), new Color(0.12f, 0.32f, 0.38f, 1f));
+            Button support = AddButton(_panelContent, "Support", "转移至支援", new Vector2(-145f, y), new Vector2(145f, 42f), () => ChangeLine(DemoBattleLine.Support), new Color(0.12f, 0.32f, 0.38f, 1f));
             AddButton(_panelContent, "Reinforce", "增援地图所选", new Vector2(75f, y), new Vector2(170f, 42f), () => ExecuteAndRefresh(_controller.CommandReinforceCombat(combat.Id)), new Color(0.08f, 0.38f, 0.28f, 1f));
-            AddButton(_panelContent, "Retreat", "撤退选中单位", new Vector2(260f, y), new Vector2(170f, 42f), RetreatSelected, new Color(0.5f, 0.22f, 0.08f, 1f));
+            Button retreat = AddButton(_panelContent, "Retreat", "撤退选中单位", new Vector2(260f, y), new Vector2(170f, 42f), RetreatSelected, new Color(0.5f, 0.22f, 0.08f, 1f));
             AddButton(_panelContent, "Focus", "聚焦战斗", new Vector2(445f, y), new Vector2(150f, 42f), () => _controller.FocusCombat(combat.Id), new Color(0.18f, 0.25f, 0.3f, 1f));
+
+            vanguard.interactable = hasSelectedUnit;
+            main.interactable = hasSelectedUnit;
+            support.interactable = hasSelectedUnit;
+            retreat.interactable = hasSelectedUnit;
+            AddText(_panelContent, "Command Feedback", _commandFeedback, new Vector2(0f, y + 42f), new Vector2(980f, 24f), 14,
+                TextAnchor.MiddleCenter, _commandFeedbackSuccess ? new Color(0.45f, 0.92f, 0.72f) : new Color(1f, 0.48f, 0.36f));
         }
 
         private void SelectUnit(int unitId)
         {
-            _selectedUnitId = unitId;
             DemoCombatModel combat = _controller.Simulation.GetCombat(_openCombatId);
-            if (combat != null)
-                RebuildPanel(combat);
+            DemoUnitModel unit = _controller.Simulation.GetUnit(unitId);
+            if (combat == null || unit == null || !unit.IsAlive || unit.Team != DemoTeam.Player || !combat.Participants.Contains(unitId))
+                return;
+
+            _selectedUnitId = unitId;
+            _controller.SelectUnits(new[] { unitId });
+            _commandFeedback = $"已选中 {unit.DisplayName}";
+            _commandFeedbackSuccess = true;
+            _panelDirty = true;
         }
 
         private void ChangeLine(DemoBattleLine line)
@@ -360,9 +449,18 @@ namespace SWRTS.Demo1
 
         private void ExecuteAndRefresh(DemoCommandResult result)
         {
-            DemoCombatModel combat = _controller.Simulation.GetCombat(_openCombatId);
-            if (combat != null && !combat.IsFinished)
-                RebuildPanel(combat);
+            _commandFeedback = result.Message;
+            _commandFeedbackSuccess = result.Success;
+            _panelDirty = true;
+        }
+
+        private bool IsSelectedUnitValid(DemoCombatModel combat)
+        {
+            if (_selectedUnitId < 0 || combat == null || !combat.Participants.Contains(_selectedUnitId))
+                return false;
+
+            DemoUnitModel unit = _controller.Simulation.GetUnit(_selectedUnitId);
+            return unit != null && unit.IsAlive && unit.Team == DemoTeam.Player;
         }
 
         private List<DemoUnitModel> UnitsOnLine(DemoCombatModel combat, DemoTeam team, DemoBattleLine line)
@@ -471,6 +569,7 @@ namespace SWRTS.Demo1
             image.color = color;
             Button button = obj.GetComponent<Button>();
             button.targetGraphic = image;
+            obj.AddComponent<Demo1BattlePointerGuard>().Initialize(this);
             if (action != null)
                 button.onClick.AddListener(action);
             else

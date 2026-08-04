@@ -2,7 +2,9 @@ using System.Collections;
 using System.Linq;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.TestTools;
+using UnityEngine.UI;
 
 namespace SWRTS.Demo1.PlayModeTests
 {
@@ -87,6 +89,65 @@ namespace SWRTS.Demo1.PlayModeTests
             yield return null;
             Assert.That(activeCombat.IsFinished, Is.True);
             Assert.That(battleUi.IsPanelOpen, Is.False, "The panel should close when its battle ends.");
+
+            Object.Destroy(root);
+            yield return null;
+        }
+
+        [UnityTest]
+        public IEnumerator BattlePanelButtonsSurvivePointerPressAndExecuteSelectionLineChangeAndRetreat()
+        {
+            GameObject root = new GameObject("Demo1 Battle UI Interaction Test");
+            Demo1GameController controller = root.AddComponent<Demo1GameController>();
+
+            yield return null;
+            yield return null;
+
+            DemoUnitModel player = controller.Simulation.Units.First(unit => unit.Team == DemoTeam.Player);
+            DemoUnitModel enemy = controller.Simulation.Units.First(unit => unit.Team == DemoTeam.Enemy && !unit.IsFixed);
+            player.Position = enemy.Position + Vector3.left * (player.Stats.EngagementRadius * 0.5f);
+            enemy.IsRevealedToPlayer = true;
+            controller.SelectUnits(new[] { player.Id });
+            DemoCommandResult engage = controller.CommandEngage(enemy.Id);
+            Assert.That(engage.Success, Is.True, engage.Message);
+
+            DemoCombatModel combat = controller.Simulation.Combats.First(item => !item.IsFinished);
+            controller.SetPaused(true);
+            Demo1BattleUI battleUi = Object.FindFirstObjectByType<Demo1BattleUI>();
+            battleUi.OpenPanel(combat.Id);
+            yield return null;
+
+            Button unitButton = GameObject.Find($"Unit {player.Id}").GetComponent<Button>();
+            int pressedButtonInstanceId = unitButton.gameObject.GetInstanceID();
+            PointerEventData pointer = new PointerEventData(EventSystem.current)
+            {
+                button = PointerEventData.InputButton.Left,
+                pointerId = -1
+            };
+
+            ExecuteEvents.Execute(unitButton.gameObject, pointer, ExecuteEvents.pointerDownHandler);
+            yield return new WaitForSecondsRealtime(0.2f);
+            Assert.That(unitButton, Is.Not.Null, "A live panel refresh must not destroy the button while it is pressed.");
+            Assert.That(unitButton.gameObject.GetInstanceID(), Is.EqualTo(pressedButtonInstanceId));
+            ExecuteEvents.Execute(unitButton.gameObject, pointer, ExecuteEvents.pointerUpHandler);
+            ExecuteEvents.Execute(unitButton.gameObject, pointer, ExecuteEvents.pointerClickHandler);
+            yield return null;
+
+            Assert.That(battleUi.SelectedUnitId, Is.EqualTo(player.Id));
+            Assert.That(controller.SelectedUnitIds, Is.EquivalentTo(new[] { player.Id }));
+
+            Button mainButton = GameObject.Find("Main").GetComponent<Button>();
+            ExecuteEvents.Execute(mainButton.gameObject, pointer, ExecuteEvents.pointerClickHandler);
+            yield return null;
+            DemoCombatParticipantState assignment = combat.GetAssignment(player.Id);
+            Assert.That(assignment.Line, Is.EqualTo(DemoBattleLine.Main));
+            Assert.That(assignment.IsRepositioning, Is.True);
+
+            Button retreatButton = GameObject.Find("Retreat").GetComponent<Button>();
+            ExecuteEvents.Execute(retreatButton.gameObject, pointer, ExecuteEvents.pointerClickHandler);
+            yield return null;
+            Assert.That(player.Activity, Is.EqualTo(DemoUnitActivity.Retreating));
+            Assert.That(player.RetreatRemaining, Is.GreaterThan(0f));
 
             Object.Destroy(root);
             yield return null;
