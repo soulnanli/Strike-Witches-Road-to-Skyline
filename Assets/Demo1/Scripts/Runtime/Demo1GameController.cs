@@ -165,24 +165,27 @@ namespace SWRTS.Demo1
             ace.CoreDiscovery = 0.28f;
             ace.Mobility = 1.25f;
             ace.ScreenPower = 1.2f;
+            ace.Traits = DemoUnitTrait.SakamotoCoreInsight;
 
             DemoUnitStats support = witch.Clone();
             support.Attack = 18f;
             support.MaxMagic = 120f;
             support.MaxShield = 60f;
-            support.GlobalShieldBonus = 0.28f;
+            support.GlobalShieldBonus = 0f;
             support.MagicRecovery = 6f;
             support.PreferredBattleLine = DemoBattleLine.Support;
             support.ScreenPower = 0.35f;
+            support.Traits = DemoUnitTrait.MiyafujiShieldAura;
 
             DemoUnitStats artillery = witch.Clone();
             artillery.Attack = 22f;
-            artillery.CanRemoteStrike = true;
+            artillery.CanRemoteStrike = false;
             artillery.CoreDiscovery = 0.22f;
             artillery.PreferredBattleLine = DemoBattleLine.Main;
-            artillery.AttackProfile = DemoAttackProfile.ScreenPiercing;
-            artillery.ScreenPenetration = 0.65f;
+            artillery.AttackProfile = DemoAttackProfile.Standard;
+            artillery.ScreenPenetration = 0f;
             artillery.ScreenPower = 0.25f;
+            artillery.Traits = DemoUnitTrait.LynetteSharpshooter;
 
             DemoUnitStats nightWitch = witch.Clone();
             nightWitch.MaxMagic = 110f;
@@ -347,6 +350,20 @@ namespace SWRTS.Demo1
                 : _simulation.ScheduleRemoteStrike(artillery.Id, target));
         }
 
+        private void EnterRemoteStrikeMode()
+        {
+            bool hasRemoteStriker = _simulation != null && _selection.Select(_simulation.GetUnit)
+                .Any(unit => unit != null && unit.IsAlive && unit.Stats.CanRemoteStrike);
+            if (!hasRemoteStriker)
+            {
+                _commandMode = CommandMode.Select;
+                _statusMessage = "当前选中单位没有远程打击能力";
+                return;
+            }
+            _commandMode = CommandMode.RemoteStrike;
+            _statusMessage = "远程打击模式：左键指定目标区域";
+        }
+
         public void SetPaused(bool paused)
         {
             if (_paused == paused)
@@ -428,10 +445,7 @@ namespace SWRTS.Demo1
                 _statusMessage = "交战模式：左键点击已发现的敌方目标";
             }
             if (Input.GetKeyDown(KeyCode.B))
-            {
-                _commandMode = CommandMode.RemoteStrike;
-                _statusMessage = "远程打击模式：左键指定目标区域";
-            }
+                EnterRemoteStrikeMode();
             if (Input.GetKeyDown(KeyCode.R))
                 ApplyResult(_simulation.RequestRetreat(_selection));
             if (Input.GetKeyDown(KeyCode.G))
@@ -749,10 +763,7 @@ namespace SWRTS.Demo1
             }
             if (GUI.Button(new Rect(120f, y, 98f, 32f), "增援 [G]")) ReinforceNearestBattle();
             if (GUI.Button(new Rect(226f, y, 98f, 32f), "打击 [B]"))
-            {
-                _commandMode = CommandMode.RemoteStrike;
-                _statusMessage = "远程打击模式：点击目标区域";
-            }
+                EnterRemoteStrikeMode();
             y += 43f;
 
             GUI.Label(new Rect(14f, y, PanelWidth - 28f, 42f), _statusMessage, _smallStyle);
@@ -801,7 +812,7 @@ namespace SWRTS.Demo1
             GUI.Box(panel, string.Empty);
             GUI.BeginGroup(panel);
             Rect viewport = new Rect(4f, 4f, panel.width - 8f, panel.height - 8f);
-            float contentHeight = panel.height >= 620f ? 620f : 520f;
+            float contentHeight = 660f;
             _detailScroll = GUI.BeginScrollView(viewport, _detailScroll, new Rect(0f, 0f, panel.width - 26f, contentHeight));
 
             float width = panel.width - 26f;
@@ -847,15 +858,18 @@ namespace SWRTS.Demo1
             y += 22f;
             DrawDetailStatRow(ref y, contentWidth, "攻击", unit.Stats.Attack.ToString("0.#"), "防御", unit.Stats.Defense.ToString("0.#"));
             DrawDetailStatRow(ref y, contentWidth, "机动", unit.Stats.Mobility.ToString("0.#"), "移速", unit.Stats.MoveSpeed.ToString("0.#"));
-            DrawDetailStatRow(ref y, contentWidth, "交战距离", unit.Stats.EngagementRadius.ToString("0.#"), "攻击间隔", $"{unit.Stats.AttackInterval:0.#}s");
-            DrawDetailStatRow(ref y, contentWidth, "暴击", unit.Stats.CriticalChance.ToString("P0"), "核心发现", unit.Stats.CoreDiscovery.ToString("P0"));
-
-            if (panel.height >= 620f)
-            {
-                DrawDetailStatRow(ref y, contentWidth, "屏障", unit.Stats.ScreenPower.ToString("0.##"), "穿线", unit.Stats.ScreenPenetration.ToString("P0"));
-                y += 4f;
-                GUI.Label(new Rect(14f, y, contentWidth, 42f), RoleDescription(unit.Role), _detailMutedStyle);
-            }
+            DrawDetailStatRow(ref y, contentWidth, "交战距离", unit.Stats.EngagementRadius.ToString("0.#"), "攻击间隔",
+                FormatAdjustedSeconds(unit.Stats.AttackInterval, _simulation.GetEffectiveAttackInterval(unit.Id)));
+            DrawDetailStatRow(ref y, contentWidth, "暴击",
+                FormatAdjustedPercent(unit.Stats.CriticalChance, _simulation.GetEffectiveCriticalChance(unit.Id)), "核心发现",
+                FormatAdjustedPercent(unit.Stats.CoreDiscovery, _simulation.GetEffectiveCoreDiscovery(unit.Id)));
+            DrawDetailStatRow(ref y, contentWidth, "屏障", unit.Stats.ScreenPower.ToString("0.##"), "穿线", unit.Stats.ScreenPenetration.ToString("P0"));
+            y += 4f;
+            GUI.Label(new Rect(14f, y, contentWidth, 20f), $"特质 · {TraitName(unit.Stats.Traits)}", _detailHeaderStyle);
+            y += 22f;
+            GUI.Label(new Rect(14f, y, contentWidth, 48f), TraitDescription(unit.Stats.Traits, _balance), _detailMutedStyle);
+            y += 51f;
+            GUI.Label(new Rect(14f, y, contentWidth, 42f), RoleDescription(unit), _detailMutedStyle);
 
             GUI.EndScrollView();
             GUI.EndGroup();
@@ -878,6 +892,20 @@ namespace SWRTS.Demo1
             GUI.Label(new Rect(14f, y, half, 20f), $"{leftName}  {leftValue}", _smallStyle);
             GUI.Label(new Rect(14f + half, y, half, 20f), $"{rightName}  {rightValue}", _smallStyle);
             y += 21f;
+        }
+
+        private static string FormatAdjustedPercent(float baseValue, float effectiveValue)
+        {
+            return Mathf.Approximately(baseValue, effectiveValue)
+                ? baseValue.ToString("P0")
+                : $"{effectiveValue:P0}（基础 {baseValue:P0}）";
+        }
+
+        private static string FormatAdjustedSeconds(float baseValue, float effectiveValue)
+        {
+            return Mathf.Approximately(baseValue, effectiveValue)
+                ? $"{baseValue:0.#}s"
+                : $"{effectiveValue:0.#}s（基础 {baseValue:0.#}）";
         }
 
         private string BuildCurrentActionText(DemoUnitModel unit)
@@ -1147,9 +1175,11 @@ namespace SWRTS.Demo1
             }
         }
 
-        private static string RoleDescription(DemoUnitRole role)
+        private static string RoleDescription(DemoUnitModel unit)
         {
-            switch (role)
+            if (unit.Stats.HasTrait(DemoUnitTrait.LynetteSharpshooter))
+                return "作战方式：使用不能穿线的标准单体攻击，不发动炮击校射齐射。";
+            switch (unit.Role)
             {
                 case DemoUnitRole.Witch: return "角色特性：优先压制当前暴露阵线中的穿线威胁。";
                 case DemoUnitRole.Support: return "角色特性：在支援线周期性恢复友军护盾与魔力。";
@@ -1159,6 +1189,27 @@ namespace SWRTS.Demo1
                 case DemoUnitRole.Fortress: return "角色特性：低生命时进入紧急弹幕状态。";
                 default: return string.Empty;
             }
+        }
+
+        private static string TraitName(DemoUnitTrait traits)
+        {
+            List<string> names = new List<string>();
+            if ((traits & DemoUnitTrait.SakamotoCoreInsight) != 0) names.Add("魔眼指挥");
+            if ((traits & DemoUnitTrait.MiyafujiShieldAura) != 0) names.Add("守护之心");
+            if ((traits & DemoUnitTrait.LynetteSharpshooter) != 0) names.Add("精密射手");
+            return names.Count == 0 ? "无" : string.Join(" / ", names);
+        }
+
+        private static string TraitDescription(DemoUnitTrait traits, Demo1Balance balance)
+        {
+            List<string> descriptions = new List<string>();
+            if ((traits & DemoUnitTrait.SakamotoCoreInsight) != 0)
+                descriptions.Add($"同场全体友军（含自身）的基础核心发现提高 {balance.SakamotoCoreDiscoveryBonus:P0}。");
+            if ((traits & DemoUnitTrait.MiyafujiShieldAura) != 0)
+                descriptions.Add($"同场全体友军（含自身）的护盾吸收效率提高 {balance.MiyafujiShieldEfficiencyBonus:P0}。");
+            if ((traits & DemoUnitTrait.LynetteSharpshooter) != 0)
+                descriptions.Add($"暴击率提高 {balance.LynetteCriticalChanceBonus:P0}，攻击间隔变为 {balance.LynetteAttackIntervalMultiplier:0.###} 倍。");
+            return descriptions.Count == 0 ? "该单位目前没有个人特质。" : string.Join("\n", descriptions);
         }
     }
 }

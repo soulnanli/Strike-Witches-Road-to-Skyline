@@ -331,6 +331,92 @@ namespace SWRTS.Demo1.Tests
         }
 
         [Test]
+        public void TeamTraits_ApplyToHolderAndAlliesOnlyWhileProviderIsActive()
+        {
+            Demo1Simulation simulation = new Demo1Simulation();
+            DemoUnitStats sakamotoStats = BasicStats(0f);
+            sakamotoStats.CoreDiscovery = 0.2f;
+            sakamotoStats.Traits = DemoUnitTrait.SakamotoCoreInsight;
+            DemoUnitModel sakamoto = simulation.AddUnit("sakamoto", DemoTeam.Player, DemoUnitRole.Witch, sakamotoStats, Vector3.zero);
+            DemoUnitModel enemy = simulation.AddUnit("enemy", DemoTeam.Enemy, DemoUnitRole.Guard, BasicStats(0f), Vector3.right * 2f);
+            enemy.IsRevealedToPlayer = true;
+            simulation.StartCombat(sakamoto.Id, enemy.Id);
+            DemoCombatModel combat = simulation.Combats.Single();
+
+            DemoUnitStats allyStats = BasicStats(0f);
+            allyStats.CoreDiscovery = 0.1f;
+            DemoUnitModel ally = simulation.AddUnit("ally", DemoTeam.Player, DemoUnitRole.Witch, allyStats, combat.Center);
+            simulation.RequestReinforcement(new[] { ally.Id }, combat.Id);
+
+            DemoUnitStats miyafujiStats = BasicStats(0f);
+            miyafujiStats.PreferredBattleLine = DemoBattleLine.Support;
+            miyafujiStats.Traits = DemoUnitTrait.MiyafujiShieldAura;
+            DemoUnitModel miyafuji = simulation.AddUnit("miyafuji", DemoTeam.Player, DemoUnitRole.Support, miyafujiStats, combat.Center);
+            simulation.RequestReinforcement(new[] { miyafuji.Id }, combat.Id);
+
+            Assert.That(simulation.GetEffectiveCoreDiscovery(sakamoto.Id), Is.EqualTo(0.4f).Within(0.001f));
+            Assert.That(simulation.GetEffectiveCoreDiscovery(ally.Id), Is.EqualTo(0.2f).Within(0.001f));
+            Assert.That(simulation.GetEffectiveShieldBonus(combat.Id, miyafuji.Id), Is.EqualTo(0.15f).Within(0.001f));
+            Assert.That(simulation.GetEffectiveShieldBonus(combat.Id, ally.Id), Is.EqualTo(0.15f).Within(0.001f));
+
+            Assert.That(simulation.RequestBattleLineChange(sakamoto.Id, DemoBattleLine.Main).Success, Is.True);
+            Assert.That(simulation.GetEffectiveCoreDiscovery(sakamoto.Id), Is.EqualTo(0.2f).Within(0.001f));
+            Assert.That(simulation.GetEffectiveCoreDiscovery(ally.Id), Is.EqualTo(0.1f).Within(0.001f));
+
+            Assert.That(simulation.RequestBattleLineChange(miyafuji.Id, DemoBattleLine.Main).Success, Is.True);
+            Assert.That(simulation.GetEffectiveShieldBonus(combat.Id, miyafuji.Id), Is.EqualTo(0f).Within(0.001f));
+            Assert.That(simulation.GetEffectiveShieldBonus(combat.Id, ally.Id), Is.EqualTo(0f).Within(0.001f));
+        }
+
+        [Test]
+        public void LynetteTrait_IncreasesCriticalAndIntervalButUsesOnlyStandardAttacks()
+        {
+            Demo1Balance balance = new Demo1Balance
+            {
+                LynetteCriticalChanceBonus = 0f,
+                LynetteAttackIntervalMultiplier = 1f
+            };
+            Demo1Simulation simulation = new Demo1Simulation(balance);
+            DemoUnitStats lynetteStats = BasicStats(10f);
+            lynetteStats.PreferredBattleLine = DemoBattleLine.Main;
+            lynetteStats.Traits = DemoUnitTrait.LynetteSharpshooter;
+            lynetteStats.CanRemoteStrike = false;
+            lynetteStats.AttackProfile = DemoAttackProfile.Standard;
+            lynetteStats.ScreenPenetration = 0f;
+            DemoUnitModel lynette = simulation.AddUnit("lynette", DemoTeam.Player, DemoUnitRole.Artillery, lynetteStats, Vector3.zero);
+            DemoUnitStats targetStats = BasicStats(0f);
+            targetStats.MaxHealth = 1000f;
+            DemoUnitModel target = simulation.AddUnit("target", DemoTeam.Enemy, DemoUnitRole.Guard, targetStats, Vector3.right * 2f);
+            target.IsRevealedToPlayer = true;
+            target.Shield = 0f;
+            target.Magic = 0f;
+            simulation.StartCombat(lynette.Id, target.Id);
+
+            float before = target.Health;
+            simulation.Advance(0.1f);
+            float firstDamage = before - target.Health;
+            before = target.Health;
+            simulation.Advance(1f);
+            float secondDamage = before - target.Health;
+            before = target.Health;
+            simulation.Advance(1f);
+            float thirdDamage = before - target.Health;
+
+            Assert.That(secondDamage, Is.EqualTo(firstDamage).Within(0.01f));
+            Assert.That(thirdDamage, Is.EqualTo(firstDamage).Within(0.01f), "Lynette's third shot must not use the artillery salvo multiplier.");
+
+            Demo1Simulation effectiveStatsSimulation = new Demo1Simulation();
+            DemoUnitStats effectiveStats = BasicStats();
+            effectiveStats.CriticalChance = 0.12f;
+            effectiveStats.AttackInterval = 1.6f;
+            effectiveStats.Traits = DemoUnitTrait.LynetteSharpshooter;
+            DemoUnitModel effectiveLynette = effectiveStatsSimulation.AddUnit(
+                "effective-lynette", DemoTeam.Player, DemoUnitRole.Artillery, effectiveStats, Vector3.zero);
+            Assert.That(effectiveStatsSimulation.GetEffectiveCriticalChance(effectiveLynette.Id), Is.EqualTo(0.3f).Within(0.001f));
+            Assert.That(effectiveStatsSimulation.GetEffectiveAttackInterval(effectiveLynette.Id), Is.EqualTo(2.2f).Within(0.001f));
+        }
+
+        [Test]
         public void Scout_MarksTargetAndAmplifiesFollowingAlliedAttack()
         {
             Demo1Simulation simulation = new Demo1Simulation();

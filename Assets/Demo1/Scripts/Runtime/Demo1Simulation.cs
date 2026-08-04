@@ -41,6 +41,15 @@ namespace SWRTS.Demo1
         Night
     }
 
+    [Flags]
+    public enum DemoUnitTrait
+    {
+        None = 0,
+        SakamotoCoreInsight = 1 << 0,
+        MiyafujiShieldAura = 1 << 1,
+        LynetteSharpshooter = 1 << 2
+    }
+
     public enum DemoIntelLevel
     {
         Unknown,
@@ -114,6 +123,10 @@ namespace SWRTS.Demo1
         public float FortressBarrageHealthThreshold = 0.5f;
         public float FortressBarrageDamageMultiplier = 1.15f;
         public float FortressBarrageIntervalMultiplier = 0.65f;
+        public float SakamotoCoreDiscoveryBonus = 1f;
+        public float MiyafujiShieldEfficiencyBonus = 0.15f;
+        public float LynetteCriticalChanceBonus = 0.18f;
+        public float LynetteAttackIntervalMultiplier = 1.375f;
         public float VisionIdentificationDuration = 0.5f;
         public float VisionAssessmentDuration = 1.5f;
         public float AssessedIntelMemoryDuration = 3f;
@@ -162,6 +175,12 @@ namespace SWRTS.Demo1
         public DemoAttackProfile AttackProfile = DemoAttackProfile.Standard;
         public float ScreenPower = 1f;
         public float ScreenPenetration;
+        public DemoUnitTrait Traits = DemoUnitTrait.None;
+
+        public bool HasTrait(DemoUnitTrait trait)
+        {
+            return (Traits & trait) != 0;
+        }
 
         public DemoUnitStats Clone()
         {
@@ -386,13 +405,17 @@ namespace SWRTS.Demo1
             System.Random random,
             float globalShieldBonus = 0f,
             float attackMultiplier = 1f,
-            float damageTakenMultiplier = 1f)
+            float damageTakenMultiplier = 1f,
+            float coreDiscoveryMultiplier = 1f,
+            float criticalChanceBonus = 0f)
         {
             float raw = attacker.Stats.Attack * Mathf.Max(0f, attackMultiplier);
-            float discoveryChance = attacker.Stats.CoreDiscovery /
-                                    Mathf.Max(0.01f, attacker.Stats.CoreDiscovery + target.Stats.CoreConcealment);
+            float coreDiscovery = attacker.Stats.CoreDiscovery * Mathf.Max(0f, coreDiscoveryMultiplier);
+            float discoveryChance = coreDiscovery /
+                                    Mathf.Max(0.01f, coreDiscovery + target.Stats.CoreConcealment);
             bool coreHit = random.NextDouble() < Mathf.Clamp01(discoveryChance);
-            bool critical = !coreHit && random.NextDouble() < Mathf.Clamp01(attacker.Stats.CriticalChance);
+            float criticalChance = attacker.Stats.CriticalChance + Mathf.Max(0f, criticalChanceBonus);
+            bool critical = !coreHit && random.NextDouble() < Mathf.Clamp01(criticalChance);
             if (coreHit)
                 raw *= balance.CoreMultiplier;
             else if (critical)
@@ -559,6 +582,56 @@ namespace SWRTS.Demo1
         {
             DemoCombatParticipantState state = GetCombat(combatId)?.GetAssignment(unitId);
             return state == null ? 0f : Mathf.Max(0f, state.MarkedUntil - SimulationTime);
+        }
+
+        public float GetEffectiveCoreDiscovery(int unitId)
+        {
+            DemoUnitModel unit = GetUnit(unitId);
+            if (unit == null)
+                return 0f;
+            DemoCombatModel combat = unit.CombatId >= 0 ? GetCombat(unit.CombatId) : null;
+            return unit.Stats.CoreDiscovery * GetCoreDiscoveryMultiplier(combat, unit);
+        }
+
+        public float GetEffectiveCriticalChance(int unitId)
+        {
+            DemoUnitModel unit = GetUnit(unitId);
+            if (unit == null)
+                return 0f;
+            float bonus = unit.Stats.HasTrait(DemoUnitTrait.LynetteSharpshooter)
+                ? Balance.LynetteCriticalChanceBonus
+                : 0f;
+            return Mathf.Clamp01(unit.Stats.CriticalChance + bonus);
+        }
+
+        public float GetEffectiveAttackInterval(int unitId)
+        {
+            DemoUnitModel unit = GetUnit(unitId);
+            if (unit == null)
+                return 0f;
+            float multiplier = unit.Stats.HasTrait(DemoUnitTrait.LynetteSharpshooter)
+                ? Balance.LynetteAttackIntervalMultiplier
+                : 1f;
+            return Mathf.Max(0.2f, unit.Stats.AttackInterval * multiplier);
+        }
+
+        public float GetEffectiveShieldBonus(int combatId, int targetUnitId)
+        {
+            DemoCombatModel combat = GetCombat(combatId);
+            DemoUnitModel target = GetUnit(targetUnitId);
+            if (combat == null || combat.IsFinished || target == null || target.CombatId != combat.Id)
+                return 0f;
+
+            float supportBonus = combat.Participants
+                .Select(GetUnit)
+                .Where(unit => ProvidesShieldSupport(combat, unit, target.Team))
+                .Sum(unit => unit.Stats.GlobalShieldBonus * Balance.SupportEffectMultiplier);
+            float traitBonus = combat.Participants
+                .Select(GetUnit)
+                .Where(unit => unit != null && unit.Stats.HasTrait(DemoUnitTrait.MiyafujiShieldAura) &&
+                               IsActiveParticipant(combat, unit, target.Team))
+                .Sum(unit => Balance.MiyafujiShieldEfficiencyBonus);
+            return Mathf.Max(0f, supportBonus + traitBonus);
         }
 
         public float GetCombatStrength(int combatId, DemoTeam team)
@@ -1107,10 +1180,7 @@ namespace SWRTS.Demo1
                     if (facing.sqrMagnitude > 0.001f)
                         attacker.Facing = facing.normalized;
 
-                    float shieldBonus = combat.Participants
-                        .Select(GetUnit)
-                        .Where(unit => ProvidesShieldSupport(combat, unit, target.Team))
-                        .Sum(unit => unit.Stats.GlobalShieldBonus * Balance.SupportEffectMultiplier);
+                    float shieldBonus = GetEffectiveShieldBonus(combat.Id, target.Id);
                     DemoCombatParticipantState attackerState = combat.GetAssignment(attacker.Id);
                     DemoCombatParticipantState targetState = combat.GetAssignment(target.Id);
                     float attackMultiplier = GetBattleLineAttackMultiplier(attackerState.Line);
@@ -1118,6 +1188,7 @@ namespace SWRTS.Demo1
                         attackMultiplier *= Balance.ScoutMarkDamageMultiplier;
                     int nextAttack = attackerState.AttacksPerformed + 1;
                     bool artillerySalvo = attacker.Role == DemoUnitRole.Artillery &&
+                                           !attacker.Stats.HasTrait(DemoUnitTrait.LynetteSharpshooter) &&
                                            nextAttack % Mathf.Max(1, Balance.ArtillerySalvoEveryAttacks) == 0;
                     if (artillerySalvo)
                         attackMultiplier *= Balance.ArtillerySalvoDamageMultiplier;
@@ -1127,14 +1198,19 @@ namespace SWRTS.Demo1
                         attackMultiplier *= Balance.FortressBarrageDamageMultiplier;
 
                     float damageTakenMultiplier = GetBattleLineDamageTakenMultiplier(targetState.Line);
+                    float coreDiscoveryMultiplier = GetCoreDiscoveryMultiplier(combat, attacker);
+                    float criticalChanceBonus = attacker.Stats.HasTrait(DemoUnitTrait.LynetteSharpshooter)
+                        ? Balance.LynetteCriticalChanceBonus
+                        : 0f;
                     DemoDamageResult result = DemoDamageResolver.Resolve(
-                        attacker, target, Balance, _random, shieldBonus, attackMultiplier, damageTakenMultiplier);
+                        attacker, target, Balance, _random, shieldBonus, attackMultiplier, damageTakenMultiplier,
+                        coreDiscoveryMultiplier, criticalChanceBonus);
                     attackerState.LastTargetId = target.Id;
                     attackerState.AttacksPerformed = nextAttack;
                     if (attacker.Role == DemoUnitRole.Scout && targetState != null && target.IsAlive)
                         targetState.MarkedUntil = Mathf.Max(targetState.MarkedUntil, SimulationTime + Balance.ScoutMarkDuration);
                     float intervalMultiplier = fortressBarrage ? Balance.FortressBarrageIntervalMultiplier : 1f;
-                    attacker.AttackCooldown = Mathf.Max(0.2f, attacker.Stats.AttackInterval * intervalMultiplier);
+                    attacker.AttackCooldown = Mathf.Max(0.2f, GetEffectiveAttackInterval(attacker.Id) * intervalMultiplier);
                     ReportDamage(attacker, target, result, combat.Center, false);
                     if (artillerySalvo)
                         Raise($"{attacker.DisplayName} 完成校射齐射", combat.Center, false, combat.Id);
@@ -1250,6 +1326,18 @@ namespace SWRTS.Demo1
             if (!IsActiveParticipant(combat, unit, team) || unit.Role != DemoUnitRole.Support)
                 return false;
             return combat.GetAssignment(unit.Id).Line == DemoBattleLine.Support;
+        }
+
+        private float GetCoreDiscoveryMultiplier(DemoCombatModel combat, DemoUnitModel attacker)
+        {
+            if (combat == null || combat.IsFinished || attacker == null || attacker.CombatId != combat.Id)
+                return 1f;
+            float bonus = combat.Participants
+                .Select(GetUnit)
+                .Where(unit => unit != null && unit.Stats.HasTrait(DemoUnitTrait.SakamotoCoreInsight) &&
+                               IsActiveParticipant(combat, unit, attacker.Team))
+                .Sum(unit => Balance.SakamotoCoreDiscoveryBonus);
+            return Mathf.Max(0f, 1f + bonus);
         }
 
         private DemoUnitModel SelectBattleTarget(DemoCombatModel combat, DemoUnitModel attacker)

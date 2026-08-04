@@ -11,7 +11,7 @@ Open `Assets/Demo1/Scenes/Demo1.unity` and enter Play Mode.
 - Right click a discovered enemy, or `A` then left click it: approach automatically and initiate combat when in engagement range.
 - `G`: send selected eligible witches to reinforce the nearest active battle.
 - `R`: start the delayed retreat process for selected participants.
-- `B` then left click: schedule an area-level remote strike from the selected purple artillery witch.
+- `B` then left click: use an area-level remote strike if the selected unit has that capability. No witch in the current scenario has it after Lynette's rework.
 - `Space`: pause/resume simulation. Camera, selection and orders remain available while paused.
 - `F`: focus the selected units. WASD/arrow keys, edge scrolling, middle drag and wheel control the camera.
 - `Ctrl+1..9`: save a control group; `1..9`: recall and focus it.
@@ -35,6 +35,16 @@ Open `Assets/Demo1/Scenes/Demo1.unity` and enter Play Mode.
 - Opening the battle panel suppresses map-space unit names, health bars and combat IDs so tactical overlays never cover the panel.
 - Enemy scouts, guards and the fortress use reinforced prototype durability and attack values, giving line changes and reinforcement deployment time to affect the battle.
 - These formation rules and values are code-only prototype assumptions and have not been written back to Feishu revision 6.
+
+## Witch trait prototype
+
+- Traits are passive, data-driven flags on witch stats. Multiple traits can be combined later without adding character-name checks to combat resolution.
+- Sakamoto's **Magic Eye Command** increases base core discovery by 100% for every active ally in the same combat, including Sakamoto herself.
+- Miyafuji's **Guardian Heart** increases shield absorption efficiency by 15% for every active ally in the same combat, including Miyafuji herself. This replaces her previous 28% support-line global-shield bonus; her support pulse remains unchanged.
+- A team aura stops contributing while its holder is retreating, repositioning or destroyed. Multiple sources stack additively.
+- Lynette's **Precision Shooter** adds 18 percentage points of critical chance (12% to 30% in the scenario) and multiplies her attack interval by 1.375 (1.6s to 2.2s). She now uses standard single-target attacks: no map remote strike, no screen penetration and no every-third-shot artillery salvo.
+- The character detail panel shows each unit's trait and effective critical chance, attack interval and core-discovery value. Adjusted values include their base value for comparison.
+- These traits and values are code-only prototype assumptions and have not been written back to Feishu revision 6.
 
 ## Witch vision and player intelligence prototype
 

@@ -11,7 +11,7 @@ namespace SWRTS.Demo1.PlayModeTests
     public sealed class Demo1RuntimeSmokeTests
     {
         [UnityTest]
-        public IEnumerator FullPlayerLoopMovesFightsStrikesAndPausesWithoutRuntimeErrors()
+        public IEnumerator FullPlayerLoopMovesFightsAndPausesWithoutRuntimeErrors()
         {
             GameObject root = new GameObject("Demo1 Smoke Test");
             Demo1GameController controller = root.AddComponent<Demo1GameController>();
@@ -24,6 +24,17 @@ namespace SWRTS.Demo1.PlayModeTests
             Assert.That(controller.Simulation.Units.Count(unit => unit.Team == DemoTeam.Player), Is.EqualTo(5));
             Assert.That(controller.Simulation.Units.Count(unit => unit.Team == DemoTeam.Player && unit.Stats.WitchVisionType == DemoWitchVisionType.Ordinary), Is.EqualTo(4));
             Assert.That(controller.Simulation.Units.Single(unit => unit.DisplayName.Contains("桑妮亚")).Stats.WitchVisionType, Is.EqualTo(DemoWitchVisionType.Night));
+            DemoUnitModel sakamoto = controller.Simulation.Units.Single(unit => unit.DisplayName.Contains("坂本"));
+            DemoUnitModel miyafuji = controller.Simulation.Units.Single(unit => unit.DisplayName.Contains("宫藤"));
+            DemoUnitModel lynette = controller.Simulation.Units.Single(unit => unit.DisplayName.Contains("莉涅特"));
+            Assert.That(sakamoto.Stats.HasTrait(DemoUnitTrait.SakamotoCoreInsight), Is.True);
+            Assert.That(miyafuji.Stats.HasTrait(DemoUnitTrait.MiyafujiShieldAura), Is.True);
+            Assert.That(lynette.Stats.HasTrait(DemoUnitTrait.LynetteSharpshooter), Is.True);
+            Assert.That(lynette.Stats.CanRemoteStrike, Is.False);
+            Assert.That(lynette.Stats.AttackProfile, Is.EqualTo(DemoAttackProfile.Standard));
+            Assert.That(lynette.Stats.ScreenPenetration, Is.EqualTo(0f));
+            Assert.That(controller.Simulation.GetEffectiveCriticalChance(lynette.Id), Is.EqualTo(0.3f).Within(0.001f));
+            Assert.That(controller.Simulation.GetEffectiveAttackInterval(lynette.Id), Is.EqualTo(2.2f).Within(0.001f));
             Assert.That(controller.Simulation.Units.Any(unit => unit.Role == DemoUnitRole.Fortress), Is.True);
             Assert.That(Camera.main, Is.Not.Null);
             Assert.That(controller.Simulation.Outcome, Is.EqualTo(DemoOutcome.Running));
@@ -59,21 +70,6 @@ namespace SWRTS.Demo1.PlayModeTests
             DemoCommandResult lineChange = controller.CommandBattleLineChange(mover.Id, DemoBattleLine.Main);
             Assert.That(lineChange.Success, Is.True, lineChange.Message);
             Assert.That(activeCombat.GetAssignment(mover.Id).IsRepositioning, Is.True);
-
-            DemoUnitModel artillery = controller.Simulation.Units.First(unit => unit.Team == DemoTeam.Player && unit.Stats.CanRemoteStrike);
-            DemoUnitModel strikeTarget = controller.Simulation.Units.First(unit => unit.Team == DemoTeam.Enemy && unit.IsAlive && unit.CombatId < 0);
-            strikeTarget.Position = artillery.Position + Vector3.right * 10f;
-            float healthBeforeStrike = strikeTarget.Health;
-            float shieldBeforeStrike = strikeTarget.Shield;
-            controller.SelectUnits(new[] { artillery.Id });
-            DemoCommandResult strike = controller.CommandRemoteStrike(strikeTarget.Position);
-            Assert.That(strike.Success, Is.True, strike.Message);
-            Assert.That(controller.Simulation.RemoteStrikes.Any(item => !item.Resolved), Is.True);
-            controller.Simulation.Advance(3.2f);
-            yield return null;
-            Assert.That(controller.Simulation.RemoteStrikes.All(item => item.Resolved), Is.True);
-            Assert.That(strikeTarget.Health < healthBeforeStrike || strikeTarget.Shield < shieldBeforeStrike, Is.True,
-                "The scheduled strike should damage a target in its radius.");
 
             controller.SetPaused(true);
             float pausedAt = controller.Simulation.SimulationTime;
