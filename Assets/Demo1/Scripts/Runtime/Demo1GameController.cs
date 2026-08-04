@@ -57,6 +57,10 @@ namespace SWRTS.Demo1
         private GUIStyle _smallStyle;
         private GUIStyle _centerStyle;
         private GUIStyle _worldLabelStyle;
+        private GUIStyle _detailHeaderStyle;
+        private GUIStyle _detailValueStyle;
+        private GUIStyle _detailMutedStyle;
+        private Vector2 _detailScroll;
         private Texture2D _selectionTexture;
         private const float PanelWidth = 340f;
 
@@ -66,6 +70,7 @@ namespace SWRTS.Demo1
         public string StatusMessage => _statusMessage;
         public IReadOnlyList<DemoBattleEvent> BattleEvents => _events;
         public Camera BattleCamera => _camera;
+        public int CharacterDetailUnitId => IsCharacterDetailVisible(out DemoUnitModel unit) ? unit.Id : -1;
 
         private void Start()
         {
@@ -699,7 +704,10 @@ namespace SWRTS.Demo1
                 return;
             EnsureGuiStyles();
             if (_battleUi == null || !_battleUi.IsPanelOpen)
+            {
                 DrawWorldLabels();
+                DrawCharacterDetailPanel();
+            }
             DrawTopBar();
             DrawSidePanel();
             DrawSelectionBox();
@@ -774,6 +782,144 @@ namespace SWRTS.Demo1
                 GUI.Label(new Rect(22f, y + 44f, 280f, 18f), $"撤退进度 {unit.RetreatProgress:P0}", _smallStyle);
             else if (unit.Stats.CanRemoteStrike)
                 GUI.Label(new Rect(22f, y + 44f, 280f, 18f), $"远程打击冷却 {unit.RemoteStrikeCooldown:0.0}s", _smallStyle);
+        }
+
+        private void DrawCharacterDetailPanel()
+        {
+            if (!IsCharacterDetailVisible(out DemoUnitModel unit))
+                return;
+
+            Rect panel = GetCharacterDetailRect();
+            GUI.Box(panel, string.Empty);
+            GUI.BeginGroup(panel);
+            Rect viewport = new Rect(4f, 4f, panel.width - 8f, panel.height - 8f);
+            float contentHeight = panel.height >= 620f ? 620f : 520f;
+            _detailScroll = GUI.BeginScrollView(viewport, _detailScroll, new Rect(0f, 0f, panel.width - 26f, contentHeight));
+
+            float width = panel.width - 26f;
+            float contentWidth = width - 28f;
+            float y = 13f;
+            GUI.Label(new Rect(14f, y, contentWidth, 27f), "角色详情", _detailHeaderStyle);
+            y += 31f;
+            GUI.Label(new Rect(14f, y, contentWidth, 25f), unit.DisplayName, _detailValueStyle);
+            y += 24f;
+            GUI.Label(new Rect(14f, y, contentWidth, 20f),
+                $"{RoleName(unit.Role)}  ·  {VisionTypeName(unit.Stats.WitchVisionType)}魔女  ·  ID {unit.Id}", _detailMutedStyle);
+            y += 28f;
+
+            DrawDetailBar(new Rect(14f, y, contentWidth, 17f), unit.HealthRatio, new Color(0.9f, 0.22f, 0.2f),
+                $"生命  {unit.Health:0}/{unit.Stats.MaxHealth:0}");
+            y += 25f;
+            DrawDetailBar(new Rect(14f, y, contentWidth, 17f), unit.MagicRatio, new Color(0.32f, 0.52f, 1f),
+                $"魔力  {unit.Magic:0}/{unit.Stats.MaxMagic:0}");
+            y += 25f;
+            DrawDetailBar(new Rect(14f, y, contentWidth, 17f), unit.ShieldRatio, new Color(0.18f, 0.82f, 0.92f),
+                $"护盾  {unit.Shield:0}/{unit.Stats.MaxShield:0}");
+            y += 34f;
+
+            GUI.Label(new Rect(14f, y, contentWidth, 20f), "当前状态", _detailHeaderStyle);
+            y += 22f;
+            GUI.Label(new Rect(14f, y, contentWidth, 42f), BuildCurrentActionText(unit), _smallStyle);
+            y += 45f;
+
+            GUI.Label(new Rect(14f, y, contentWidth, 20f), "阵位与目标", _detailHeaderStyle);
+            y += 22f;
+            GUI.Label(new Rect(14f, y, contentWidth, 44f), BuildFormationText(unit), _smallStyle);
+            y += 48f;
+
+            GUI.Label(new Rect(14f, y, contentWidth, 20f), "视野", _detailHeaderStyle);
+            y += 22f;
+            string visionShape = unit.Stats.WitchVisionType == DemoWitchVisionType.Night
+                ? $"环形侦测 360°  ·  半径 {unit.Stats.VisionRadius:0.#}"
+                : $"扇形目视 {unit.Stats.VisionAngle:0.#}°  ·  半径 {unit.Stats.VisionRadius:0.#}";
+            GUI.Label(new Rect(14f, y, contentWidth, 38f), visionShape, _smallStyle);
+            y += 42f;
+
+            GUI.Label(new Rect(14f, y, contentWidth, 20f), "作战参数", _detailHeaderStyle);
+            y += 22f;
+            DrawDetailStatRow(ref y, contentWidth, "攻击", unit.Stats.Attack.ToString("0.#"), "防御", unit.Stats.Defense.ToString("0.#"));
+            DrawDetailStatRow(ref y, contentWidth, "机动", unit.Stats.Mobility.ToString("0.#"), "移速", unit.Stats.MoveSpeed.ToString("0.#"));
+            DrawDetailStatRow(ref y, contentWidth, "交战距离", unit.Stats.EngagementRadius.ToString("0.#"), "攻击间隔", $"{unit.Stats.AttackInterval:0.#}s");
+            DrawDetailStatRow(ref y, contentWidth, "暴击", unit.Stats.CriticalChance.ToString("P0"), "核心发现", unit.Stats.CoreDiscovery.ToString("P0"));
+
+            if (panel.height >= 620f)
+            {
+                DrawDetailStatRow(ref y, contentWidth, "屏障", unit.Stats.ScreenPower.ToString("0.##"), "穿线", unit.Stats.ScreenPenetration.ToString("P0"));
+                y += 4f;
+                GUI.Label(new Rect(14f, y, contentWidth, 42f), RoleDescription(unit.Role), _detailMutedStyle);
+            }
+
+            GUI.EndScrollView();
+            GUI.EndGroup();
+        }
+
+        private void DrawDetailBar(Rect rect, float ratio, Color color, string text)
+        {
+            Color previous = GUI.color;
+            GUI.color = new Color(0.025f, 0.04f, 0.05f, 0.9f);
+            GUI.DrawTexture(rect, Texture2D.whiteTexture);
+            GUI.color = color;
+            GUI.DrawTexture(new Rect(rect.x, rect.y, rect.width * Mathf.Clamp01(ratio), rect.height), Texture2D.whiteTexture);
+            GUI.color = previous;
+            GUI.Label(rect, text, _centerStyle);
+        }
+
+        private void DrawDetailStatRow(ref float y, float contentWidth, string leftName, string leftValue, string rightName, string rightValue)
+        {
+            float half = contentWidth * 0.5f;
+            GUI.Label(new Rect(14f, y, half, 20f), $"{leftName}  {leftValue}", _smallStyle);
+            GUI.Label(new Rect(14f + half, y, half, 20f), $"{rightName}  {rightValue}", _smallStyle);
+            y += 21f;
+        }
+
+        private string BuildCurrentActionText(DemoUnitModel unit)
+        {
+            DemoCombatModel combat = unit.CombatId >= 0 ? _simulation.GetCombat(unit.CombatId) : null;
+            DemoCombatParticipantState assignment = combat?.GetAssignment(unit.Id);
+            if (assignment?.IsRepositioning == true)
+                return $"换位中：前往{Demo1Simulation.BattleLineName(assignment.TargetLine)}，剩余 {assignment.RepositionRemaining:0.0}s";
+            if (unit.Activity == DemoUnitActivity.Retreating)
+                return $"撤退中：完成度 {unit.RetreatProgress:P0}，剩余 {unit.RetreatRemaining:0.0}s";
+            if (unit.Activity == DemoUnitActivity.Reinforcing)
+                return $"增援战斗 #{unit.PendingReinforcementBattleId}，目的地 ({unit.Destination.x:0.0}, {unit.Destination.z:0.0})";
+            if (unit.HasDestination)
+                return $"{ActivityName(unit.Activity)}：前往 ({unit.Destination.x:0.0}, {unit.Destination.z:0.0})";
+            if (unit.Activity == DemoUnitActivity.Fighting && combat != null)
+                return $"战斗中：战斗 #{combat.Id}";
+            return $"{ActivityName(unit.Activity)}  ·  位置 ({unit.Position.x:0.0}, {unit.Position.z:0.0})";
+        }
+
+        private string BuildFormationText(DemoUnitModel unit)
+        {
+            DemoCombatModel combat = unit.CombatId >= 0 ? _simulation.GetCombat(unit.CombatId) : null;
+            DemoCombatParticipantState assignment = combat?.GetAssignment(unit.Id);
+            if (assignment == null)
+                return $"默认阵位：{Demo1Simulation.BattleLineName(unit.Stats.PreferredBattleLine)}\n当前未加入战斗";
+
+            string targetName = "暂无目标";
+            DemoUnitModel target = assignment.LastTargetId >= 0 ? _simulation.GetUnit(assignment.LastTargetId) : null;
+            if (target != null)
+                targetName = $"最近目标：{target.DisplayName}";
+            string line = assignment.IsRepositioning
+                ? $"{Demo1Simulation.BattleLineName(assignment.Line)} → {Demo1Simulation.BattleLineName(assignment.TargetLine)}"
+                : Demo1Simulation.BattleLineName(assignment.Line);
+            return $"战斗 #{combat.Id}  ·  {line}\n{targetName}";
+        }
+
+        private bool IsCharacterDetailVisible(out DemoUnitModel unit)
+        {
+            unit = null;
+            if (_simulation == null || _selection.Count != 1 || (_battleUi != null && _battleUi.IsPanelOpen))
+                return false;
+            unit = _simulation.GetUnit(_selection.First());
+            return unit != null && unit.IsAlive && unit.Team == DemoTeam.Player;
+        }
+
+        private static Rect GetCharacterDetailRect()
+        {
+            float width = Mathf.Clamp(Screen.width * 0.22f, 280f, 340f);
+            float height = Mathf.Clamp(Screen.height - 64f, 360f, 660f);
+            return new Rect(Screen.width - width - 12f, 54f, width, height);
         }
 
         private void DrawWorldLabels()
@@ -853,6 +999,26 @@ namespace SWRTS.Demo1
             _titleStyle = new GUIStyle(GUI.skin.label) { fontSize = 17, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleLeft };
             _smallStyle = new GUIStyle(GUI.skin.label) { fontSize = 12, wordWrap = true, alignment = TextAnchor.UpperLeft };
             _centerStyle = new GUIStyle(GUI.skin.label) { fontSize = 14, alignment = TextAnchor.MiddleCenter };
+            _detailHeaderStyle = new GUIStyle(GUI.skin.label)
+            {
+                fontSize = 14,
+                fontStyle = FontStyle.Bold,
+                alignment = TextAnchor.MiddleLeft,
+                normal = { textColor = new Color(0.62f, 0.88f, 0.95f) }
+            };
+            _detailValueStyle = new GUIStyle(GUI.skin.label)
+            {
+                fontSize = 18,
+                fontStyle = FontStyle.Bold,
+                alignment = TextAnchor.MiddleLeft
+            };
+            _detailMutedStyle = new GUIStyle(GUI.skin.label)
+            {
+                fontSize = 12,
+                wordWrap = true,
+                alignment = TextAnchor.UpperLeft,
+                normal = { textColor = new Color(0.67f, 0.74f, 0.76f) }
+            };
             _worldLabelStyle = new GUIStyle(GUI.skin.label)
             {
                 fontSize = 12,
@@ -894,7 +1060,10 @@ namespace SWRTS.Demo1
         private bool IsPointerOverHud()
         {
             Vector3 mouse = Input.mousePosition;
-            return mouse.x <= PanelWidth || mouse.y >= Screen.height - 44f;
+            if (mouse.x <= PanelWidth || mouse.y >= Screen.height - 44f)
+                return true;
+            Vector2 guiMouse = new Vector2(mouse.x, Screen.height - mouse.y);
+            return IsCharacterDetailVisible(out _) && GetCharacterDetailRect().Contains(guiMouse);
         }
 
         private void CreateGridLine(Transform parent, Vector3 a, Vector3 b)
@@ -953,6 +1122,34 @@ namespace SWRTS.Demo1
                 case DemoWitchVisionType.Ordinary: return "普通";
                 case DemoWitchVisionType.Night: return "夜战";
                 default: return "无视野";
+            }
+        }
+
+        private static string RoleName(DemoUnitRole role)
+        {
+            switch (role)
+            {
+                case DemoUnitRole.Witch: return "战斗魔女";
+                case DemoUnitRole.Support: return "支援魔女";
+                case DemoUnitRole.Artillery: return "炮击魔女";
+                case DemoUnitRole.Scout: return "侦察体";
+                case DemoUnitRole.Guard: return "护卫";
+                case DemoUnitRole.Fortress: return "固定目标";
+                default: return role.ToString();
+            }
+        }
+
+        private static string RoleDescription(DemoUnitRole role)
+        {
+            switch (role)
+            {
+                case DemoUnitRole.Witch: return "角色特性：优先压制当前暴露阵线中的穿线威胁。";
+                case DemoUnitRole.Support: return "角色特性：在支援线周期性恢复友军护盾与魔力。";
+                case DemoUnitRole.Artillery: return "角色特性：每三次攻击发动一次校准齐射，并可尝试穿线。";
+                case DemoUnitRole.Scout: return "角色特性：命中后标记目标，使其承受更多伤害。";
+                case DemoUnitRole.Guard: return "角色特性：在前卫线拦截敌方穿线攻击。";
+                case DemoUnitRole.Fortress: return "角色特性：低生命时进入紧急弹幕状态。";
+                default: return string.Empty;
             }
         }
     }

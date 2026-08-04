@@ -28,9 +28,11 @@ namespace SWRTS.Demo1.PlayModeTests
             Assert.That(Camera.main, Is.Not.Null);
             Assert.That(controller.Simulation.Outcome, Is.EqualTo(DemoOutcome.Running));
             Assert.That(controller.SelectedUnitIds.Count, Is.EqualTo(5), "The squad should be ready to command on entry.");
+            Assert.That(controller.CharacterDetailUnitId, Is.EqualTo(-1), "Multi-selection should hide the character detail panel.");
 
             DemoUnitModel mover = controller.Simulation.Units.First(unit => unit.Team == DemoTeam.Player);
             controller.SelectUnits(new[] { mover.Id });
+            Assert.That(controller.CharacterDetailUnitId, Is.EqualTo(mover.Id), "Single-selection should expose that witch in the detail panel.");
             Vector3 moveStart = mover.Position;
             DemoCommandResult move = controller.CommandMove(moveStart + Vector3.right * 8f);
             Assert.That(move.Success, Is.True, move.Message);
@@ -53,6 +55,7 @@ namespace SWRTS.Demo1.PlayModeTests
             Assert.That(GameObject.Find($"Battle Bubble {activeCombat.Id}"), Is.Not.Null, "An active battle should create a clickable map bubble.");
             battleUi.OpenPanel(activeCombat.Id);
             Assert.That(battleUi.IsPanelOpen, Is.True);
+            Assert.That(controller.CharacterDetailUnitId, Is.EqualTo(-1), "The battle panel should take priority over the right-side detail panel.");
             DemoCommandResult lineChange = controller.CommandBattleLineChange(mover.Id, DemoBattleLine.Main);
             Assert.That(lineChange.Success, Is.True, lineChange.Message);
             Assert.That(activeCombat.GetAssignment(mover.Id).IsRepositioning, Is.True);
