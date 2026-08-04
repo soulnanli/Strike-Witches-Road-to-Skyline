@@ -36,15 +36,15 @@ namespace SWRTS.Demo1.PlayModeTests
             DemoUnitModel perrine = controller.Simulation.Units.Single(unit => unit.DisplayName.Contains("佩琳"));
             DemoUnitModel sanya = controller.Simulation.Units.Single(unit => unit.DisplayName.Contains("桑妮亚"));
             Assert.That(new[] { miyafuji.Stats.MaxHealth, miyafuji.Stats.Attack, miyafuji.Stats.Defense, miyafuji.Stats.MaxMagic, miyafuji.Stats.MaxShield, miyafuji.Stats.MagicRecovery },
-                Is.EqualTo(new[] { 270f, 40f, 16f, 270f, 144f, 14f }));
+                Is.EqualTo(new[] { 181f, 27f, 11f, 181f, 96f, 9f }));
             Assert.That(new[] { sakamoto.Stats.MaxHealth, sakamoto.Stats.Attack, sakamoto.Stats.Defense, sakamoto.Stats.MaxMagic, sakamoto.Stats.MaxShield, sakamoto.Stats.MagicRecovery },
-                Is.EqualTo(new[] { 330f, 66f, 18f, 180f, 110f, 8f }));
+                Is.EqualTo(new[] { 221f, 44f, 12f, 121f, 74f, 5f }));
             Assert.That(new[] { lynette.Stats.MaxHealth, lynette.Stats.Attack, lynette.Stats.Defense, lynette.Stats.MaxMagic, lynette.Stats.MaxShield, lynette.Stats.MagicRecovery },
-                Is.EqualTo(new[] { 260f, 54f, 16f, 180f, 100f, 8f }));
+                Is.EqualTo(new[] { 174f, 36f, 11f, 121f, 67f, 5f }));
             Assert.That(new[] { perrine.Stats.MaxHealth, perrine.Stats.Attack, perrine.Stats.Defense, perrine.Stats.MaxMagic, perrine.Stats.MaxShield, perrine.Stats.MagicRecovery },
-                Is.EqualTo(new[] { 280f, 56f, 18f, 180f, 110f, 8f }));
+                Is.EqualTo(new[] { 188f, 38f, 12f, 121f, 74f, 5f }));
             Assert.That(new[] { sanya.Stats.MaxHealth, sanya.Stats.Attack, sanya.Stats.Defense, sanya.Stats.MaxMagic, sanya.Stats.MaxShield, sanya.Stats.MagicRecovery },
-                Is.EqualTo(new[] { 270f, 52f, 16f, 250f, 136f, 10f }));
+                Is.EqualTo(new[] { 181f, 35f, 11f, 168f, 91f, 7f }));
             Assert.That(sakamoto.Stats.HasTrait(DemoUnitTrait.SakamotoCoreInsight), Is.True);
             Assert.That(miyafuji.Stats.HasTrait(DemoUnitTrait.MiyafujiShieldAura), Is.True);
             Assert.That(lynette.Stats.HasTrait(DemoUnitTrait.LynetteSharpshooter), Is.True);

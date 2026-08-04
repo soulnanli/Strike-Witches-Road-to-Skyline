@@ -12,15 +12,15 @@ Open `Assets/Demo1/Scenes/Demo1.unity` and enter Play Mode.
 
 ### Player witch balance pass
 
-A follow-up tuning pass doubles HP, attack, defense, magic, shield and magic recovery from the previous values (+100%) while keeping attack intervals, critical rates, traits, vision and movement unchanged:
+After the doubled values proved too strong, HP, attack, defense, magic, shield and magic recovery were reduced by 33% (multiplied by 0.67 and rounded to whole numbers). Attack intervals, critical rates, traits, vision and movement remain unchanged:
 
 | Witch | HP | Attack | Defense | Magic | Shield | Magic recovery |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Miyafuji | 270 | 40 | 16 | 270 | 144 | 14 |
-| Sakamoto | 330 | 66 | 18 | 180 | 110 | 8 |
-| Lynette | 260 | 54 | 16 | 180 | 100 | 8 |
-| Perrine | 280 | 56 | 18 | 180 | 110 | 8 |
-| Sanya | 270 | 52 | 16 | 250 | 136 | 10 |
+| Miyafuji | 181 | 27 | 11 | 181 | 96 | 9 |
+| Sakamoto | 221 | 44 | 12 | 121 | 74 | 5 |
+| Lynette | 174 | 36 | 11 | 121 | 67 | 5 |
+| Perrine | 188 | 38 | 12 | 121 | 74 | 5 |
+| Sanya | 181 | 35 | 11 | 168 | 91 | 7 |
 
 These values remain code-prototype balance and are not additions to Feishu revision 6.
 
