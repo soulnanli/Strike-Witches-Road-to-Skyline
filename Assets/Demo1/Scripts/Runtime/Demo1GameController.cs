@@ -215,31 +215,41 @@ namespace SWRTS.Demo1
         private void CreateFallbackScenario()
         {
             DemoUnitStats witch = new DemoUnitStats();
+            witch.MaxHealth = 140f;
+            witch.Attack = 28f;
+            witch.Defense = 9f;
+            witch.MaxMagic = 90f;
+            witch.MaxShield = 55f;
             witch.PreferredBattleLine = DemoBattleLine.Vanguard;
             witch.ScreenPower = 1f;
             witch.WitchVisionType = DemoWitchVisionType.Ordinary;
             witch.VisionRadius = 24f;
             witch.VisionAngle = 100f;
             DemoUnitStats ace = witch.Clone();
-            ace.MaxHealth = 145f;
-            ace.Attack = 29f;
+            ace.MaxHealth = 165f;
+            ace.Attack = 33f;
             ace.CoreDiscovery = 0.28f;
             ace.Mobility = 1.25f;
             ace.ScreenPower = 1.2f;
             ace.Traits = DemoUnitTrait.SakamotoCoreInsight;
 
             DemoUnitStats support = witch.Clone();
-            support.Attack = 18f;
-            support.MaxMagic = 120f;
-            support.MaxShield = 60f;
+            support.MaxHealth = 135f;
+            support.Attack = 20f;
+            support.Defense = 8f;
+            support.MaxMagic = 135f;
+            support.MaxShield = 72f;
             support.GlobalShieldBonus = 0f;
-            support.MagicRecovery = 6f;
+            support.MagicRecovery = 7f;
             support.PreferredBattleLine = DemoBattleLine.Support;
             support.ScreenPower = 0.35f;
             support.Traits = DemoUnitTrait.MiyafujiShieldAura;
 
             DemoUnitStats artillery = witch.Clone();
-            artillery.Attack = 22f;
+            artillery.MaxHealth = 130f;
+            artillery.Attack = 27f;
+            artillery.Defense = 8f;
+            artillery.MaxShield = 50f;
             artillery.CanRemoteStrike = false;
             artillery.CoreDiscovery = 0.22f;
             artillery.PreferredBattleLine = DemoBattleLine.Main;
@@ -249,9 +259,12 @@ namespace SWRTS.Demo1
             artillery.Traits = DemoUnitTrait.LynetteSharpshooter;
 
             DemoUnitStats nightWitch = witch.Clone();
-            nightWitch.MaxMagic = 110f;
-            nightWitch.MaxShield = 55f;
-            nightWitch.Attack = 23f;
+            nightWitch.MaxHealth = 135f;
+            nightWitch.MaxMagic = 125f;
+            nightWitch.MaxShield = 68f;
+            nightWitch.Attack = 26f;
+            nightWitch.Defense = 8f;
+            nightWitch.MagicRecovery = 5f;
             nightWitch.CoreDiscovery = 0.24f;
             nightWitch.PreferredBattleLine = DemoBattleLine.Main;
             nightWitch.WitchVisionType = DemoWitchVisionType.Night;

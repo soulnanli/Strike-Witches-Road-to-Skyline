@@ -18,17 +18,17 @@ MonoBehaviour:
   Role: 1
   StartingPosition: {x: -27, y: 0, z: -10}
   Stats:
-    MaxHealth: 120
-    Attack: 18
+    MaxHealth: 135
+    Attack: 20
     CriticalChance: 0.12
-    Defense: 7
-    MaxMagic: 120
-    MaxShield: 60
+    Defense: 8
+    MaxMagic: 135
+    MaxShield: 72
     GlobalShieldBonus: 0
     CoreDiscovery: 0.18
     CoreConcealment: 0.5
     AttackInterval: 1.6
-    MagicRecovery: 6
+    MagicRecovery: 7
     Mobility: 1
     MoveSpeed: 6
     VisionRadius: 24

@@ -10,6 +10,20 @@ Open `Assets/Demo1/Scenes/Demo1.unity` and enter Play Mode.
 - The controller discovers the default assets through `Resources` without scene rebinding. Inspector-assigned configs override the default resource set, while the previous code defaults remain only as a missing-asset safety fallback.
 - New configs can be created through `Assets > Create > SWRTS > Demo1 > Balance Config` and `Unit Config`.
 
+### Player witch balance pass
+
+The first post-migration tuning pass raises player durability and damage while keeping attack intervals, critical rates, traits, vision and movement unchanged:
+
+| Witch | HP | Attack | Defense | Magic | Shield | Magic recovery |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Miyafuji | 135 | 20 | 8 | 135 | 72 | 7 |
+| Sakamoto | 165 | 33 | 9 | 90 | 55 | 4 |
+| Lynette | 130 | 27 | 8 | 90 | 50 | 4 |
+| Perrine | 140 | 28 | 9 | 90 | 55 | 4 |
+| Sanya | 135 | 26 | 8 | 125 | 68 | 5 |
+
+These values remain code-prototype balance and are not additions to Feishu revision 6.
+
 ## Controls
 
 - The full squad is selected on entry so a move or attack can be issued immediately.
