@@ -1,0 +1,65 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b441d08cfdb54eef91d217685298522a, type: 3}
+  m_Name: Demo1Balance
+  m_EditorClassIdentifier:
+  Values:
+    MinimumDamage: 1
+    CriticalMultiplier: 1.55
+    CoreMultiplier: 2.4
+    ShieldMagicCostPerDamage: 0.55
+    ReinforcementRadius: 13
+    ForcedEngagementRadius: 6
+    ScreenRequiredPerProtectedUnit: 1
+    BattleLineChangeDuration: 2
+    VanguardAttackMultiplier: 0.9
+    VanguardDamageTakenMultiplier: 0.85
+    VanguardScreenMultiplier: 1.25
+    MainAttackMultiplier: 1.15
+    SupportAttackMultiplier: 0.8
+    SupportEffectMultiplier: 1.5
+    ArtillerySalvoEveryAttacks: 3
+    ArtillerySalvoDamageMultiplier: 1.45
+    ScoutMarkDuration: 4
+    ScoutMarkDamageMultiplier: 1.2
+    SupportPulseInterval: 4
+    SupportPulseShield: 6
+    SupportPulseMagic: 4
+    GuardInterceptionChance: 0.65
+    FortressBarrageHealthThreshold: 0.5
+    FortressBarrageDamageMultiplier: 1.15
+    FortressBarrageIntervalMultiplier: 0.65
+    SakamotoCoreDiscoveryBonus: 1
+    MiyafujiShieldEfficiencyBonus: 0.15
+    LynetteCriticalChanceBonus: 0.18
+    LynetteAttackIntervalMultiplier: 1.375
+    VisionIdentificationDuration: 0.5
+    VisionAssessmentDuration: 1.5
+    AssessedIntelMemoryDuration: 3
+    IdentifiedIntelMemoryDuration: 7
+    ContactIntelMemoryDuration: 15
+    EnemyAiDecisionInterval: 0.5
+    EnemyAiScoutRetreatHealthRatio: 0.3
+    EnemyAiGuardLeashRadius: 18
+    EnemyAiArrivalRadius: 1.25
+    RetreatBaseDuration: 4.5
+    DisengageProtectionDuration: 5
+    RetreatSafeDistance: 9
+    DestinationRadius: 1.8
+    RemoteStrikeDelay: 3
+    RemoteStrikeRadius: 5
+    RemoteStrikeDamageMultiplier: 1.8
+    RemoteStrikeCooldown: 12
+    RemoteStrikeRange: 42
+    MapHalfWidth: 45
+    MapHalfHeight: 30
+    RandomSeed: 1944

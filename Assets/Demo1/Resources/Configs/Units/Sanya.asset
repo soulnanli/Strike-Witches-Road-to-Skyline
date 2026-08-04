@@ -1,0 +1,48 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c552e19d0ec64a22ae602432885cc8bf, type: 3}
+  m_Name: Sanya
+  m_EditorClassIdentifier:
+  SpawnOrder: 4
+  DisplayName: 桑妮亚·V·利特维亚克
+  Team: 0
+  Role: 0
+  StartingPosition: {x: -32, y: 0, z: 12}
+  Stats:
+    MaxHealth: 120
+    Attack: 23
+    CriticalChance: 0.12
+    Defense: 7
+    MaxMagic: 110
+    MaxShield: 55
+    GlobalShieldBonus: 0
+    CoreDiscovery: 0.24
+    CoreConcealment: 0.5
+    AttackInterval: 1.6
+    MagicRecovery: 4
+    Mobility: 1
+    MoveSpeed: 6
+    VisionRadius: 28
+    VisionAngle: 360
+    WitchVisionType: 2
+    EngagementRadius: 8
+    CanRemoteStrike: 0
+    PreferredBattleLine: 1
+    AttackProfile: 0
+    ScreenPower: 1
+    ScreenPenetration: 0
+    Traits: 0
+  GrantPersistentPlayerIntel: 0
+  EnemyAiProfile: 0
+  UseStartingPositionAsAiHome: 1
+  EnemyAiHomePosition: {x: 0, y: 0, z: 0}
+  ScoutPatrolPoints: []

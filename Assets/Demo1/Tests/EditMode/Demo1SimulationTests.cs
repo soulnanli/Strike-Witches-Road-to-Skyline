@@ -28,6 +28,31 @@ namespace SWRTS.Demo1.Tests
         }
 
         [Test]
+        public void ScriptableConfigs_CreateIndependentRuntimeCopies()
+        {
+            DemoUnitConfig unitConfig = ScriptableObject.CreateInstance<DemoUnitConfig>();
+            Demo1BalanceConfig balanceConfig = ScriptableObject.CreateInstance<Demo1BalanceConfig>();
+            try
+            {
+                unitConfig.Stats.Attack = 31f;
+                balanceConfig.Values.CoreMultiplier = 2.75f;
+
+                DemoUnitStats runtimeStats = unitConfig.CreateRuntimeStats();
+                Demo1Balance runtimeBalance = balanceConfig.CreateRuntimeValue();
+                runtimeStats.Attack = 99f;
+                runtimeBalance.CoreMultiplier = 9f;
+
+                Assert.That(unitConfig.Stats.Attack, Is.EqualTo(31f));
+                Assert.That(balanceConfig.Values.CoreMultiplier, Is.EqualTo(2.75f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(unitConfig);
+                Object.DestroyImmediate(balanceConfig);
+            }
+        }
+
+        [Test]
         public void Damage_ConsumesShieldAndMagicBeforeHealth()
         {
             Demo1Balance balance = new Demo1Balance();

@@ -20,6 +20,12 @@ namespace SWRTS.Demo1.PlayModeTests
             yield return null;
 
             Assert.That(controller.Simulation, Is.Not.Null);
+            Demo1BalanceConfig balanceConfig = Resources.Load<Demo1BalanceConfig>("Configs/Demo1Balance");
+            DemoUnitConfig[] unitConfigs = Resources.LoadAll<DemoUnitConfig>("Configs/Units");
+            Assert.That(balanceConfig, Is.Not.Null, "The scenario must use its balance ScriptableObject.");
+            Assert.That(unitConfigs.Length, Is.EqualTo(9));
+            Assert.That(unitConfigs.Select(config => config.SpawnOrder).Distinct().Count(), Is.EqualTo(9));
+            Assert.That(unitConfigs.Select(config => config.DisplayName).Distinct().Count(), Is.EqualTo(9));
             Assert.That(controller.Simulation.Units.Count, Is.EqualTo(9));
             Assert.That(controller.Simulation.Units.Count(unit => unit.Team == DemoTeam.Player), Is.EqualTo(5));
             Assert.That(controller.Simulation.Units.Count(unit => unit.Team == DemoTeam.Player && unit.Stats.WitchVisionType == DemoWitchVisionType.Ordinary), Is.EqualTo(4));
@@ -35,6 +41,8 @@ namespace SWRTS.Demo1.PlayModeTests
             Assert.That(lynette.Stats.ScreenPenetration, Is.EqualTo(0f));
             Assert.That(controller.Simulation.GetEffectiveCriticalChance(lynette.Id), Is.EqualTo(0.3f).Within(0.001f));
             Assert.That(controller.Simulation.GetEffectiveAttackInterval(lynette.Id), Is.EqualTo(2.2f).Within(0.001f));
+            DemoUnitConfig lynetteConfig = unitConfigs.Single(config => config.DisplayName.Contains("莉涅特"));
+            Assert.That(lynette.Stats, Is.Not.SameAs(lynetteConfig.Stats), "Runtime combat must not mutate the source asset.");
             Assert.That(controller.Simulation.Units.Any(unit => unit.Role == DemoUnitRole.Fortress), Is.True);
             Assert.That(Camera.main, Is.Not.Null);
             Assert.That(controller.Simulation.Outcome, Is.EqualTo(DemoOutcome.Running));

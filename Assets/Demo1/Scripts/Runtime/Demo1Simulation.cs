@@ -148,6 +148,11 @@ namespace SWRTS.Demo1
         public float MapHalfWidth = 45f;
         public float MapHalfHeight = 30f;
         public int RandomSeed = 1944;
+
+        public Demo1Balance Clone()
+        {
+            return (Demo1Balance)MemberwiseClone();
+        }
     }
 
     [Serializable]

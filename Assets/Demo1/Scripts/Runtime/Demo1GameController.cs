@@ -44,6 +44,8 @@ namespace SWRTS.Demo1
 
         private Demo1Simulation _simulation;
         private Demo1Balance _balance;
+        [SerializeField] private Demo1BalanceConfig _balanceConfig;
+        [SerializeField] private DemoUnitConfig[] _unitConfigs;
         private Camera _camera;
         private Demo1CameraController _cameraController;
         private Demo1BattleUI _battleUi;
@@ -63,6 +65,8 @@ namespace SWRTS.Demo1
         private Vector2 _detailScroll;
         private Texture2D _selectionTexture;
         private const float PanelWidth = 340f;
+        private const string BalanceResourcePath = "Configs/Demo1Balance";
+        private const string UnitResourcePath = "Configs/Units";
 
         public Demo1Simulation Simulation => _simulation;
         public IReadOnlyCollection<int> SelectedUnitIds => _selection;
@@ -74,7 +78,8 @@ namespace SWRTS.Demo1
 
         private void Start()
         {
-            _balance = new Demo1Balance();
+            LoadScenarioConfigs();
+            _balance = _balanceConfig != null ? _balanceConfig.CreateRuntimeValue() : new Demo1Balance();
             _simulation = new Demo1Simulation(_balance);
             _simulation.EventRaised += OnBattleEvent;
             BuildEnvironment();
@@ -82,6 +87,26 @@ namespace SWRTS.Demo1
             CreateScenario();
             BuildBattleUi();
             SyncViews();
+        }
+
+        private void LoadScenarioConfigs()
+        {
+            if (_balanceConfig == null)
+                _balanceConfig = Resources.Load<Demo1BalanceConfig>(BalanceResourcePath);
+            if (_unitConfigs != null)
+            {
+                _unitConfigs = _unitConfigs
+                    .Where(config => config != null)
+                    .OrderBy(config => config.SpawnOrder)
+                    .ToArray();
+            }
+            if (_unitConfigs == null || _unitConfigs.Length == 0)
+            {
+                _unitConfigs = Resources.LoadAll<DemoUnitConfig>(UnitResourcePath)
+                    .Where(config => config != null)
+                    .OrderBy(config => config.SpawnOrder)
+                    .ToArray();
+            }
         }
 
         private void Update()
@@ -152,6 +177,42 @@ namespace SWRTS.Demo1
         }
 
         private void CreateScenario()
+        {
+            if (_unitConfigs != null && _unitConfigs.Length > 0)
+                CreateConfiguredScenario();
+            else
+                CreateFallbackScenario();
+        }
+
+        private void CreateConfiguredScenario()
+        {
+            List<KeyValuePair<DemoUnitConfig, DemoUnitModel>> spawned = new List<KeyValuePair<DemoUnitConfig, DemoUnitModel>>();
+            foreach (DemoUnitConfig config in _unitConfigs.Where(config => config != null).OrderBy(config => config.SpawnOrder))
+            {
+                DemoUnitModel unit = AddUnit(config.DisplayName, config.Team, config.Role,
+                    config.CreateRuntimeStats(), config.StartingPosition);
+                spawned.Add(new KeyValuePair<DemoUnitConfig, DemoUnitModel>(config, unit));
+                if (config.GrantPersistentPlayerIntel)
+                    _simulation.GrantPersistentPlayerIntel(unit.Id);
+            }
+
+            foreach (KeyValuePair<DemoUnitConfig, DemoUnitModel> item in spawned)
+            {
+                switch (item.Key.EnemyAiProfile)
+                {
+                    case DemoEnemyAiProfile.Scout:
+                        _simulation.ConfigureScoutAi(item.Value.Id, item.Key.ScoutPatrolPoints);
+                        break;
+                    case DemoEnemyAiProfile.Combat:
+                        _simulation.ConfigureCombatAi(item.Value.Id, item.Key.GetEnemyAiHomePosition());
+                        break;
+                }
+            }
+
+            FinishScenarioSetup();
+        }
+
+        private void CreateFallbackScenario()
         {
             DemoUnitStats witch = new DemoUnitStats();
             witch.PreferredBattleLine = DemoBattleLine.Vanguard;
@@ -261,6 +322,11 @@ namespace SWRTS.Demo1
             });
             _simulation.ConfigureCombatAi(guardA.Id, guardA.Position);
             _simulation.ConfigureCombatAi(guardB.Id, guardB.Position);
+            FinishScenarioSetup();
+        }
+
+        private void FinishScenarioSetup()
+        {
             _events.Clear();
             SelectAllPlayerUnits();
             _statusMessage = "全队已选中：右键地面移动，右键红色敌人会自动接近并开战。";

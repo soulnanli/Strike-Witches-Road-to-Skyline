@@ -1,0 +1,48 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c552e19d0ec64a22ae602432885cc8bf, type: 3}
+  m_Name: NeuroiFortress
+  m_EditorClassIdentifier:
+  SpawnOrder: 8
+  DisplayName: 异形军巢穴
+  Team: 1
+  Role: 5
+  StartingPosition: {x: 34, y: 0, z: 3}
+  Stats:
+    MaxHealth: 720
+    Attack: 42
+    CriticalChance: 0.12
+    Defense: 16
+    MaxMagic: 300
+    MaxShield: 260
+    GlobalShieldBonus: 0
+    CoreDiscovery: 0.18
+    CoreConcealment: 0.9
+    AttackInterval: 2.2
+    MagicRecovery: 4
+    Mobility: 1
+    MoveSpeed: 0
+    VisionRadius: 26
+    VisionAngle: 100
+    WitchVisionType: 0
+    EngagementRadius: 10
+    CanRemoteStrike: 0
+    PreferredBattleLine: 2
+    AttackProfile: 0
+    ScreenPower: 0
+    ScreenPenetration: 0
+    Traits: 0
+  GrantPersistentPlayerIntel: 1
+  EnemyAiProfile: 0
+  UseStartingPositionAsAiHome: 1
+  EnemyAiHomePosition: {x: 0, y: 0, z: 0}
+  ScoutPatrolPoints: []

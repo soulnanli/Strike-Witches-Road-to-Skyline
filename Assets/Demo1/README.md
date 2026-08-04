@@ -2,6 +2,14 @@
 
 Open `Assets/Demo1/Scenes/Demo1.unity` and enter Play Mode.
 
+## ScriptableObject configuration
+
+- Global combat, vision, AI and trait tuning lives in `Assets/Demo1/Resources/Configs/Demo1Balance.asset`.
+- Every scenario unit has an independent `DemoUnitConfig` asset under `Assets/Demo1/Resources/Configs/Units`. The asset contains identity, team, role, spawn position, all combat/vision stats, traits, persistent intelligence and individual AI setup.
+- Runtime models clone values from these assets, so health, cooldowns and other battle changes never write back into project assets.
+- The controller discovers the default assets through `Resources` without scene rebinding. Inspector-assigned configs override the default resource set, while the previous code defaults remain only as a missing-asset safety fallback.
+- New configs can be created through `Assets > Create > SWRTS > Demo1 > Balance Config` and `Unit Config`.
+
 ## Controls
 
 - The full squad is selected on entry so a move or attack can be issued immediately.
@@ -67,7 +75,7 @@ Open `Assets/Demo1/Scenes/Demo1.unity` and enter Play Mode.
 
 ## Configurable prototype assumptions
 
-The Feishu specification revision 6 intentionally leaves formulas and concrete values open. Demo defaults are centralized in `Demo1Balance` and `DemoUnitStats`:
+The Feishu specification revision 6 intentionally leaves formulas and concrete values open. Demo defaults are serialized in the balance and unit ScriptableObject assets described above; `Demo1Balance` and `DemoUnitStats` remain their runtime value types:
 
 - defense is flat reduction with a minimum damage floor;
 - a discovered core replaces (rather than stacks with) an ordinary critical multiplier;
