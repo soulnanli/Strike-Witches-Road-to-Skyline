@@ -60,6 +60,25 @@ namespace SWRTS.Demo1
         Destroyed
     }
 
+    public enum DemoEnemyAiProfile
+    {
+        None,
+        Scout,
+        Combat
+    }
+
+    public enum DemoEnemyAiState
+    {
+        None,
+        Patrol,
+        Pursue,
+        Investigate,
+        Guard,
+        ReturnHome,
+        Fighting,
+        Retreating
+    }
+
     public enum DemoOutcome
     {
         Running,
@@ -100,6 +119,10 @@ namespace SWRTS.Demo1
         public float AssessedIntelMemoryDuration = 3f;
         public float IdentifiedIntelMemoryDuration = 7f;
         public float ContactIntelMemoryDuration = 15f;
+        public float EnemyAiDecisionInterval = 0.5f;
+        public float EnemyAiScoutRetreatHealthRatio = 0.3f;
+        public float EnemyAiGuardLeashRadius = 18f;
+        public float EnemyAiArrivalRadius = 1.25f;
         public float RetreatBaseDuration = 4.5f;
         public float DisengageProtectionDuration = 5f;
         public float RetreatSafeDistance = 9f;
@@ -258,6 +281,15 @@ namespace SWRTS.Demo1
         public float LastObservedAt = float.NegativeInfinity;
         public float IdentificationProgress;
         public float AssessmentProgress;
+        public DemoEnemyAiProfile EnemyAiProfile;
+        public DemoEnemyAiState EnemyAiState;
+        public Vector3 EnemyAiHomePosition;
+        public int EnemyAiTargetId = -1;
+        public Vector3 EnemyAiLastKnownPosition;
+        public bool EnemyAiHasLastKnownPosition;
+        public float EnemyAiDecisionRemaining;
+        public int EnemyAiPatrolIndex;
+        private readonly List<Vector3> _enemyAiPatrolPoints = new List<Vector3>();
 
         public bool IsFixed => Role == DemoUnitRole.Fortress;
         public bool IsAlive => Activity != DemoUnitActivity.Destroyed && Health > 0f;
@@ -272,6 +304,7 @@ namespace SWRTS.Demo1
         public Vector3 PlayerVisiblePosition => Team == DemoTeam.Player || IsCurrentlyObservedByPlayer || HasPersistentPlayerIntel
             ? Position
             : LastKnownPosition;
+        public IReadOnlyList<Vector3> EnemyAiPatrolPoints => _enemyAiPatrolPoints;
 
         public DemoUnitModel(int id, string displayName, DemoTeam team, DemoUnitRole role, DemoUnitStats stats, Vector3 position)
         {
@@ -282,6 +315,8 @@ namespace SWRTS.Demo1
             Stats = stats.Clone();
             Position = position;
             LastKnownPosition = position;
+            EnemyAiHomePosition = position;
+            EnemyAiLastKnownPosition = position;
             Destination = position;
             Health = Stats.MaxHealth;
             Magic = Stats.MaxMagic;
@@ -289,6 +324,12 @@ namespace SWRTS.Demo1
             IsRevealedToPlayer = team == DemoTeam.Player;
             IsCurrentlyObservedByPlayer = team == DemoTeam.Player;
             PlayerIntelLevel = team == DemoTeam.Player ? DemoIntelLevel.Assessed : DemoIntelLevel.Unknown;
+        }
+
+        internal void SetEnemyAiPatrolPoints(IEnumerable<Vector3> patrolPoints)
+        {
+            _enemyAiPatrolPoints.Clear();
+            _enemyAiPatrolPoints.AddRange(patrolPoints);
         }
     }
 
@@ -415,6 +456,47 @@ namespace SWRTS.Demo1
         {
             DemoUnitModel unit;
             return _units.TryGetValue(id, out unit) ? unit : null;
+        }
+
+        public DemoCommandResult ConfigureScoutAi(int unitId, IEnumerable<Vector3> patrolPoints)
+        {
+            DemoUnitModel unit = GetUnit(unitId);
+            if (unit == null || unit.Team != DemoTeam.Enemy || unit.IsFixed)
+                return DemoCommandResult.Fail("侦察 AI 只能配置给可移动的敌方单位");
+
+            List<Vector3> points = (patrolPoints ?? Enumerable.Empty<Vector3>())
+                .Select(ClampToMap)
+                .ToList();
+            if (points.Count == 0)
+                points.Add(unit.Position);
+
+            unit.EnemyAiProfile = DemoEnemyAiProfile.Scout;
+            unit.EnemyAiState = DemoEnemyAiState.Patrol;
+            unit.EnemyAiHomePosition = unit.Position;
+            unit.EnemyAiTargetId = -1;
+            unit.EnemyAiHasLastKnownPosition = false;
+            unit.EnemyAiDecisionRemaining = 0f;
+            unit.EnemyAiPatrolIndex = 0;
+            unit.SetEnemyAiPatrolPoints(points);
+            StopEnemyAiMovement(unit);
+            return DemoCommandResult.Ok($"{unit.DisplayName} 已启用独立侦察 AI");
+        }
+
+        public DemoCommandResult ConfigureCombatAi(int unitId, Vector3 homePosition)
+        {
+            DemoUnitModel unit = GetUnit(unitId);
+            if (unit == null || unit.Team != DemoTeam.Enemy || unit.IsFixed)
+                return DemoCommandResult.Fail("战斗 AI 只能配置给可移动的敌方单位");
+
+            unit.EnemyAiProfile = DemoEnemyAiProfile.Combat;
+            unit.EnemyAiState = DemoEnemyAiState.Guard;
+            unit.EnemyAiHomePosition = ClampToMap(homePosition);
+            unit.EnemyAiTargetId = -1;
+            unit.EnemyAiHasLastKnownPosition = false;
+            unit.EnemyAiDecisionRemaining = 0f;
+            unit.SetEnemyAiPatrolPoints(Enumerable.Empty<Vector3>());
+            StopEnemyAiMovement(unit);
+            return DemoCommandResult.Ok($"{unit.DisplayName} 已启用独立战斗 AI");
         }
 
         public DemoCombatModel GetCombat(int id)
@@ -666,7 +748,7 @@ namespace SWRTS.Demo1
                 SimulationTime += dt;
                 TickUnits(dt);
                 TickVisibility(dt);
-                TickEnemyEngagement();
+                TickEnemyAi(dt);
                 TickCombats(dt);
                 TickRemoteStrikes(dt);
                 EvaluateOutcome();
@@ -831,20 +913,172 @@ namespace SWRTS.Demo1
                 Raise($"目标失联：{enemy.DisplayName}", enemy.LastKnownPosition, false);
         }
 
-        private void TickEnemyEngagement()
+        private void TickEnemyAi(float dt)
         {
-            foreach (DemoUnitModel enemy in _units.Values.Where(unit => unit.IsAlive && unit.Team == DemoTeam.Enemy && !unit.IsFixed && unit.CombatId < 0).ToList())
+            foreach (DemoUnitModel enemy in _units.Values
+                         .Where(unit => unit.IsAlive && unit.Team == DemoTeam.Enemy && unit.EnemyAiProfile != DemoEnemyAiProfile.None)
+                         .ToList())
             {
-                DemoUnitModel target = _units.Values
-                    .Where(unit => unit.IsAlive && unit.Team == DemoTeam.Player && unit.CombatId < 0 && SimulationTime >= unit.ProtectedUntil)
-                    .OrderBy(unit => HorizontalDistance(enemy.Position, unit.Position))
-                    .FirstOrDefault();
-                if (target == null)
+                enemy.EnemyAiDecisionRemaining -= dt;
+
+                if (enemy.CombatId >= 0)
+                {
+                    if (enemy.EnemyAiProfile == DemoEnemyAiProfile.Scout &&
+                        enemy.HealthRatio <= Balance.EnemyAiScoutRetreatHealthRatio &&
+                        enemy.Activity != DemoUnitActivity.Retreating)
+                    {
+                        RequestRetreat(new[] { enemy.Id });
+                    }
+                    enemy.EnemyAiState = enemy.Activity == DemoUnitActivity.Retreating
+                        ? DemoEnemyAiState.Retreating
+                        : DemoEnemyAiState.Fighting;
                     continue;
-                float distance = HorizontalDistance(enemy.Position, target.Position);
-                if (distance <= enemy.Stats.EngagementRadius && distance <= enemy.Stats.VisionRadius)
-                    StartCombat(enemy.Id, target.Id);
+                }
+
+                if (enemy.EnemyAiDecisionRemaining > 0f)
+                    continue;
+                enemy.EnemyAiDecisionRemaining = Mathf.Max(0.05f, Balance.EnemyAiDecisionInterval);
+
+                if (enemy.EnemyAiProfile == DemoEnemyAiProfile.Scout)
+                    TickScoutAiDecision(enemy);
+                else if (enemy.EnemyAiProfile == DemoEnemyAiProfile.Combat)
+                    TickCombatAiDecision(enemy);
             }
+        }
+
+        private void TickScoutAiDecision(DemoUnitModel scout)
+        {
+            if (scout.HealthRatio <= Balance.EnemyAiScoutRetreatHealthRatio)
+            {
+                scout.EnemyAiTargetId = -1;
+                scout.EnemyAiHasLastKnownPosition = false;
+                TickScoutPatrol(scout);
+                return;
+            }
+
+            DemoUnitModel target = FindNearestVisiblePlayer(scout, false);
+            if (target != null)
+            {
+                scout.EnemyAiTargetId = target.Id;
+                scout.EnemyAiLastKnownPosition = target.Position;
+                scout.EnemyAiHasLastKnownPosition = true;
+                if (TryEnemyAiStartCombat(scout, target))
+                    return;
+
+                scout.EnemyAiState = DemoEnemyAiState.Pursue;
+                SetEnemyAiDestination(scout, target.Position);
+                return;
+            }
+
+            scout.EnemyAiTargetId = -1;
+            if (scout.EnemyAiHasLastKnownPosition)
+            {
+                if (HorizontalDistance(scout.Position, scout.EnemyAiLastKnownPosition) > Balance.EnemyAiArrivalRadius)
+                {
+                    scout.EnemyAiState = DemoEnemyAiState.Investigate;
+                    SetEnemyAiDestination(scout, scout.EnemyAiLastKnownPosition);
+                    return;
+                }
+                scout.EnemyAiHasLastKnownPosition = false;
+            }
+
+            TickScoutPatrol(scout);
+        }
+
+        private void TickScoutPatrol(DemoUnitModel scout)
+        {
+            scout.EnemyAiState = DemoEnemyAiState.Patrol;
+            if (scout.EnemyAiPatrolPoints.Count == 0)
+            {
+                StopEnemyAiMovement(scout);
+                return;
+            }
+
+            int index = Mathf.Clamp(scout.EnemyAiPatrolIndex, 0, scout.EnemyAiPatrolPoints.Count - 1);
+            Vector3 patrolPoint = scout.EnemyAiPatrolPoints[index];
+            if (HorizontalDistance(scout.Position, patrolPoint) <= Balance.EnemyAiArrivalRadius)
+            {
+                index = (index + 1) % scout.EnemyAiPatrolPoints.Count;
+                scout.EnemyAiPatrolIndex = index;
+                patrolPoint = scout.EnemyAiPatrolPoints[index];
+            }
+            SetEnemyAiDestination(scout, patrolPoint);
+        }
+
+        private void TickCombatAiDecision(DemoUnitModel enemy)
+        {
+            DemoUnitModel target = FindNearestVisiblePlayer(enemy, true);
+            if (target != null)
+            {
+                enemy.EnemyAiTargetId = target.Id;
+                if (TryEnemyAiStartCombat(enemy, target))
+                    return;
+
+                enemy.EnemyAiState = DemoEnemyAiState.Pursue;
+                SetEnemyAiDestination(enemy, target.Position);
+                return;
+            }
+
+            enemy.EnemyAiTargetId = -1;
+            if (HorizontalDistance(enemy.Position, enemy.EnemyAiHomePosition) > Balance.EnemyAiArrivalRadius)
+            {
+                enemy.EnemyAiState = DemoEnemyAiState.ReturnHome;
+                SetEnemyAiDestination(enemy, enemy.EnemyAiHomePosition);
+            }
+            else
+            {
+                enemy.EnemyAiState = DemoEnemyAiState.Guard;
+                StopEnemyAiMovement(enemy);
+            }
+        }
+
+        private DemoUnitModel FindNearestVisiblePlayer(DemoUnitModel observer, bool enforceHomeLeash)
+        {
+            float visionRadius = Mathf.Max(0f, observer.Stats.VisionRadius);
+            return _units.Values
+                .Where(unit => unit.IsAlive && unit.Team == DemoTeam.Player && unit.CombatId < 0 &&
+                               SimulationTime >= unit.ProtectedUntil &&
+                               HorizontalDistance(observer.Position, unit.Position) <= visionRadius &&
+                               (!enforceHomeLeash || HorizontalDistance(observer.EnemyAiHomePosition, unit.Position) <= Balance.EnemyAiGuardLeashRadius))
+                .OrderBy(unit => HorizontalDistance(observer.Position, unit.Position))
+                .ThenBy(unit => unit.Id)
+                .FirstOrDefault();
+        }
+
+        private bool TryEnemyAiStartCombat(DemoUnitModel enemy, DemoUnitModel target)
+        {
+            if (target.CombatId >= 0 || HorizontalDistance(enemy.Position, target.Position) > enemy.Stats.EngagementRadius)
+                return false;
+            DemoCommandResult result = StartCombat(enemy.Id, target.Id);
+            if (!result.Success)
+                return false;
+
+            enemy.EnemyAiState = DemoEnemyAiState.Fighting;
+            return true;
+        }
+
+        private void SetEnemyAiDestination(DemoUnitModel unit, Vector3 destination)
+        {
+            if (!CanMove(unit))
+                return;
+            unit.Destination = ClampToMap(destination);
+            Vector3 facing = unit.Destination - unit.Position;
+            facing.y = 0f;
+            if (facing.sqrMagnitude > 0.001f)
+                unit.Facing = facing.normalized;
+            unit.HasDestination = true;
+            unit.PendingReinforcementBattleId = -1;
+            unit.Activity = DemoUnitActivity.Moving;
+        }
+
+        private void StopEnemyAiMovement(DemoUnitModel unit)
+        {
+            if (unit.CombatId >= 0 || unit.Activity == DemoUnitActivity.Retreating)
+                return;
+            unit.Destination = unit.Position;
+            unit.HasDestination = false;
+            unit.PendingReinforcementBattleId = -1;
+            unit.Activity = SimulationTime < unit.ProtectedUntil ? DemoUnitActivity.Protected : DemoUnitActivity.Idle;
         }
 
         private void TickCombats(float dt)

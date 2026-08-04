@@ -46,6 +46,15 @@ Open `Assets/Demo1/Scenes/Demo1.unity` and enter Play Mode.
 - Stale contacts cannot be directly engaged, but their last known area remains a valid movement or remote-strike destination. Mission-known fixed objectives keep persistent identified intelligence.
 - These vision shapes, durations and sharing rules are code-only prototype assumptions and have not been written back to Feishu revision 6.
 
+## Independent enemy AI prototype
+
+- Enemy decisions run at a 0.5-second interval. Every mobile enemy owns its target, last-known position and state; there is no director, shared blackboard, contact sharing or coordinated reinforcement logic.
+- The scout cycles through a configured patrol route, pursues the nearest player inside its own circular vision, starts combat inside engagement range and investigates only its own last-known contact position after losing sight. Below 30% health it requests the normal delayed retreat.
+- Guards hold individual home positions, pursue the nearest player visible inside their own vision and 18-unit home leash, engage through the normal combat system, and return to their own post after losing the target. Guards do not voluntarily retreat.
+- Independent enemies can still enter the same battle when their personal behavior takes them into its forced-engagement area. This is a consequence of existing battle geography, not a joint AI decision.
+- The fortress remains fixed and reactive. It has no strategic AI layer.
+- These behaviors and values are code-only prototype assumptions because Feishu revision 6 explicitly leaves AI engagement and retreat decisions for later design.
+
 ## Configurable prototype assumptions
 
 The Feishu specification revision 6 intentionally leaves formulas and concrete values open. Demo defaults are centralized in `Demo1Balance` and `DemoUnitStats`:
@@ -54,7 +63,7 @@ The Feishu specification revision 6 intentionally leaves formulas and concrete v
 - a discovered core replaces (rather than stacks with) an ordinary critical multiplier;
 - shield absorption consumes both shield and magic, with allied global shield bonuses improving efficiency;
 - pathing is direct movement on the unobstructed prototype map; every witch owns her route and destination offset;
-- enemy AI only starts a legal nearby engagement; player operational choices remain manual;
+- enemy AI uses the independent scout/guard state machines described above; player operational choices remain manual;
 - orders may be queued while paused;
 - the victory condition is destroying the enemy fortress, and defeat occurs when no player witch remains operational.
 

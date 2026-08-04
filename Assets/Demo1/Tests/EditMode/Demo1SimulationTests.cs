@@ -538,5 +538,116 @@ namespace SWRTS.Demo1.Tests
             Assert.That(objective.HasPlayerIntel, Is.True);
             Assert.That(objective.CanBeDirectlyTargetedByPlayer, Is.True);
         }
+
+        [Test]
+        public void ScoutAi_PatrolsConfiguredRouteWithoutAVisibleTarget()
+        {
+            Demo1Simulation simulation = new Demo1Simulation();
+            DemoUnitStats scoutStats = BasicStats(0f);
+            scoutStats.VisionRadius = 5f;
+            DemoUnitModel scout = simulation.AddUnit("scout", DemoTeam.Enemy, DemoUnitRole.Scout, scoutStats, Vector3.zero);
+            simulation.AddUnit("distant-player", DemoTeam.Player, DemoUnitRole.Witch, BasicStats(0f), Vector3.right * 30f);
+
+            DemoCommandResult configured = simulation.ConfigureScoutAi(scout.Id, new[]
+            {
+                Vector3.zero,
+                Vector3.right * 10f
+            });
+            simulation.Advance(0.7f);
+
+            Assert.That(configured.Success, Is.True);
+            Assert.That(scout.EnemyAiState, Is.EqualTo(DemoEnemyAiState.Patrol));
+            Assert.That(scout.Position.x, Is.GreaterThan(0f));
+            Assert.That(scout.Destination, Is.EqualTo(Vector3.right * 10f));
+        }
+
+        [Test]
+        public void ScoutAi_UsesOwnVisionThenInvestigatesItsLastKnownPosition()
+        {
+            Demo1Simulation simulation = new Demo1Simulation();
+            DemoUnitStats scoutStats = BasicStats(0f);
+            scoutStats.VisionRadius = 15f;
+            scoutStats.EngagementRadius = 2f;
+            DemoUnitModel scout = simulation.AddUnit("scout", DemoTeam.Enemy, DemoUnitRole.Scout, scoutStats, Vector3.zero);
+            DemoUnitModel player = simulation.AddUnit("player", DemoTeam.Player, DemoUnitRole.Witch, BasicStats(0f), Vector3.right * 10f);
+            simulation.ConfigureScoutAi(scout.Id, new[] { Vector3.zero });
+
+            simulation.Advance(0.1f);
+            Assert.That(scout.EnemyAiState, Is.EqualTo(DemoEnemyAiState.Pursue));
+            Assert.That(scout.EnemyAiTargetId, Is.EqualTo(player.Id));
+            Assert.That(scout.EnemyAiLastKnownPosition, Is.EqualTo(Vector3.right * 10f));
+
+            player.Position = Vector3.right * 30f;
+            simulation.Advance(0.6f);
+
+            Assert.That(scout.EnemyAiState, Is.EqualTo(DemoEnemyAiState.Investigate));
+            Assert.That(scout.EnemyAiTargetId, Is.EqualTo(-1));
+            Assert.That(scout.Destination, Is.EqualTo(Vector3.right * 10f));
+        }
+
+        [Test]
+        public void EnemyAi_DoesNotShareAnotherUnitsContact()
+        {
+            Demo1Simulation simulation = new Demo1Simulation();
+            DemoUnitStats scoutStats = BasicStats(0f);
+            scoutStats.VisionRadius = 20f;
+            scoutStats.EngagementRadius = 1f;
+            DemoUnitStats guardStats = BasicStats(0f);
+            guardStats.VisionRadius = 6f;
+            guardStats.EngagementRadius = 1f;
+            DemoUnitModel scout = simulation.AddUnit("scout", DemoTeam.Enemy, DemoUnitRole.Scout, scoutStats, Vector3.zero);
+            DemoUnitModel guard = simulation.AddUnit("guard", DemoTeam.Enemy, DemoUnitRole.Guard, guardStats, Vector3.left * 15f);
+            DemoUnitModel player = simulation.AddUnit("player", DemoTeam.Player, DemoUnitRole.Witch, BasicStats(0f), Vector3.right * 10f);
+            simulation.ConfigureScoutAi(scout.Id, new[] { Vector3.zero });
+            simulation.ConfigureCombatAi(guard.Id, guard.Position);
+
+            simulation.Advance(0.1f);
+
+            Assert.That(scout.EnemyAiTargetId, Is.EqualTo(player.Id));
+            Assert.That(guard.EnemyAiTargetId, Is.EqualTo(-1));
+            Assert.That(guard.EnemyAiState, Is.EqualTo(DemoEnemyAiState.Guard));
+            Assert.That(guard.HasDestination, Is.False);
+        }
+
+        [Test]
+        public void ScoutAi_RetreatsFromCombatBelowHealthThreshold()
+        {
+            Demo1Simulation simulation = new Demo1Simulation();
+            DemoUnitStats harmless = BasicStats(0f);
+            DemoUnitModel scout = simulation.AddUnit("scout", DemoTeam.Enemy, DemoUnitRole.Scout, harmless, Vector3.zero);
+            DemoUnitModel player = simulation.AddUnit("player", DemoTeam.Player, DemoUnitRole.Witch, harmless, Vector3.right * 2f);
+            simulation.ConfigureScoutAi(scout.Id, new[] { Vector3.zero });
+            simulation.StartCombat(scout.Id, player.Id);
+            scout.Health = scout.Stats.MaxHealth * 0.2f;
+
+            simulation.Advance(0.1f);
+
+            Assert.That(scout.EnemyAiState, Is.EqualTo(DemoEnemyAiState.Retreating));
+            Assert.That(scout.Activity, Is.EqualTo(DemoUnitActivity.Retreating));
+            Assert.That(scout.RetreatRemaining, Is.GreaterThan(0f));
+        }
+
+        [Test]
+        public void CombatAi_PursuesVisibleTargetThenReturnsToItsOwnPost()
+        {
+            Demo1Simulation simulation = new Demo1Simulation();
+            DemoUnitStats guardStats = BasicStats(0f);
+            guardStats.VisionRadius = 15f;
+            guardStats.EngagementRadius = 2f;
+            DemoUnitModel guard = simulation.AddUnit("guard", DemoTeam.Enemy, DemoUnitRole.Guard, guardStats, Vector3.zero);
+            DemoUnitModel player = simulation.AddUnit("player", DemoTeam.Player, DemoUnitRole.Witch, BasicStats(0f), Vector3.right * 10f);
+            simulation.ConfigureCombatAi(guard.Id, guard.Position);
+
+            simulation.Advance(0.6f);
+            Assert.That(guard.EnemyAiState, Is.EqualTo(DemoEnemyAiState.Pursue));
+            Assert.That(guard.Position.x, Is.GreaterThan(0f));
+
+            player.Position = Vector3.right * 30f;
+            simulation.Advance(2f);
+
+            Assert.That(guard.EnemyAiTargetId, Is.EqualTo(-1));
+            Assert.That(guard.EnemyAiState, Is.EqualTo(DemoEnemyAiState.Guard));
+            Assert.That(Vector3.Distance(guard.Position, guard.EnemyAiHomePosition), Is.LessThanOrEqualTo(simulation.Balance.EnemyAiArrivalRadius));
+        }
     }
 }

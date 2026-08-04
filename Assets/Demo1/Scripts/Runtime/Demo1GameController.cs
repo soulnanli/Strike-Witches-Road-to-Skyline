@@ -244,12 +244,20 @@ namespace SWRTS.Demo1
             AddUnit("桑妮亚·V·利特维亚克", DemoTeam.Player, DemoUnitRole.Witch, nightWitch, new Vector3(-32f, 0f, 12f));
 
             DemoUnitModel scout = AddUnit("异形军侦察体", DemoTeam.Enemy, DemoUnitRole.Scout, neuroi, new Vector3(2f, 0f, -9f));
-            AddUnit("异形军护卫 A", DemoTeam.Enemy, DemoUnitRole.Guard, guard, new Vector3(17f, 0f, -3f));
-            AddUnit("异形军护卫 B", DemoTeam.Enemy, DemoUnitRole.Guard, guard, new Vector3(18f, 0f, 8f));
+            DemoUnitModel guardA = AddUnit("异形军护卫 A", DemoTeam.Enemy, DemoUnitRole.Guard, guard, new Vector3(17f, 0f, -3f));
+            DemoUnitModel guardB = AddUnit("异形军护卫 B", DemoTeam.Enemy, DemoUnitRole.Guard, guard, new Vector3(18f, 0f, 8f));
             DemoUnitModel objective = AddUnit("异形军巢穴", DemoTeam.Enemy, DemoUnitRole.Fortress, fortress, new Vector3(34f, 0f, 3f));
             _simulation.GrantPersistentPlayerIntel(objective.Id);
 
-            _simulation.IssueMove(new[] { scout.Id }, new Vector3(-10f, 0f, -5f));
+            _simulation.ConfigureScoutAi(scout.Id, new[]
+            {
+                scout.Position,
+                new Vector3(-10f, 0f, -5f),
+                new Vector3(-2f, 0f, 4f),
+                new Vector3(8f, 0f, -1f)
+            });
+            _simulation.ConfigureCombatAi(guardA.Id, guardA.Position);
+            _simulation.ConfigureCombatAi(guardB.Id, guardB.Position);
             _events.Clear();
             SelectAllPlayerUnits();
             _statusMessage = "全队已选中：右键地面移动，右键红色敌人会自动接近并开战。";
