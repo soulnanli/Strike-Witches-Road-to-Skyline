@@ -151,6 +151,9 @@ namespace SWRTS.Demo1
             DemoUnitStats witch = new DemoUnitStats();
             witch.PreferredBattleLine = DemoBattleLine.Vanguard;
             witch.ScreenPower = 1f;
+            witch.WitchVisionType = DemoWitchVisionType.Ordinary;
+            witch.VisionRadius = 24f;
+            witch.VisionAngle = 100f;
             DemoUnitStats ace = witch.Clone();
             ace.MaxHealth = 145f;
             ace.Attack = 29f;
@@ -176,7 +179,18 @@ namespace SWRTS.Demo1
             artillery.ScreenPenetration = 0.65f;
             artillery.ScreenPower = 0.25f;
 
+            DemoUnitStats nightWitch = witch.Clone();
+            nightWitch.MaxMagic = 110f;
+            nightWitch.MaxShield = 55f;
+            nightWitch.Attack = 23f;
+            nightWitch.CoreDiscovery = 0.24f;
+            nightWitch.PreferredBattleLine = DemoBattleLine.Main;
+            nightWitch.WitchVisionType = DemoWitchVisionType.Night;
+            nightWitch.VisionRadius = 28f;
+            nightWitch.VisionAngle = 360f;
+
             DemoUnitStats neuroi = witch.Clone();
+            neuroi.WitchVisionType = DemoWitchVisionType.None;
             neuroi.MaxHealth = 190f;
             neuroi.Attack = 26f;
             neuroi.Defense = 10f;
@@ -222,12 +236,13 @@ namespace SWRTS.Demo1
             AddUnit("坂本美绪", DemoTeam.Player, DemoUnitRole.Witch, ace, new Vector3(-25f, 0f, -3f));
             AddUnit("莉涅特", DemoTeam.Player, DemoUnitRole.Artillery, artillery, new Vector3(-27f, 0f, 5f));
             AddUnit("佩琳", DemoTeam.Player, DemoUnitRole.Witch, witch, new Vector3(-23f, 0f, 12f));
+            AddUnit("桑妮亚·V·利特维亚克", DemoTeam.Player, DemoUnitRole.Witch, nightWitch, new Vector3(-32f, 0f, 12f));
 
             DemoUnitModel scout = AddUnit("异形军侦察体", DemoTeam.Enemy, DemoUnitRole.Scout, neuroi, new Vector3(2f, 0f, -9f));
             AddUnit("异形军护卫 A", DemoTeam.Enemy, DemoUnitRole.Guard, guard, new Vector3(17f, 0f, -3f));
             AddUnit("异形军护卫 B", DemoTeam.Enemy, DemoUnitRole.Guard, guard, new Vector3(18f, 0f, 8f));
             DemoUnitModel objective = AddUnit("异形军巢穴", DemoTeam.Enemy, DemoUnitRole.Fortress, fortress, new Vector3(34f, 0f, 3f));
-            objective.IsRevealedToPlayer = true;
+            _simulation.GrantPersistentPlayerIntel(objective.Id);
 
             _simulation.IssueMove(new[] { scout.Id }, new Vector3(-10f, 0f, -5f));
             _events.Clear();
@@ -277,8 +292,8 @@ namespace SWRTS.Demo1
             DemoUnitModel target = _simulation.GetUnit(targetId);
             if (target == null || !target.IsAlive || target.Team != DemoTeam.Enemy)
                 return ApplyAndReturn(DemoCommandResult.Fail("交战目标无效"));
-            if (!target.IsRevealedToPlayer)
-                return ApplyAndReturn(DemoCommandResult.Fail("尚未获得目标情报"));
+            if (!target.CanBeDirectlyTargetedByPlayer)
+                return ApplyAndReturn(DemoCommandResult.Fail(target.HasPlayerIntel ? "当前只有目标的最后已知位置" : "尚未获得目标情报"));
 
             List<DemoUnitModel> attackers = _selection
                 .Select(_simulation.GetUnit)
@@ -460,8 +475,14 @@ namespace SWRTS.Demo1
             {
                 _commandMode = CommandMode.Select;
                 Demo1UnitView targetView = RaycastUnit(Input.mousePosition);
-                if (targetView != null && _simulation.GetUnit(targetView.UnitId)?.Team == DemoTeam.Enemy)
-                    CommandEngage(targetView.UnitId);
+                DemoUnitModel enemyTarget = targetView == null ? null : _simulation.GetUnit(targetView.UnitId);
+                if (enemyTarget != null && enemyTarget.Team == DemoTeam.Enemy && enemyTarget.CanBeDirectlyTargetedByPlayer)
+                    CommandEngage(enemyTarget.Id);
+                else if (enemyTarget != null && enemyTarget.Team == DemoTeam.Enemy && enemyTarget.HasPlayerIntel)
+                {
+                    CommandMove(enemyTarget.PlayerVisiblePosition);
+                    _statusMessage = "正在前往敌方最后已知位置搜索";
+                }
                 else if (TryGroundPoint(Input.mousePosition, out Vector3 point))
                     CommandMove(point);
             }
@@ -539,6 +560,12 @@ namespace SWRTS.Demo1
             {
                 _pendingEngagement = null;
                 _statusMessage = "自动接战已取消：目标已失效";
+                return;
+            }
+            if (!target.CanBeDirectlyTargetedByPlayer)
+            {
+                _pendingEngagement = null;
+                _statusMessage = "自动接战已取消：目标失去确认，单位将前往最后已知位置";
                 return;
             }
 
@@ -739,7 +766,7 @@ namespace SWRTS.Demo1
         {
             GUI.Box(new Rect(14f, y, PanelWidth - 28f, 64f), string.Empty);
             GUI.Label(new Rect(22f, y + 4f, 190f, 22f), $"{unit.DisplayName}  ·  {ActivityName(unit.Activity)}", _smallStyle);
-            GUI.Label(new Rect(218f, y + 4f, 96f, 22f), unit.Role.ToString(), _smallStyle);
+            GUI.Label(new Rect(196f, y + 4f, 118f, 22f), $"{unit.Role} / {VisionTypeName(unit.Stats.WitchVisionType)}", _smallStyle);
             DrawBar(new Rect(22f, y + 29f, 88f, 11f), unit.HealthRatio, new Color(0.9f, 0.22f, 0.2f), $"HP {unit.Health:0}");
             DrawBar(new Rect(118f, y + 29f, 88f, 11f), unit.MagicRatio, new Color(0.35f, 0.55f, 1f), $"MP {unit.Magic:0}");
             DrawBar(new Rect(214f, y + 29f, 88f, 11f), unit.ShieldRatio, new Color(0.2f, 0.9f, 0.95f), $"盾 {unit.Shield:0}");
@@ -753,15 +780,22 @@ namespace SWRTS.Demo1
         {
             foreach (DemoUnitModel unit in _simulation.Units)
             {
-                if (!unit.IsAlive || (unit.Team == DemoTeam.Enemy && !unit.IsRevealedToPlayer))
+                if (!unit.IsAlive || (unit.Team == DemoTeam.Enemy && !unit.HasPlayerIntel))
                     continue;
-                Vector3 screen = _camera.WorldToScreenPoint(unit.Position + Vector3.up * (unit.IsFixed ? 2.8f : 2f));
+                Vector3 displayPosition = unit.Team == DemoTeam.Enemy ? unit.PlayerVisiblePosition : unit.Position;
+                Vector3 screen = _camera.WorldToScreenPoint(displayPosition + Vector3.up * (unit.IsFixed ? 2.8f : 2f));
                 if (screen.z <= 0f)
                     continue;
                 float y = Screen.height - screen.y;
-                GUI.Label(new Rect(screen.x - 80f, y - 14f, 160f, 20f), unit.DisplayName, _worldLabelStyle);
-                DrawBar(new Rect(screen.x - 34f, y + 7f, 68f, 5f), unit.HealthRatio,
-                    unit.Team == DemoTeam.Player ? new Color(0.2f, 0.75f, 1f) : new Color(1f, 0.2f, 0.18f), string.Empty);
+                string label = unit.DisplayName;
+                if (unit.Team == DemoTeam.Enemy && unit.PlayerIntelLevel == DemoIntelLevel.Contact)
+                    label = $"不明接触 · {Mathf.Max(0f, _simulation.SimulationTime - unit.LastObservedAt):0.0}s";
+                else if (unit.Team == DemoTeam.Enemy && !unit.IsCurrentlyObservedByPlayer && !unit.HasPersistentPlayerIntel)
+                    label += $" · 最后发现 {Mathf.Max(0f, _simulation.SimulationTime - unit.LastObservedAt):0.0}s";
+                GUI.Label(new Rect(screen.x - 100f, y - 14f, 200f, 20f), label, _worldLabelStyle);
+                if (unit.Team == DemoTeam.Player || unit.PlayerIntelLevel == DemoIntelLevel.Assessed)
+                    DrawBar(new Rect(screen.x - 34f, y + 7f, 68f, 5f), unit.HealthRatio,
+                        unit.Team == DemoTeam.Player ? new Color(0.2f, 0.75f, 1f) : new Color(1f, 0.2f, 0.18f), string.Empty);
             }
 
             foreach (DemoCombatModel combat in _simulation.Combats.Where(combat => !combat.IsFinished))
@@ -837,7 +871,11 @@ namespace SWRTS.Demo1
             RaycastHit[] hits = Physics.RaycastAll(ray, 1000f);
             return hits.OrderBy(hit => hit.distance)
                 .Select(hit => hit.collider.GetComponent<Demo1UnitView>())
-                .FirstOrDefault(view => view != null && _simulation.GetUnit(view.UnitId)?.IsAlive == true);
+                .FirstOrDefault(view =>
+                {
+                    DemoUnitModel unit = view == null ? null : _simulation.GetUnit(view.UnitId);
+                    return unit != null && unit.IsAlive && (unit.Team == DemoTeam.Player || unit.HasPlayerIntel);
+                });
         }
 
         private bool TryGroundPoint(Vector3 screenPoint, out Vector3 worldPoint)
@@ -905,6 +943,16 @@ namespace SWRTS.Demo1
                 case DemoUnitActivity.Protected: return "脱战保护";
                 case DemoUnitActivity.Destroyed: return "失去战斗力";
                 default: return activity.ToString();
+            }
+        }
+
+        private static string VisionTypeName(DemoWitchVisionType type)
+        {
+            switch (type)
+            {
+                case DemoWitchVisionType.Ordinary: return "普通";
+                case DemoWitchVisionType.Night: return "夜战";
+                default: return "无视野";
             }
         }
     }

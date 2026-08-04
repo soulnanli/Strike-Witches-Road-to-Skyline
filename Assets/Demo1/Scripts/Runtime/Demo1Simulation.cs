@@ -34,6 +34,21 @@ namespace SWRTS.Demo1
         ScreenPiercing
     }
 
+    public enum DemoWitchVisionType
+    {
+        None,
+        Ordinary,
+        Night
+    }
+
+    public enum DemoIntelLevel
+    {
+        Unknown,
+        Contact,
+        Identified,
+        Assessed
+    }
+
     public enum DemoUnitActivity
     {
         Idle,
@@ -80,6 +95,11 @@ namespace SWRTS.Demo1
         public float FortressBarrageHealthThreshold = 0.5f;
         public float FortressBarrageDamageMultiplier = 1.15f;
         public float FortressBarrageIntervalMultiplier = 0.65f;
+        public float VisionIdentificationDuration = 0.5f;
+        public float VisionAssessmentDuration = 1.5f;
+        public float AssessedIntelMemoryDuration = 3f;
+        public float IdentifiedIntelMemoryDuration = 7f;
+        public float ContactIntelMemoryDuration = 15f;
         public float RetreatBaseDuration = 4.5f;
         public float DisengageProtectionDuration = 5f;
         public float RetreatSafeDistance = 9f;
@@ -111,6 +131,8 @@ namespace SWRTS.Demo1
         public float Mobility = 1f;
         public float MoveSpeed = 6f;
         public float VisionRadius = 22f;
+        public float VisionAngle = 100f;
+        public DemoWitchVisionType WitchVisionType = DemoWitchVisionType.None;
         public float EngagementRadius = 8f;
         public bool CanRemoteStrike;
         public DemoBattleLine PreferredBattleLine = DemoBattleLine.Vanguard;
@@ -214,6 +236,7 @@ namespace SWRTS.Demo1
         public DemoUnitRole Role { get; }
         public DemoUnitStats Stats { get; }
         public Vector3 Position;
+        public Vector3 Facing = Vector3.right;
         public Vector3 Destination;
         public bool HasDestination;
         public int CombatId = -1;
@@ -228,6 +251,13 @@ namespace SWRTS.Demo1
         public float RetreatDuration;
         public float ProtectedUntil;
         public bool IsRevealedToPlayer;
+        public bool IsCurrentlyObservedByPlayer;
+        public bool HasPersistentPlayerIntel;
+        public DemoIntelLevel PlayerIntelLevel;
+        public Vector3 LastKnownPosition;
+        public float LastObservedAt = float.NegativeInfinity;
+        public float IdentificationProgress;
+        public float AssessmentProgress;
 
         public bool IsFixed => Role == DemoUnitRole.Fortress;
         public bool IsAlive => Activity != DemoUnitActivity.Destroyed && Health > 0f;
@@ -235,6 +265,13 @@ namespace SWRTS.Demo1
         public float MagicRatio => Stats.MaxMagic <= 0f ? 0f : Magic / Stats.MaxMagic;
         public float ShieldRatio => Stats.MaxShield <= 0f ? 0f : Shield / Stats.MaxShield;
         public float RetreatProgress => RetreatDuration <= 0f ? 0f : 1f - Mathf.Clamp01(RetreatRemaining / RetreatDuration);
+        public bool HasPlayerIntel => Team == DemoTeam.Player || IsRevealedToPlayer || PlayerIntelLevel != DemoIntelLevel.Unknown;
+        public bool CanBeDirectlyTargetedByPlayer => Team == DemoTeam.Player || HasPersistentPlayerIntel ||
+                                                     (IsCurrentlyObservedByPlayer && PlayerIntelLevel >= DemoIntelLevel.Identified) || CombatId >= 0 ||
+                                                     (IsRevealedToPlayer && PlayerIntelLevel == DemoIntelLevel.Unknown);
+        public Vector3 PlayerVisiblePosition => Team == DemoTeam.Player || IsCurrentlyObservedByPlayer || HasPersistentPlayerIntel
+            ? Position
+            : LastKnownPosition;
 
         public DemoUnitModel(int id, string displayName, DemoTeam team, DemoUnitRole role, DemoUnitStats stats, Vector3 position)
         {
@@ -244,11 +281,14 @@ namespace SWRTS.Demo1
             Role = role;
             Stats = stats.Clone();
             Position = position;
+            LastKnownPosition = position;
             Destination = position;
             Health = Stats.MaxHealth;
             Magic = Stats.MaxMagic;
             Shield = Stats.MaxShield;
             IsRevealedToPlayer = team == DemoTeam.Player;
+            IsCurrentlyObservedByPlayer = team == DemoTeam.Player;
+            PlayerIntelLevel = team == DemoTeam.Player ? DemoIntelLevel.Assessed : DemoIntelLevel.Unknown;
         }
     }
 
@@ -382,6 +422,18 @@ namespace SWRTS.Demo1
             return _combats.FirstOrDefault(combat => combat.Id == id);
         }
 
+        public void GrantPersistentPlayerIntel(int unitId, DemoIntelLevel level = DemoIntelLevel.Identified)
+        {
+            DemoUnitModel unit = GetUnit(unitId);
+            if (unit == null || unit.Team != DemoTeam.Enemy)
+                return;
+            unit.HasPersistentPlayerIntel = true;
+            unit.PlayerIntelLevel = (DemoIntelLevel)Mathf.Max((int)DemoIntelLevel.Identified, (int)level);
+            unit.LastKnownPosition = unit.Position;
+            unit.LastObservedAt = SimulationTime;
+            unit.IsRevealedToPlayer = true;
+        }
+
         public float GetScreeningEfficiency(int combatId, DemoTeam team)
         {
             DemoCombatModel combat = GetCombat(combatId);
@@ -476,6 +528,10 @@ namespace SWRTS.Demo1
                 Vector3 offset = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle)) * spacing;
                 DemoUnitModel unit = candidates[i];
                 unit.Destination = ClampToMap(destination + offset);
+                Vector3 facing = unit.Destination - unit.Position;
+                facing.y = 0f;
+                if (facing.sqrMagnitude > 0.001f)
+                    unit.Facing = facing.normalized;
                 unit.HasDestination = true;
                 unit.PendingReinforcementBattleId = -1;
                 unit.Activity = DemoUnitActivity.Moving;
@@ -499,8 +555,8 @@ namespace SWRTS.Demo1
                 return DemoCommandResult.Fail("单位已在战斗中");
             if (SimulationTime < attacker.ProtectedUntil || SimulationTime < target.ProtectedUntil)
                 return DemoCommandResult.Fail("目标或发起者仍处于脱战保护");
-            if (attacker.Team == DemoTeam.Player && !target.IsRevealedToPlayer)
-                return DemoCommandResult.Fail("尚未获得目标情报");
+            if (attacker.Team == DemoTeam.Player && !target.CanBeDirectlyTargetedByPlayer)
+                return DemoCommandResult.Fail(target.HasPlayerIntel ? "当前只有目标的最后已知位置" : "尚未获得目标情报");
 
             if (target.CombatId >= 0)
                 return RequestReinforcement(new[] { attackerId }, target.CombatId);
@@ -510,6 +566,14 @@ namespace SWRTS.Demo1
                 return DemoCommandResult.Fail($"目标超出交战半径（{distance:0.0}/{attacker.Stats.EngagementRadius:0.0}）");
 
             Vector3 center = target.IsFixed ? target.Position : (attacker.Position + target.Position) * 0.5f;
+            Vector3 attackerFacing = target.Position - attacker.Position;
+            attackerFacing.y = 0f;
+            if (attackerFacing.sqrMagnitude > 0.001f)
+                attacker.Facing = attackerFacing.normalized;
+            Vector3 targetFacing = attacker.Position - target.Position;
+            targetFacing.y = 0f;
+            if (targetFacing.sqrMagnitude > 0.001f)
+                target.Facing = targetFacing.normalized;
             DemoCombatModel combat = new DemoCombatModel(_nextCombatId++, center, Balance.ReinforcementRadius, Balance.ForcedEngagementRadius);
             _combats.Add(combat);
             AddParticipant(combat, attacker);
@@ -601,7 +665,7 @@ namespace SWRTS.Demo1
                 float dt = Mathf.Min(remaining, 0.1f);
                 SimulationTime += dt;
                 TickUnits(dt);
-                TickVisibility();
+                TickVisibility(dt);
                 TickEnemyEngagement();
                 TickCombats(dt);
                 TickRemoteStrikes(dt);
@@ -633,6 +697,10 @@ namespace SWRTS.Demo1
                 if (!unit.HasDestination || (unit.Activity != DemoUnitActivity.Moving && unit.Activity != DemoUnitActivity.Reinforcing))
                     continue;
 
+                Vector3 movement = unit.Destination - unit.Position;
+                movement.y = 0f;
+                if (movement.sqrMagnitude > 0.001f)
+                    unit.Facing = movement.normalized;
                 unit.Position = Vector3.MoveTowards(unit.Position, unit.Destination, unit.Stats.MoveSpeed * dt);
                 unit.Position = ClampToMap(unit.Position);
 
@@ -662,17 +730,105 @@ namespace SWRTS.Demo1
             }
         }
 
-        private void TickVisibility()
+        private void TickVisibility(float dt)
         {
-            List<DemoUnitModel> observers = _units.Values.Where(unit => unit.IsAlive && unit.Team == DemoTeam.Player).ToList();
-            foreach (DemoUnitModel enemy in _units.Values.Where(unit => unit.IsAlive && unit.Team == DemoTeam.Enemy && !unit.IsRevealedToPlayer))
+            List<DemoUnitModel> observers = _units.Values
+                .Where(unit => unit.IsAlive && unit.Team == DemoTeam.Player &&
+                               unit.Stats.WitchVisionType != DemoWitchVisionType.None)
+                .ToList();
+            foreach (DemoUnitModel enemy in _units.Values.Where(unit => unit.IsAlive && unit.Team == DemoTeam.Enemy))
             {
-                DemoUnitModel observer = observers.FirstOrDefault(unit => HorizontalDistance(unit.Position, enemy.Position) <= unit.Stats.VisionRadius);
-                if (observer == null)
-                    continue;
-                enemy.IsRevealedToPlayer = true;
-                Raise($"发现敌情：{enemy.DisplayName}", enemy.Position, true);
+                enemy.IsCurrentlyObservedByPlayer = false;
+                bool observedInCombat = enemy.CombatId >= 0 && GetCombat(enemy.CombatId)?.Participants
+                    .Select(GetUnit).Any(unit => unit != null && unit.IsAlive && unit.Team == DemoTeam.Player) == true;
+                DemoUnitModel observer = observedInCombat ? observers.FirstOrDefault() :
+                    observers.FirstOrDefault(unit => IsInsideWitchVision(unit, enemy.Position));
+                if (observedInCombat || observer != null)
+                    ObserveEnemy(enemy, dt);
+                else
+                    DecayEnemyIntel(enemy, dt);
             }
+        }
+
+        private bool IsInsideWitchVision(DemoUnitModel observer, Vector3 targetPosition)
+        {
+            Vector3 toTarget = targetPosition - observer.Position;
+            toTarget.y = 0f;
+            if (toTarget.sqrMagnitude > observer.Stats.VisionRadius * observer.Stats.VisionRadius)
+                return false;
+            if (observer.Stats.WitchVisionType == DemoWitchVisionType.Night || toTarget.sqrMagnitude < 0.001f)
+                return true;
+            if (observer.Stats.WitchVisionType != DemoWitchVisionType.Ordinary)
+                return false;
+            Vector3 facing = observer.Facing.sqrMagnitude > 0.001f ? observer.Facing.normalized : Vector3.right;
+            float minimumDot = Mathf.Cos(Mathf.Clamp(observer.Stats.VisionAngle, 1f, 359f) * 0.5f * Mathf.Deg2Rad);
+            return Vector3.Dot(facing, toTarget.normalized) >= minimumDot;
+        }
+
+        private void ObserveEnemy(DemoUnitModel enemy, float dt)
+        {
+            DemoIntelLevel previous = enemy.PlayerIntelLevel;
+            enemy.IsCurrentlyObservedByPlayer = true;
+            enemy.IsRevealedToPlayer = true;
+            enemy.LastKnownPosition = enemy.Position;
+            enemy.LastObservedAt = SimulationTime;
+
+            if (enemy.PlayerIntelLevel < DemoIntelLevel.Identified)
+            {
+                enemy.PlayerIntelLevel = DemoIntelLevel.Contact;
+                enemy.IdentificationProgress += dt / Mathf.Max(0.01f, Balance.VisionIdentificationDuration);
+                if (enemy.IdentificationProgress >= 1f)
+                    enemy.PlayerIntelLevel = DemoIntelLevel.Identified;
+            }
+            if (enemy.PlayerIntelLevel >= DemoIntelLevel.Identified)
+            {
+                enemy.AssessmentProgress += dt / Mathf.Max(0.01f, Balance.VisionAssessmentDuration);
+                if (enemy.AssessmentProgress >= 1f)
+                    enemy.PlayerIntelLevel = DemoIntelLevel.Assessed;
+            }
+
+            if (previous == DemoIntelLevel.Unknown && enemy.PlayerIntelLevel >= DemoIntelLevel.Contact)
+                Raise("发现不明接触", enemy.Position, true);
+            if (previous < DemoIntelLevel.Identified && enemy.PlayerIntelLevel >= DemoIntelLevel.Identified)
+                Raise($"确认敌情：{enemy.DisplayName}", enemy.Position, true);
+        }
+
+        private void DecayEnemyIntel(DemoUnitModel enemy, float dt)
+        {
+            if (enemy.HasPersistentPlayerIntel)
+            {
+                if (enemy.IsFixed)
+                    enemy.LastKnownPosition = enemy.Position;
+                enemy.PlayerIntelLevel = (DemoIntelLevel)Mathf.Max((int)DemoIntelLevel.Identified, (int)enemy.PlayerIntelLevel);
+                enemy.IsRevealedToPlayer = true;
+                return;
+            }
+            if (float.IsNegativeInfinity(enemy.LastObservedAt))
+            {
+                enemy.PlayerIntelLevel = DemoIntelLevel.Unknown;
+                enemy.IsRevealedToPlayer = false;
+                return;
+            }
+
+            DemoIntelLevel previous = enemy.PlayerIntelLevel;
+            float age = SimulationTime - enemy.LastObservedAt;
+            if (age > Balance.ContactIntelMemoryDuration)
+            {
+                enemy.PlayerIntelLevel = DemoIntelLevel.Unknown;
+                enemy.IsRevealedToPlayer = false;
+                enemy.IdentificationProgress = 0f;
+                enemy.AssessmentProgress = 0f;
+            }
+            else if (age > Balance.IdentifiedIntelMemoryDuration)
+                enemy.PlayerIntelLevel = DemoIntelLevel.Contact;
+            else if (age > Balance.AssessedIntelMemoryDuration)
+                enemy.PlayerIntelLevel = DemoIntelLevel.Identified;
+            enemy.AssessmentProgress = Mathf.Max(0f, enemy.AssessmentProgress - dt * 0.25f);
+
+            if (previous >= DemoIntelLevel.Identified && enemy.PlayerIntelLevel == DemoIntelLevel.Contact)
+                Raise($"失去确认：{enemy.DisplayName}", enemy.LastKnownPosition, false);
+            if (previous != DemoIntelLevel.Unknown && enemy.PlayerIntelLevel == DemoIntelLevel.Unknown)
+                Raise($"目标失联：{enemy.DisplayName}", enemy.LastKnownPosition, false);
         }
 
         private void TickEnemyEngagement()
@@ -712,6 +868,10 @@ namespace SWRTS.Demo1
                     DemoUnitModel target = SelectBattleTarget(combat, attacker);
                     if (target == null)
                         continue;
+                    Vector3 facing = target.Position - attacker.Position;
+                    facing.y = 0f;
+                    if (facing.sqrMagnitude > 0.001f)
+                        attacker.Facing = facing.normalized;
 
                     float shieldBonus = combat.Participants
                         .Select(GetUnit)

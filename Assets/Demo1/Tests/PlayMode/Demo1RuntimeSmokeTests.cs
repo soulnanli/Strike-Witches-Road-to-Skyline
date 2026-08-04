@@ -18,12 +18,14 @@ namespace SWRTS.Demo1.PlayModeTests
             yield return null;
 
             Assert.That(controller.Simulation, Is.Not.Null);
-            Assert.That(controller.Simulation.Units.Count, Is.EqualTo(8));
-            Assert.That(controller.Simulation.Units.Count(unit => unit.Team == DemoTeam.Player), Is.EqualTo(4));
+            Assert.That(controller.Simulation.Units.Count, Is.EqualTo(9));
+            Assert.That(controller.Simulation.Units.Count(unit => unit.Team == DemoTeam.Player), Is.EqualTo(5));
+            Assert.That(controller.Simulation.Units.Count(unit => unit.Team == DemoTeam.Player && unit.Stats.WitchVisionType == DemoWitchVisionType.Ordinary), Is.EqualTo(4));
+            Assert.That(controller.Simulation.Units.Single(unit => unit.DisplayName.Contains("桑妮亚")).Stats.WitchVisionType, Is.EqualTo(DemoWitchVisionType.Night));
             Assert.That(controller.Simulation.Units.Any(unit => unit.Role == DemoUnitRole.Fortress), Is.True);
             Assert.That(Camera.main, Is.Not.Null);
             Assert.That(controller.Simulation.Outcome, Is.EqualTo(DemoOutcome.Running));
-            Assert.That(controller.SelectedUnitIds.Count, Is.EqualTo(4), "The squad should be ready to command on entry.");
+            Assert.That(controller.SelectedUnitIds.Count, Is.EqualTo(5), "The squad should be ready to command on entry.");
 
             DemoUnitModel mover = controller.Simulation.Units.First(unit => unit.Team == DemoTeam.Player);
             controller.SelectUnits(new[] { mover.Id });

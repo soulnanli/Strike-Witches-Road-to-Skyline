@@ -439,5 +439,104 @@ namespace SWRTS.Demo1.Tests
             Assert.That(simulation.Combats.Single().GetAssignment(fortress.Id).FortressBarrageAnnounced, Is.True);
             Assert.That(fortress.AttackCooldown, Is.EqualTo(fortress.Stats.AttackInterval * simulation.Balance.FortressBarrageIntervalMultiplier).Within(0.01f));
         }
+
+        [Test]
+        public void OrdinaryWitch_ObservesOnlyInsideForwardVisualSector()
+        {
+            Demo1Simulation simulation = new Demo1Simulation();
+            DemoUnitStats observerStats = BasicStats(0f);
+            observerStats.WitchVisionType = DemoWitchVisionType.Ordinary;
+            observerStats.VisionRadius = 20f;
+            observerStats.VisionAngle = 90f;
+            DemoUnitModel observer = simulation.AddUnit("ordinary", DemoTeam.Player, DemoUnitRole.Witch, observerStats, Vector3.zero);
+            observer.Facing = Vector3.right;
+            DemoUnitStats enemyStats = BasicStats(0f);
+            enemyStats.EngagementRadius = 0f;
+            DemoUnitModel front = simulation.AddUnit("front", DemoTeam.Enemy, DemoUnitRole.Guard, enemyStats, Vector3.right * 12f);
+            DemoUnitModel behind = simulation.AddUnit("behind", DemoTeam.Enemy, DemoUnitRole.Guard, enemyStats, Vector3.left * 12f);
+
+            simulation.Advance(0.6f);
+
+            Assert.That(front.PlayerIntelLevel, Is.GreaterThanOrEqualTo(DemoIntelLevel.Identified));
+            Assert.That(front.IsCurrentlyObservedByPlayer, Is.True);
+            Assert.That(behind.PlayerIntelLevel, Is.EqualTo(DemoIntelLevel.Unknown));
+            observer.Facing = Vector3.left;
+            simulation.Advance(0.6f);
+            Assert.That(behind.PlayerIntelLevel, Is.GreaterThanOrEqualTo(DemoIntelLevel.Identified));
+        }
+
+        [Test]
+        public void NightWitch_ObservesEveryDirectionInsideCircularArea()
+        {
+            Demo1Simulation simulation = new Demo1Simulation();
+            DemoUnitStats observerStats = BasicStats(0f);
+            observerStats.WitchVisionType = DemoWitchVisionType.Night;
+            observerStats.VisionRadius = 15f;
+            DemoUnitModel observer = simulation.AddUnit("night", DemoTeam.Player, DemoUnitRole.Witch, observerStats, Vector3.zero);
+            observer.Facing = Vector3.right;
+            DemoUnitStats enemyStats = BasicStats(0f);
+            enemyStats.EngagementRadius = 0f;
+            DemoUnitModel front = simulation.AddUnit("front", DemoTeam.Enemy, DemoUnitRole.Guard, enemyStats, Vector3.right * 12f);
+            DemoUnitModel behind = simulation.AddUnit("behind", DemoTeam.Enemy, DemoUnitRole.Guard, enemyStats, Vector3.left * 12f);
+            DemoUnitModel outside = simulation.AddUnit("outside", DemoTeam.Enemy, DemoUnitRole.Guard, enemyStats, Vector3.forward * 18f);
+
+            simulation.Advance(0.6f);
+
+            Assert.That(front.PlayerIntelLevel, Is.GreaterThanOrEqualTo(DemoIntelLevel.Identified));
+            Assert.That(behind.PlayerIntelLevel, Is.GreaterThanOrEqualTo(DemoIntelLevel.Identified));
+            Assert.That(outside.PlayerIntelLevel, Is.EqualTo(DemoIntelLevel.Unknown));
+        }
+
+        [Test]
+        public void LostContact_FreezesLastKnownPositionAndDecaysToUnknown()
+        {
+            Demo1Balance balance = new Demo1Balance
+            {
+                VisionIdentificationDuration = 0.1f,
+                VisionAssessmentDuration = 0.1f,
+                AssessedIntelMemoryDuration = 0.3f,
+                IdentifiedIntelMemoryDuration = 0.6f,
+                ContactIntelMemoryDuration = 0.9f
+            };
+            Demo1Simulation simulation = new Demo1Simulation(balance);
+            DemoUnitStats observerStats = BasicStats(0f);
+            observerStats.WitchVisionType = DemoWitchVisionType.Ordinary;
+            observerStats.VisionRadius = 20f;
+            observerStats.VisionAngle = 90f;
+            DemoUnitModel observer = simulation.AddUnit("ordinary", DemoTeam.Player, DemoUnitRole.Witch, observerStats, Vector3.zero);
+            observer.Facing = Vector3.right;
+            DemoUnitStats enemyStats = BasicStats(0f);
+            enemyStats.EngagementRadius = 0f;
+            DemoUnitModel enemy = simulation.AddUnit("enemy", DemoTeam.Enemy, DemoUnitRole.Guard, enemyStats, Vector3.right * 10f);
+
+            simulation.Advance(0.3f);
+            Assert.That(enemy.PlayerIntelLevel, Is.EqualTo(DemoIntelLevel.Assessed));
+            Vector3 lastKnown = enemy.LastKnownPosition;
+            enemy.Position = Vector3.left * 10f;
+            simulation.Advance(0.4f);
+            Assert.That(enemy.PlayerIntelLevel, Is.EqualTo(DemoIntelLevel.Identified));
+            Assert.That(enemy.PlayerVisiblePosition, Is.EqualTo(lastKnown));
+            simulation.Advance(0.3f);
+            Assert.That(enemy.PlayerIntelLevel, Is.EqualTo(DemoIntelLevel.Contact));
+            Assert.That(enemy.CanBeDirectlyTargetedByPlayer, Is.False);
+            simulation.Advance(0.3f);
+            Assert.That(enemy.PlayerIntelLevel, Is.EqualTo(DemoIntelLevel.Unknown));
+            Assert.That(enemy.HasPlayerIntel, Is.False);
+        }
+
+        [Test]
+        public void PersistentMissionIntel_RemainsIdentifiedOutsideVision()
+        {
+            Demo1Balance balance = new Demo1Balance { ContactIntelMemoryDuration = 0.2f };
+            Demo1Simulation simulation = new Demo1Simulation(balance);
+            DemoUnitModel objective = simulation.AddUnit("objective", DemoTeam.Enemy, DemoUnitRole.Fortress, BasicStats(0f), Vector3.right * 30f);
+
+            simulation.GrantPersistentPlayerIntel(objective.Id);
+            simulation.Advance(1f);
+
+            Assert.That(objective.PlayerIntelLevel, Is.GreaterThanOrEqualTo(DemoIntelLevel.Identified));
+            Assert.That(objective.HasPlayerIntel, Is.True);
+            Assert.That(objective.CanBeDirectlyTargetedByPlayer, Is.True);
+        }
     }
 }

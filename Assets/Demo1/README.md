@@ -35,6 +35,16 @@ Open `Assets/Demo1/Scenes/Demo1.unity` and enter Play Mode.
 - Enemy scouts, guards and the fortress use reinforced prototype durability and attack values, giving line changes and reinforcement deployment time to affect the battle.
 - These formation rules and values are code-only prototype assumptions and have not been written back to Feishu revision 6.
 
+## Witch vision and player intelligence prototype
+
+- Witch vision is independent from combat role. The original four witches are ordinary witches with a 100-degree forward visual sector and no circular radar.
+- Sanya V. Litvyak is added as the fifth player unit. She is a night witch with a 28-unit, 360-degree circular detection area and no visual sector.
+- Moving or engaging turns an ordinary witch's sector toward her destination or target. Selecting a witch shows only the area produced by her own vision type.
+- A newly observed enemy starts as an unknown contact, becomes identified after 0.5 seconds of observation, and becomes assessed after another 1.5 seconds. Only assessed intelligence exposes health on the strategic map.
+- When observation is lost, the enemy marker freezes at its last known position. Intelligence degrades from assessed to identified after 3 seconds, to contact after 7 seconds, and disappears after 15 seconds.
+- Stale contacts cannot be directly engaged, but their last known area remains a valid movement or remote-strike destination. Mission-known fixed objectives keep persistent identified intelligence.
+- These vision shapes, durations and sharing rules are code-only prototype assumptions and have not been written back to Feishu revision 6.
+
 ## Configurable prototype assumptions
 
 The Feishu specification revision 6 intentionally leaves formulas and concrete values open. Demo defaults are centralized in `Demo1Balance` and `DemoUnitStats`:

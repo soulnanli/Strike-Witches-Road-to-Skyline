@@ -43,6 +43,14 @@ namespace SWRTS.Demo1
             return line;
         }
 
+        public static LineRenderer CreateSector(Transform parent, string name, Color color, float width, int segments = 40)
+        {
+            LineRenderer line = CreateLine(parent, name, color, width);
+            line.loop = false;
+            line.positionCount = Mathf.Max(4, segments + 3);
+            return line;
+        }
+
         public static void SetCircle(LineRenderer line, Vector3 center, float radius, float y = 0.08f)
         {
             if (line == null)
@@ -53,6 +61,26 @@ namespace SWRTS.Demo1
                 float angle = i * Mathf.PI * 2f / count;
                 line.SetPosition(i, new Vector3(center.x + Mathf.Cos(angle) * radius, y, center.z + Mathf.Sin(angle) * radius));
             }
+        }
+
+        public static void SetSector(LineRenderer line, Vector3 center, Vector3 facing, float radius, float angleDegrees, float y = 0.08f)
+        {
+            if (line == null)
+                return;
+            facing.y = 0f;
+            if (facing.sqrMagnitude < 0.001f)
+                facing = Vector3.right;
+            float centerAngle = Mathf.Atan2(facing.z, facing.x);
+            float halfAngle = Mathf.Clamp(angleDegrees, 1f, 359f) * 0.5f * Mathf.Deg2Rad;
+            int arcPoints = line.positionCount - 2;
+            line.SetPosition(0, new Vector3(center.x, y, center.z));
+            for (int i = 0; i < arcPoints; i++)
+            {
+                float t = arcPoints <= 1 ? 0.5f : (float)i / (arcPoints - 1);
+                float angle = Mathf.Lerp(centerAngle - halfAngle, centerAngle + halfAngle, t);
+                line.SetPosition(i + 1, new Vector3(center.x + Mathf.Cos(angle) * radius, y, center.z + Mathf.Sin(angle) * radius));
+            }
+            line.SetPosition(line.positionCount - 1, new Vector3(center.x, y, center.z));
         }
 
         public static Material CreateMaterial(Color color)

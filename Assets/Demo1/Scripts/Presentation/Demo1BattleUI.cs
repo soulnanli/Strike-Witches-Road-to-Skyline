@@ -291,7 +291,9 @@ namespace SWRTS.Demo1
             Button button = AddButton(parent, $"Unit {unit.Id}", string.Empty, position, new Vector2(204f, 88f),
                 unit.Team == DemoTeam.Player ? (UnityEngine.Events.UnityAction)(() => SelectUnit(unit.Id)) : null, color);
             Transform root = button.transform;
-            AddText(root, "Name", $"{unit.DisplayName}  ·  {RoleName(unit.Role)}", new Vector2(0f, 28f), new Vector2(190f, 22f), 14, TextAnchor.MiddleLeft, Color.white);
+            string visionLabel = unit.Team == DemoTeam.Player && unit.Stats.WitchVisionType != DemoWitchVisionType.None
+                ? $"·{VisionTypeName(unit.Stats.WitchVisionType)}" : string.Empty;
+            AddText(root, "Name", $"{unit.DisplayName}  ·  {RoleName(unit.Role)}{visionLabel}", new Vector2(0f, 28f), new Vector2(190f, 22f), 14, TextAnchor.MiddleLeft, Color.white);
             string stateText = state.IsRepositioning ? $"换位 {state.RepositionRemaining:0.0}s" : unit.Activity == DemoUnitActivity.Retreating ? $"撤退 {unit.RetreatProgress:P0}" : "交战中";
             string roleStatus = RoleStatus(combat, unit, state);
             if (!string.IsNullOrEmpty(roleStatus))
@@ -387,6 +389,11 @@ namespace SWRTS.Demo1
                 case DemoUnitRole.Fortress: return "固定目标";
                 default: return role.ToString();
             }
+        }
+
+        private static string VisionTypeName(DemoWitchVisionType type)
+        {
+            return type == DemoWitchVisionType.Night ? "夜战" : "普通";
         }
 
         private string RoleStatus(DemoCombatModel combat, DemoUnitModel unit, DemoCombatParticipantState state)
