@@ -71,6 +71,42 @@ namespace SWRTS.Demo1.Tests
         }
 
         [Test]
+        public void StrategicLineWidth_RemainsConstantInScreenPixelsAcrossZoomLevels()
+        {
+            GameObject root = new GameObject("line-width-test");
+            GameObject cameraObject = new GameObject("line-width-camera");
+            Camera camera = cameraObject.AddComponent<Camera>();
+            RenderTexture target = new RenderTexture(1000, 500, 0);
+            try
+            {
+                camera.orthographic = true;
+                camera.targetTexture = target;
+                LineRenderer line = Demo1Drawing.CreateLine(root.transform, "line", Color.white, 3f);
+                Demo1ScreenSpaceLineWidth width = line.GetComponent<Demo1ScreenSpaceLineWidth>();
+
+                Assert.That(width, Is.Not.Null);
+                Assert.That(width.PixelWidth, Is.EqualTo(3f));
+
+                camera.orthographicSize = 25f;
+                width.Refresh(camera);
+                float nearPixels = line.startWidth / (camera.orthographicSize * 2f) * camera.pixelHeight;
+
+                camera.orthographicSize = 157.5f;
+                width.Refresh(camera);
+                float farPixels = line.startWidth / (camera.orthographicSize * 2f) * camera.pixelHeight;
+
+                Assert.That(nearPixels, Is.EqualTo(3f).Within(0.001f));
+                Assert.That(farPixels, Is.EqualTo(3f).Within(0.001f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(root);
+                Object.DestroyImmediate(cameraObject);
+                Object.DestroyImmediate(target);
+            }
+        }
+
+        [Test]
         public void Damage_ConsumesShieldAndMagicBeforeHealth()
         {
             Demo1Balance balance = new Demo1Balance();

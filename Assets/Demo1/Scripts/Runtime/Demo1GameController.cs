@@ -1008,8 +1008,8 @@ namespace SWRTS.Demo1
                     visual = new CombatVisual
                     {
                         Root = root,
-                        Reinforcement = Demo1Drawing.CreateCircle(root.transform, "Reinforcement Zone", new Color(0.2f, 0.75f, 1f, 0.55f), 0.12f, 96),
-                        Forced = Demo1Drawing.CreateCircle(root.transform, "Forced Engagement Zone", new Color(1f, 0.28f, 0.12f, 0.85f), 0.16f, 72)
+                        Reinforcement = Demo1Drawing.CreateCircle(root.transform, "Reinforcement Zone", new Color(0.2f, 0.75f, 1f, 0.55f), 2.5f, 96),
+                        Forced = Demo1Drawing.CreateCircle(root.transform, "Forced Engagement Zone", new Color(1f, 0.28f, 0.12f, 0.85f), 3.5f, 72)
                     };
                     _combatViews.Add(combat.Id, visual);
                 }
@@ -1027,7 +1027,7 @@ namespace SWRTS.Demo1
                     visual = new StrikeVisual
                     {
                         Root = root,
-                        Radius = Demo1Drawing.CreateCircle(root.transform, "Target Area", new Color(1f, 0.78f, 0.1f, 0.95f), 0.18f, 64)
+                        Radius = Demo1Drawing.CreateCircle(root.transform, "Target Area", new Color(1f, 0.78f, 0.1f, 0.95f), 3.5f, 64)
                     };
                     _strikeViews.Add(strike.Id, visual);
                 }
@@ -1574,7 +1574,7 @@ namespace SWRTS.Demo1
 
         private void CreateGridLine(Transform parent, Vector3 a, Vector3 b)
         {
-            LineRenderer line = Demo1Drawing.CreateLine(parent, "Grid Line", new Color(0.22f, 0.38f, 0.42f, 0.35f), 0.025f);
+            LineRenderer line = Demo1Drawing.CreateLine(parent, "Grid Line", new Color(0.22f, 0.38f, 0.42f, 0.35f), 1f);
             line.SetPosition(0, a);
             line.SetPosition(1, b);
         }

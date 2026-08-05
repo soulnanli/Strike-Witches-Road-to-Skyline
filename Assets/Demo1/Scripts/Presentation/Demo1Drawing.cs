@@ -7,7 +7,7 @@ namespace SWRTS.Demo1
         private static Shader _flatColorShader;
         private static Shader _lineColorShader;
 
-        public static LineRenderer CreateCircle(Transform parent, string name, Color color, float width, int segments = 64)
+        public static LineRenderer CreateCircle(Transform parent, string name, Color color, float pixelWidth, int segments = 64)
         {
             GameObject circle = new GameObject(name);
             circle.transform.SetParent(parent, false);
@@ -15,8 +15,7 @@ namespace SWRTS.Demo1
             line.useWorldSpace = true;
             line.loop = true;
             line.positionCount = segments;
-            line.startWidth = width;
-            line.endWidth = width;
+            ConfigureScreenSpaceWidth(line, pixelWidth);
             line.numCornerVertices = 2;
             Material material = CreateLineMaterial(color);
             if (material != null)
@@ -26,15 +25,14 @@ namespace SWRTS.Demo1
             return line;
         }
 
-        public static LineRenderer CreateLine(Transform parent, string name, Color color, float width)
+        public static LineRenderer CreateLine(Transform parent, string name, Color color, float pixelWidth)
         {
             GameObject lineObject = new GameObject(name);
             lineObject.transform.SetParent(parent, false);
             LineRenderer line = lineObject.AddComponent<LineRenderer>();
             line.useWorldSpace = true;
             line.positionCount = 2;
-            line.startWidth = width;
-            line.endWidth = width;
+            ConfigureScreenSpaceWidth(line, pixelWidth);
             Material material = CreateLineMaterial(color);
             if (material != null)
                 line.material = material;
@@ -43,9 +41,9 @@ namespace SWRTS.Demo1
             return line;
         }
 
-        public static LineRenderer CreateSector(Transform parent, string name, Color color, float width, int segments = 40)
+        public static LineRenderer CreateSector(Transform parent, string name, Color color, float pixelWidth, int segments = 40)
         {
-            LineRenderer line = CreateLine(parent, name, color, width);
+            LineRenderer line = CreateLine(parent, name, color, pixelWidth);
             line.loop = false;
             line.positionCount = Mathf.Max(4, segments + 3);
             return line;
@@ -115,6 +113,13 @@ namespace SWRTS.Demo1
             Material material = new Material(shader);
             material.SetColor("_BaseColor", Color.white);
             return material;
+        }
+
+        private static void ConfigureScreenSpaceWidth(LineRenderer line, float pixelWidth)
+        {
+            line.startWidth = 0f;
+            line.endWidth = 0f;
+            line.gameObject.AddComponent<Demo1ScreenSpaceLineWidth>().Initialize(pixelWidth);
         }
 
         private static Shader LoadShader(ref Shader cache, string resourceName, string shaderName)

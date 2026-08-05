@@ -50,6 +50,7 @@ These values remain code-prototype balance and are not additions to Feishu revis
 ### Interface presentation pass
 
 - The strategic HUD uses a unified dark tactical palette with cyan player, red enemy, amber warning and green success semantics. Mission, commands, feedback, selected units and recent events are visually separated instead of relying on Unity's default controls.
+- Strategic map lines use fixed screen-pixel widths. Selection, vision, engagement, route, combat-zone, remote-strike and grid lines remain legible across the complete camera zoom range instead of shrinking with world scale.
 - Selected-unit cards prioritize name, activity and the three live resources. Single selection keeps the detailed character panel on the right; multi-selection remains summarized on the left.
 - Battle bubbles now expose battle trend, team counts and screening status at a glance. Screening below 50% is shown as a warning.
 - The live battle panel has a stronger header, mirrored player/enemy lanes, explicit battle balance, compact unit states, selected-card outlines, a dedicated event area and grouped commands.
