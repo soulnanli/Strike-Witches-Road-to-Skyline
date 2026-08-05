@@ -800,6 +800,28 @@ namespace SWRTS.Demo1.Tests
         }
 
         [Test]
+        public void LevelConfigs_DeployEnemiesOnFrenchSideAwayFromFolkestoneBase()
+        {
+            DemoLevelConfig[] levels = Resources.LoadAll<DemoLevelConfig>("Configs/Levels");
+
+            foreach (DemoLevelConfig level in levels)
+            {
+                DemoUnitConfig[] enemies = level.Units
+                    .Where(unit => unit != null && unit.Team == DemoTeam.Enemy)
+                    .ToArray();
+
+                Assert.That(enemies, Is.Not.Empty, level.LevelId);
+                foreach (DemoUnitConfig enemy in enemies)
+                {
+                    Vector3 spawn = level.GetSpawnPosition(enemy);
+                    Assert.That(spawn.z, Is.LessThan(0f), $"{level.LevelId}: {enemy.name} must start on the French side of the theatre.");
+                    Assert.That(Vector3.Distance(spawn, level.BasePosition), Is.GreaterThan(120f),
+                        $"{level.LevelId}: {enemy.name} starts too close to Folkestone base.");
+                }
+            }
+        }
+
+        [Test]
         public void WitchConfigs_ConvertHistoricalAircraftSpeedOntoKilometerMap()
         {
             Demo1Balance balance = Resources.Load<Demo1BalanceConfig>("Configs/Demo1Balance").CreateRuntimeValue();

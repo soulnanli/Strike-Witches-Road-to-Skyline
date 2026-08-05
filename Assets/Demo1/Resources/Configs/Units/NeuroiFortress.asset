@@ -16,7 +16,7 @@ MonoBehaviour:
   DisplayName: 异形军巢穴
   Team: 1
   Role: 5
-  StartingPosition: {x: 218, y: 0, z: 62}
+  StartingPosition: {x: 230, y: 0, z: -82}
   Stats:
     MaxHealth: 720
     Attack: 42
