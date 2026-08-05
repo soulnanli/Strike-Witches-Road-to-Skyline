@@ -66,6 +66,9 @@ sysinfo.txt
 # Crashlytics generated file
 crashlytics-build.properties
 
+# Generated terrain acceleration texture (rebuild via MinMaxHeightMapGenerator)
+/Assets/Resources/MinMaxHeightMap.exr
+
 # Packed Addressables
 /[Aa]ssets/[Aa]ddressable[Aa]ssets[Dd]ata/*/*.bin*
 
