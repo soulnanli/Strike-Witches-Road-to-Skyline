@@ -307,7 +307,11 @@ namespace SWRTS.Demo1
         private void RebuildPanel(DemoCombatModel combat)
         {
             for (int i = _panelContent.childCount - 1; i >= 0; i--)
-                Destroy(_panelContent.GetChild(i).gameObject);
+            {
+                GameObject staleContent = _panelContent.GetChild(i).gameObject;
+                staleContent.SetActive(false);
+                Destroy(staleContent);
+            }
 
             AddImage(_panelContent, "Header", new Vector2(0f, 360f), new Vector2(1144f, 66f), new Color(0.035f, 0.075f, 0.095f, 1f));
             AddImage(_panelContent, "Header Accent", new Vector2(0f, 326f), new Vector2(1144f, 2f), new Color(0.14f, 0.52f, 0.64f, 0.95f));

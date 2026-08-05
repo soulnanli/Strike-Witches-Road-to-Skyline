@@ -160,6 +160,13 @@ namespace SWRTS.Demo1.PlayModeTests
             battleUi.OpenPanel(combat.Id);
             yield return null;
 
+            yield return new WaitForSecondsRealtime(0.15f);
+            Transform panel = GameObject.Find("Battle Panel").transform;
+            int activeTitleCount = Resources.FindObjectsOfTypeAll<GameObject>()
+                .Count(item => item.name == "Title" && item.scene.IsValid() && item.activeInHierarchy && item.transform.IsChildOf(panel));
+            Assert.That(activeTitleCount, Is.EqualTo(1),
+                "A live refresh must retire delayed-destroy UI before the replacement becomes visible.");
+
             Button unitButton = GameObject.Find($"Unit {player.Id}").GetComponent<Button>();
             int pressedButtonInstanceId = unitButton.gameObject.GetInstanceID();
             PointerEventData pointer = new PointerEventData(EventSystem.current)

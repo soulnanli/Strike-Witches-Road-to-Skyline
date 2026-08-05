@@ -30,6 +30,7 @@ These values remain code-prototype balance and are not additions to Feishu revis
 - Selected-unit cards prioritize name, activity and the three live resources. Single selection keeps the detailed character panel on the right; multi-selection remains summarized on the left.
 - Battle bubbles now expose battle trend, team counts and screening status at a glance. Screening below 50% is shown as a warning.
 - The live battle panel has a stronger header, mirrored player/enemy lanes, explicit battle balance, compact unit states, selected-card outlines, a dedicated event area and grouped commands.
+- Live panel refreshes immediately deactivate the previous graphics before Unity's delayed destruction runs, so only one set of text, bars and cards can render in a frame.
 - The battle panel offsets itself from the fixed 340-pixel strategic HUD after Canvas scaling so that it remains usable in both 16:9 and smaller Game Views.
 
 This visual pass implements the information requirements of Feishu revision 6 without defining a final production art direction.
