@@ -24,6 +24,11 @@ namespace SWRTS.Prototype.BaseScene.PlayModeTests
 
             controller.OpenReadinessPanel();
             Assert.That(controller.IsReadinessPanelOpen, Is.True);
+            RectTransform readinessPanel = GameObject.Find("Sortie Readiness Panel").GetComponent<RectTransform>();
+            Assert.That(readinessPanel.anchorMin.x, Is.EqualTo(1f));
+            Assert.That(readinessPanel.anchorMax.x, Is.EqualTo(1f));
+            Assert.That(readinessPanel.anchoredPosition.x, Is.LessThan(0f),
+                "The readiness panel must stay on the right, opposite the left-side mission/event HUD.");
             Assert.That(controller.SetWitchSelected("宫藤芳佳", true), Is.True);
             Assert.That(controller.SetWitchSelected("坂本美绪", true), Is.True);
             Assert.That(controller.SelectedWitchCount, Is.EqualTo(2));

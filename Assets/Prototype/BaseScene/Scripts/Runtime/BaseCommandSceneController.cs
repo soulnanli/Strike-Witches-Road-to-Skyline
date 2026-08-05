@@ -318,8 +318,8 @@ namespace SWRTS.Prototype.BaseScene
 
         private void CreateReadinessPanel(Transform parent)
         {
-            RectTransform panel = CreateRect("Sortie Readiness Panel", parent, Vector2.zero, Vector2.up,
-                new Vector2(236f, -10f), new Vector2(472f, -124f));
+            RectTransform panel = CreateRect("Sortie Readiness Panel", parent, Vector2.right, Vector2.one,
+                new Vector2(-236f, -10f), new Vector2(472f, -124f));
             Image panelImage = panel.gameObject.AddComponent<Image>();
             panelImage.color = PanelNavy;
             Outline outline = panel.gameObject.AddComponent<Outline>();
