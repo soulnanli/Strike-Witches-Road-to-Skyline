@@ -10,6 +10,11 @@ namespace SWRTS.Demo1
         public DemoTeam Team;
         public DemoUnitRole Role;
         public Vector3 StartingPosition;
+        [Header("Historical movement reference")]
+        public string StrikerUnitModel;
+        [Min(0f)] public float HistoricalMaxSpeedKph;
+        public string HistoricalSpeedBasis;
+        public bool UseHistoricalMovementSpeed;
         public DemoUnitStats Stats = new DemoUnitStats();
         public bool GrantPersistentPlayerIntel;
         public DemoEnemyAiProfile EnemyAiProfile;
@@ -17,9 +22,12 @@ namespace SWRTS.Demo1
         public Vector3 EnemyAiHomePosition;
         public Vector3[] ScoutPatrolPoints = new Vector3[0];
 
-        public DemoUnitStats CreateRuntimeStats()
+        public DemoUnitStats CreateRuntimeStats(Demo1Balance balance = null)
         {
-            return Stats?.Clone() ?? new DemoUnitStats();
+            DemoUnitStats stats = Stats?.Clone() ?? new DemoUnitStats();
+            if (UseHistoricalMovementSpeed && HistoricalMaxSpeedKph > 0f && balance != null)
+                stats.MoveSpeed = balance.HistoricalSpeedToMapUnitsPerSecond(HistoricalMaxSpeedKph);
+            return stats;
         }
 
         public Vector3 GetEnemyAiHomePosition()

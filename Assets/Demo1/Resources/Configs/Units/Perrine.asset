@@ -16,7 +16,11 @@ MonoBehaviour:
   DisplayName: 佩琳
   Team: 0
   Role: 0
-  StartingPosition: {x: -23, y: 0, z: 12}
+  StartingPosition: {x: 184, y: 0, z: 104}
+  StrikerUnitModel: Arsenal VG.39bis
+  HistoricalMaxSpeedKph: 625
+  HistoricalSpeedBasis: VG.39 prototype reference; VG.39bis was not completed
+  UseHistoricalMovementSpeed: 1
   Stats:
     MaxHealth: 188
     Attack: 38
@@ -30,7 +34,7 @@ MonoBehaviour:
     AttackInterval: 1.6
     MagicRecovery: 5
     Mobility: 1
-    MoveSpeed: 6
+    MoveSpeed: 2.0833333
     VisionRadius: 24
     VisionAngle: 100
     WitchVisionType: 1

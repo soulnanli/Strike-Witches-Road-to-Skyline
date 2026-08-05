@@ -47,6 +47,10 @@ namespace SWRTS.Demo1
         [SerializeField] private Demo1BalanceConfig _balanceConfig;
         [SerializeField] private DemoUnitConfig[] _unitConfigs;
         [SerializeField] private DemoLevelConfig[] _levelConfigs;
+        private Texture2D _operationalMapTexture;
+        private DemoUnitConfig[] _sortieWitches;
+        private Vector2 _operationalMapSizeKilometers;
+        private Vector2 _operationalStartNormalized = new Vector2(0.835f, 0.82f);
         private DemoLevelConfig _activeLevel;
         private Camera _camera;
         private Demo1CameraController _cameraController;
@@ -102,10 +106,29 @@ namespace SWRTS.Demo1
         public string ActiveLevelName => _activeLevel != null ? _activeLevel.DisplayName : "Demo 1.0";
         public string ActiveMissionText => _activeLevel != null ? _activeLevel.MissionText : "摧毁东侧异形军巢穴。";
 
+        public void ConfigureOperationalLevel(Texture2D mapTexture, IEnumerable<DemoUnitConfig> sortieWitches,
+            Vector2 mapSizeKilometers, Vector2 startNormalized)
+        {
+            _operationalMapTexture = mapTexture;
+            _sortieWitches = sortieWitches?
+                .Where(config => config != null && config.Team == DemoTeam.Player)
+                .Distinct()
+                .OrderBy(config => config.SpawnOrder)
+                .ToArray();
+            _operationalMapSizeKilometers = mapSizeKilometers;
+            _operationalStartNormalized = startNormalized;
+        }
+
         private void Start()
         {
             LoadScenarioConfigs();
             _balance = _balanceConfig != null ? _balanceConfig.CreateRuntimeValue() : new Demo1Balance();
+            if (_operationalMapSizeKilometers.x > 0f && _operationalMapSizeKilometers.y > 0f)
+            {
+                _balance.MapHalfWidth = _operationalMapSizeKilometers.x * 0.5f;
+                _balance.MapHalfHeight = _operationalMapSizeKilometers.y * 0.5f;
+                _balance.MapKilometersPerUnit = 1f;
+            }
             _simulation = new Demo1Simulation(_balance);
             _simulation.EventRaised += OnBattleEvent;
             BuildEnvironment();
@@ -163,6 +186,13 @@ namespace SWRTS.Demo1
                     .OrderBy(config => config.SpawnOrder)
                     .ToArray();
             }
+            if (_sortieWitches != null && _sortieWitches.Length > 0)
+            {
+                HashSet<DemoUnitConfig> sortieSet = new HashSet<DemoUnitConfig>(_sortieWitches);
+                _unitConfigs = _unitConfigs
+                    .Where(config => config.Team != DemoTeam.Player || sortieSet.Contains(config))
+                    .ToArray();
+            }
         }
 
         private void Update()
@@ -193,7 +223,9 @@ namespace SWRTS.Demo1
             ground.transform.SetParent(transform);
             ground.transform.position = Vector3.zero;
             ground.transform.localScale = new Vector3(_balance.MapHalfWidth / 5f, 1f, _balance.MapHalfHeight / 5f);
-            ground.GetComponent<Renderer>().sharedMaterial = Demo1Drawing.CreateMaterial(new Color(0.075f, 0.12f, 0.14f));
+            ground.GetComponent<Renderer>().sharedMaterial = _operationalMapTexture != null
+                ? Demo1Drawing.CreateMapMaterial(_operationalMapTexture, Color.white)
+                : Demo1Drawing.CreateMaterial(new Color(0.075f, 0.12f, 0.14f));
 
             GameObject gridRoot = new GameObject("Map Grid");
             gridRoot.transform.SetParent(transform);
@@ -202,8 +234,11 @@ namespace SWRTS.Demo1
             for (int z = -(int)_balance.MapHalfHeight; z <= _balance.MapHalfHeight; z += 10)
                 CreateGridLine(gridRoot.transform, new Vector3(-_balance.MapHalfWidth, 0.025f, z), new Vector3(_balance.MapHalfWidth, 0.025f, z));
 
-            CreateLandmark("Dover", new Vector3(-33f, 0.3f, -20f), new Vector3(6f, 0.6f, 6f), new Color(0.18f, 0.26f, 0.28f));
-            CreateLandmark("Calais", new Vector3(31f, 0.3f, 20f), new Vector3(7f, 0.6f, 5f), new Color(0.2f, 0.22f, 0.25f));
+            if (_operationalMapTexture == null)
+            {
+                CreateLandmark("Dover", new Vector3(-33f, 0.3f, -20f), new Vector3(6f, 0.6f, 6f), new Color(0.18f, 0.26f, 0.28f));
+                CreateLandmark("Calais", new Vector3(31f, 0.3f, 20f), new Vector3(7f, 0.6f, 5f), new Color(0.2f, 0.22f, 0.25f));
+            }
 
             GameObject lightObject = new GameObject("Directional Light");
             lightObject.transform.SetParent(transform);
@@ -215,21 +250,61 @@ namespace SWRTS.Demo1
 
         private void BuildCamera()
         {
-            GameObject cameraObject = new GameObject("Demo1 Camera");
-            cameraObject.tag = "MainCamera";
-            cameraObject.transform.SetParent(transform);
-            cameraObject.transform.position = new Vector3(-5f, 50f, 0f);
+            _camera = Camera.main;
+            GameObject cameraObject;
+            if (_camera == null)
+            {
+                cameraObject = new GameObject("Demo1 Camera");
+                cameraObject.tag = "MainCamera";
+                cameraObject.transform.SetParent(transform);
+                _camera = cameraObject.AddComponent<Camera>();
+            }
+            else
+            {
+                cameraObject = _camera.gameObject;
+                cameraObject.name = "Demo1 Camera";
+            }
+            Vector3 cameraCenter = _operationalMapTexture != null
+                ? NormalizedMapPosition(_operationalStartNormalized)
+                : GetScenarioCameraCenter();
+            cameraObject.transform.position = new Vector3(cameraCenter.x, 50f, cameraCenter.z);
             cameraObject.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
-            _camera = cameraObject.AddComponent<Camera>();
             _camera.orthographic = true;
             _camera.orthographicSize = 24f;
             _camera.nearClipPlane = 0.1f;
             _camera.farClipPlane = 100f;
             _camera.backgroundColor = new Color(0.025f, 0.04f, 0.055f);
             _camera.clearFlags = CameraClearFlags.SolidColor;
-            cameraObject.AddComponent<AudioListener>();
-            _cameraController = cameraObject.AddComponent<Demo1CameraController>();
+            if (cameraObject.GetComponent<AudioListener>() == null)
+                cameraObject.AddComponent<AudioListener>();
+            _cameraController = cameraObject.GetComponent<Demo1CameraController>();
+            if (_cameraController == null)
+                _cameraController = cameraObject.AddComponent<Demo1CameraController>();
             _cameraController.MapHalfExtents = new Vector2(_balance.MapHalfWidth, _balance.MapHalfHeight);
+        }
+
+        private Vector3 NormalizedMapPosition(Vector2 normalized)
+        {
+            return new Vector3(
+                Mathf.Lerp(-_balance.MapHalfWidth, _balance.MapHalfWidth, Mathf.Clamp01(normalized.x)),
+                0f,
+                Mathf.Lerp(-_balance.MapHalfHeight, _balance.MapHalfHeight, Mathf.Clamp01(normalized.y)));
+        }
+
+        private Vector3 GetScenarioCameraCenter()
+        {
+            DemoUnitConfig[] players = _unitConfigs?
+                .Where(config => config != null && config.Team == DemoTeam.Player)
+                .ToArray();
+            if (players == null || players.Length == 0)
+                return Vector3.zero;
+
+            Vector3 center = Vector3.zero;
+            foreach (DemoUnitConfig config in players)
+                center += _activeLevel != null ? _activeLevel.GetSpawnPosition(config) : config.StartingPosition;
+            center /= players.Length;
+            center.y = 0f;
+            return center;
         }
 
         private void CreateScenario()
@@ -246,7 +321,9 @@ namespace SWRTS.Demo1
             foreach (DemoUnitConfig config in _unitConfigs.Where(config => config != null).OrderBy(config => config.SpawnOrder))
             {
                 Vector3 startingPosition = _activeLevel != null ? _activeLevel.GetSpawnPosition(config) : config.StartingPosition;
-                DemoUnitStats runtimeStats = _activeLevel != null ? _activeLevel.CreateRuntimeStats(config) : config.CreateRuntimeStats();
+                DemoUnitStats runtimeStats = _activeLevel != null
+                    ? _activeLevel.CreateRuntimeStats(config, _balance)
+                    : config.CreateRuntimeStats(_balance);
                 DemoUnitModel unit = AddUnit(config.DisplayName, config.Team, config.Role,
                     runtimeStats, startingPosition);
                 spawned.Add(new KeyValuePair<DemoUnitConfig, DemoUnitModel>(config, unit));

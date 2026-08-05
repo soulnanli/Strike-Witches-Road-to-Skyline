@@ -16,7 +16,7 @@ MonoBehaviour:
   DisplayName: 异形军侦察体
   Team: 1
   Role: 3
-  StartingPosition: {x: 2, y: 0, z: -9}
+  StartingPosition: {x: 196, y: 0, z: 76}
   Stats:
     MaxHealth: 190
     Attack: 26
@@ -46,7 +46,7 @@ MonoBehaviour:
   UseStartingPositionAsAiHome: 1
   EnemyAiHomePosition: {x: 0, y: 0, z: 0}
   ScoutPatrolPoints:
-  - {x: 2, y: 0, z: -9}
-  - {x: -10, y: 0, z: -5}
-  - {x: -2, y: 0, z: 4}
-  - {x: 8, y: 0, z: -1}
+  - {x: 196, y: 0, z: 76}
+  - {x: 187, y: 0, z: 85}
+  - {x: 200, y: 0, z: 90}
+  - {x: 210, y: 0, z: 78}

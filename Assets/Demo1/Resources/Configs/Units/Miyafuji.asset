@@ -16,7 +16,11 @@ MonoBehaviour:
   DisplayName: 宫藤芳佳
   Team: 0
   Role: 1
-  StartingPosition: {x: -27, y: 0, z: -10}
+  StartingPosition: {x: 184, y: 0, z: 97}
+  StrikerUnitModel: A6M3a Zero Fighter
+  HistoricalMaxSpeedKph: 541
+  HistoricalSpeedBasis: A6M3 Model 22 maximum level speed
+  UseHistoricalMovementSpeed: 1
   Stats:
     MaxHealth: 181
     Attack: 27
@@ -30,7 +34,7 @@ MonoBehaviour:
     AttackInterval: 1.6
     MagicRecovery: 9
     Mobility: 1
-    MoveSpeed: 6
+    MoveSpeed: 1.8033333
     VisionRadius: 24
     VisionAngle: 100
     WitchVisionType: 1

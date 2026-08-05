@@ -9,6 +9,7 @@ namespace SWRTS.Demo1.Editor
     public static class Demo1SceneBuilder
     {
         public const string ScenePath = "Assets/Demo1/Scenes/Demo1.unity";
+        public const string PlayerScenePath = "Assets/Prototype/BaseScene/Scenes/BaseCommand.unity";
 
         [MenuItem("Strike Witches/Demo 1.0/Rebuild Scene")]
         public static void BuildScene()
@@ -39,10 +40,9 @@ namespace SWRTS.Demo1.Editor
 
         public static void BuildWindowsPlayer()
         {
-            BuildScene();
             BuildPlayerOptions options = new BuildPlayerOptions
             {
-                scenes = new[] { ScenePath },
+                scenes = new[] { PlayerScenePath },
                 locationPathName = "Builds/Demo1/StrikeWitches-Demo1.exe",
                 target = BuildTarget.StandaloneWindows64,
                 options = BuildOptions.Development

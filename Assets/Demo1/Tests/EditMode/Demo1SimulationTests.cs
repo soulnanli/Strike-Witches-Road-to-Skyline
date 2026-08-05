@@ -780,5 +780,36 @@ namespace SWRTS.Demo1.Tests
             Assert.That(runtimeStats.Attack, Is.EqualTo(enemy.Stats.Attack * 1.1f).Within(0.001f));
             Assert.That(enemy.Stats.MaxHealth, Is.Not.EqualTo(runtimeStats.MaxHealth), "Level pressure must not write back to the unit asset.");
         }
+
+        [Test]
+        public void WitchConfigs_ConvertHistoricalAircraftSpeedOntoKilometerMap()
+        {
+            Demo1Balance balance = Resources.Load<Demo1BalanceConfig>("Configs/Demo1Balance").CreateRuntimeValue();
+            DemoUnitConfig[] witches = Resources.LoadAll<DemoUnitConfig>("Configs/Units")
+                .Where(unit => unit.Team == DemoTeam.Player)
+                .ToArray();
+
+            Assert.That(balance.MapHalfWidth, Is.EqualTo(280f));
+            Assert.That(balance.MapHalfHeight, Is.EqualTo(157.5f));
+            Assert.That(balance.MapKilometersPerUnit, Is.EqualTo(1f));
+            Assert.That(balance.StrategicMovementTimeCompression, Is.EqualTo(12f));
+            Assert.That(witches.Length, Is.EqualTo(5));
+            Assert.That(witches.All(unit => unit.UseHistoricalMovementSpeed), Is.True);
+            Assert.That(witches.All(unit => !string.IsNullOrWhiteSpace(unit.StrikerUnitModel)), Is.True);
+            Assert.That(witches.All(unit => unit.HistoricalMaxSpeedKph > 0f), Is.True);
+
+            foreach (DemoUnitConfig witch in witches)
+            {
+                DemoUnitStats runtime = witch.CreateRuntimeStats(balance);
+                float expected = witch.HistoricalMaxSpeedKph / 3600f * 12f;
+                Assert.That(runtime.MoveSpeed, Is.EqualTo(expected).Within(0.0001f), witch.DisplayName);
+                Assert.That(runtime, Is.Not.SameAs(witch.Stats));
+            }
+
+            DemoUnitConfig lynette = witches.Single(unit => unit.StrikerUnitModel.Contains("Spitfire"));
+            DemoUnitConfig miyafuji = witches.Single(unit => unit.StrikerUnitModel.Contains("A6M3"));
+            Assert.That(lynette.CreateRuntimeStats(balance).MoveSpeed,
+                Is.GreaterThan(miyafuji.CreateRuntimeStats(balance).MoveSpeed));
+        }
     }
 }

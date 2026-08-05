@@ -93,6 +93,14 @@ namespace SWRTS.Demo1
             return material;
         }
 
+        public static Material CreateMapMaterial(Texture2D texture, Color tint)
+        {
+            Material material = CreateMaterial(tint);
+            if (material != null && texture != null)
+                material.SetTexture("_BaseMap", texture);
+            return material;
+        }
+
         private static Material CreateLineMaterial(Color color)
         {
             Shader shader = LoadShader(ref _lineColorShader, "Demo1LineColor", "SWRTS/Demo1/LineColor");

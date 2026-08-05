@@ -145,9 +145,18 @@ namespace SWRTS.Demo1
         public float RemoteStrikeDamageMultiplier = 1.8f;
         public float RemoteStrikeCooldown = 12f;
         public float RemoteStrikeRange = 42f;
-        public float MapHalfWidth = 45f;
-        public float MapHalfHeight = 30f;
+        public float MapHalfWidth = 280f;
+        public float MapHalfHeight = 157.5f;
+        public float MapKilometersPerUnit = 1f;
+        public float StrategicMovementTimeCompression = 12f;
         public int RandomSeed = 1944;
+
+        public float HistoricalSpeedToMapUnitsPerSecond(float kilometersPerHour)
+        {
+            float kilometersPerUnit = Mathf.Max(0.001f, MapKilometersPerUnit);
+            float timeCompression = Mathf.Max(0.001f, StrategicMovementTimeCompression);
+            return Mathf.Max(0f, kilometersPerHour) / 3600f * timeCompression / kilometersPerUnit;
+        }
 
         public Demo1Balance Clone()
         {

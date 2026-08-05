@@ -16,7 +16,11 @@ MonoBehaviour:
   DisplayName: 莉涅特
   Team: 0
   Role: 2
-  StartingPosition: {x: -27, y: 0, z: 5}
+  StartingPosition: {x: 190, y: 0, z: 102}
+  StrikerUnitModel: Supermarine Spitfire F Mk 22
+  HistoricalMaxSpeedKph: 730
+  HistoricalSpeedBasis: Spitfire F Mk 22 maximum level speed
+  UseHistoricalMovementSpeed: 1
   Stats:
     MaxHealth: 174
     Attack: 36
@@ -30,7 +34,7 @@ MonoBehaviour:
     AttackInterval: 1.6
     MagicRecovery: 5
     Mobility: 1
-    MoveSpeed: 6
+    MoveSpeed: 2.4333334
     VisionRadius: 24
     VisionAngle: 100
     WitchVisionType: 1

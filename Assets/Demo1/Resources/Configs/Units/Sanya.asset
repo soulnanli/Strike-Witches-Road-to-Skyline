@@ -16,7 +16,11 @@ MonoBehaviour:
   DisplayName: 桑妮亚·V·利特维亚克
   Team: 0
   Role: 0
-  StartingPosition: {x: -32, y: 0, z: 12}
+  StartingPosition: {x: 190, y: 0, z: 106}
+  StrikerUnitModel: Mikoyan-Gurevich I-225
+  HistoricalMaxSpeedKph: 726
+  HistoricalSpeedBasis: I-225 No.2 factory-test maximum at 10000 m
+  UseHistoricalMovementSpeed: 1
   Stats:
     MaxHealth: 181
     Attack: 35
@@ -30,7 +34,7 @@ MonoBehaviour:
     AttackInterval: 1.6
     MagicRecovery: 7
     Mobility: 1
-    MoveSpeed: 6
+    MoveSpeed: 2.42
     VisionRadius: 28
     VisionAngle: 360
     WitchVisionType: 2

@@ -1,0 +1,19 @@
+{
+  "name": "SWRTS.BasePrototype.Editor",
+  "rootNamespace": "SWRTS.Prototype.BaseScene.Editor",
+  "references": [
+    "SWRTS.BasePrototype",
+    "SWRTS.Demo1"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

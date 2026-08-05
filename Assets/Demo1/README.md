@@ -1,6 +1,27 @@
 # Demo 1.0 implementation
 
-Open `Assets/Demo1/Scenes/Demo1.unity` and enter Play Mode.
+The playable entry is `Assets/Prototype/BaseScene/Scenes/BaseCommand.unity`. Select one or more witches in the base readiness panel and deploy them; the selected roster is handed to the live Demo1 simulation in the same scene. `Assets/Demo1/Scenes/Demo1.unity` remains an isolated developer scene for combat iteration.
+
+## Real-scale operational map and historical movement
+
+- The English Channel operational map uses a defined prototype extent of `560 x 315 km`; one simulation/world unit represents one kilometre.
+- Base Command's Folkestone anchor and all scenario spawn/patrol coordinates use the same kilometre coordinate system.
+- Aircraft maximum level speed is converted with `move speed = historical km/h / 3600 x 12`. The `12x` strategic time compression keeps a real-distance theatre playable while preserving the historical speed ratios between witches.
+- Historical metadata lives on each `DemoUnitConfig` ScriptableObject, so an individual witch's model, source basis or speed can be tuned without code changes.
+
+| Witch | Striker model basis | Historical reference | Runtime speed (km-map units/s) |
+| --- | --- | ---: | ---: |
+| Miyafuji | A6M3a / A6M3 Model 22 | 541 km/h | 1.803 |
+| Sakamoto | N1K5-J Shiden Kai 5 | 595 km/h | 1.983 |
+| Lynette | Spitfire F Mk 22 | 730 km/h | 2.433 |
+| Perrine | Arsenal VG.39bis | 625 km/h | 2.083 |
+| Sanya | Mikoyan-Gurevich I-225 | 726 km/h | 2.420 |
+
+The official *Strike Witches* character pages establish the Striker-model mapping. N1K5-J did not complete flight trials, so Sakamoto uses the Smithsonian-documented N1K2-J value as a conservative family reference. VG.39bis was not completed, so Perrine uses the VG.39 prototype figure. I-225 and VG.39 figures are prototype/test values rather than production-service ratings; these caveats are serialized beside the affected units.
+
+References: [official character/Striker mapping](https://w-witch.jp/strike_witches-rtb/character/), [Smithsonian N1K2-J collection record](https://airandspace.si.edu/collection-objects/kawanishi-n1k2-j-shiden-kai-george/nasm_A19600333000), [RAF Museum Spitfire F24 collection record](https://www.rafmuseum.org.uk/research/collections/supermarine-spitfire-f24/).
+
+This real-scale conversion is a user-requested code prototype. It follows the Feishu Demo 1.0 requirement that witches have independent position, route and speed, but does not write new balance values back to Feishu revision 6.
 
 ## ScriptableObject configuration
 

@@ -60,6 +60,8 @@ MonoBehaviour:
     RemoteStrikeDamageMultiplier: 1.8
     RemoteStrikeCooldown: 12
     RemoteStrikeRange: 42
-    MapHalfWidth: 45
-    MapHalfHeight: 30
+    MapHalfWidth: 280
+    MapHalfHeight: 157.5
+    MapKilometersPerUnit: 1
+    StrategicMovementTimeCompression: 12
     RandomSeed: 1944

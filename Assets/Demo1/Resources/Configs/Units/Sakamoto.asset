@@ -16,7 +16,11 @@ MonoBehaviour:
   DisplayName: 坂本美绪
   Team: 0
   Role: 0
-  StartingPosition: {x: -25, y: 0, z: -3}
+  StartingPosition: {x: 187, y: 0, z: 100}
+  StrikerUnitModel: N1K5-J Shiden Kai 5
+  HistoricalMaxSpeedKph: 595
+  HistoricalSpeedBasis: N1K5-J lacked completed trials; N1K2-J measured reference
+  UseHistoricalMovementSpeed: 1
   Stats:
     MaxHealth: 221
     Attack: 44
@@ -30,7 +34,7 @@ MonoBehaviour:
     AttackInterval: 1.6
     MagicRecovery: 5
     Mobility: 1.25
-    MoveSpeed: 6
+    MoveSpeed: 1.9833333
     VisionRadius: 24
     VisionAngle: 100
     WitchVisionType: 1

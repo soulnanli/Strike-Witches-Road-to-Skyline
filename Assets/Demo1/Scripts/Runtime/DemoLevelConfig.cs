@@ -29,9 +29,9 @@ namespace SWRTS.Demo1
             return team == DemoTeam.Player ? PlayerSpawnOffset : EnemySpawnOffset;
         }
 
-        public DemoUnitStats CreateRuntimeStats(DemoUnitConfig unit)
+        public DemoUnitStats CreateRuntimeStats(DemoUnitConfig unit, Demo1Balance balance = null)
         {
-            DemoUnitStats stats = unit != null ? unit.CreateRuntimeStats() : new DemoUnitStats();
+            DemoUnitStats stats = unit != null ? unit.CreateRuntimeStats(balance) : new DemoUnitStats();
             if (unit == null || unit.Team != DemoTeam.Enemy)
                 return stats;
 

@@ -16,7 +16,7 @@ MonoBehaviour:
   DisplayName: 异形军护卫 B
   Team: 1
   Role: 4
-  StartingPosition: {x: 18, y: 0, z: 8}
+  StartingPosition: {x: 212, y: 0, z: 72}
   Stats:
     MaxHealth: 260
     Attack: 29
