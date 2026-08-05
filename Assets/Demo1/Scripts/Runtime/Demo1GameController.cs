@@ -30,6 +30,7 @@ namespace SWRTS.Demo1
         }
 
         private readonly Dictionary<int, Demo1UnitView> _unitViews = new Dictionary<int, Demo1UnitView>();
+        private readonly Dictionary<DemoUnitConfig, int> _configuredUnitIds = new Dictionary<DemoUnitConfig, int>();
         private readonly Dictionary<int, CombatVisual> _combatViews = new Dictionary<int, CombatVisual>();
         private readonly Dictionary<int, StrikeVisual> _strikeViews = new Dictionary<int, StrikeVisual>();
         private readonly HashSet<int> _selection = new HashSet<int>();
@@ -51,6 +52,7 @@ namespace SWRTS.Demo1
         private DemoUnitConfig[] _sortieWitches;
         private Vector2 _operationalMapSizeKilometers;
         private Vector2 _operationalStartNormalized = new Vector2(0.835f, 0.82f);
+        private bool _baseCommandMode;
         private DemoLevelConfig _activeLevel;
         private Camera _camera;
         private Demo1CameraController _cameraController;
@@ -105,10 +107,15 @@ namespace SWRTS.Demo1
         public int ActiveLevelIndex => _activeLevel == null || _levelConfigs == null ? -1 : System.Array.IndexOf(_levelConfigs, _activeLevel);
         public string ActiveLevelName => _activeLevel != null ? _activeLevel.DisplayName : "Demo 1.0";
         public string ActiveMissionText => _activeLevel != null ? _activeLevel.MissionText : "摧毁东侧异形军巢穴。";
+        public bool IsInitialized => _simulation != null;
+        public Vector3 BasePosition => _simulation != null
+            ? _simulation.BasePosition
+            : (_activeLevel != null ? _activeLevel.BasePosition : new Vector3(187.6f, 0f, 100.8f));
 
         public void ConfigureOperationalLevel(Texture2D mapTexture, IEnumerable<DemoUnitConfig> sortieWitches,
             Vector2 mapSizeKilometers, Vector2 startNormalized)
         {
+            _baseCommandMode = true;
             _operationalMapTexture = mapTexture;
             _sortieWitches = sortieWitches?
                 .Where(config => config != null && config.Team == DemoTeam.Player)
@@ -130,10 +137,15 @@ namespace SWRTS.Demo1
                 _balance.MapKilometersPerUnit = 1f;
             }
             _simulation = new Demo1Simulation(_balance);
+            _simulation.ConfigureBase(_activeLevel != null
+                ? _activeLevel.BasePosition
+                : NormalizedMapPosition(_operationalStartNormalized));
             _simulation.EventRaised += OnBattleEvent;
             BuildEnvironment();
             BuildCamera();
             CreateScenario();
+            if (_sortieWitches != null && _sortieWitches.Length > 0)
+                RequestSortie(_sortieWitches);
             BuildBattleUi();
             BuildLevelSelector();
             SyncViews();
@@ -184,13 +196,6 @@ namespace SWRTS.Demo1
                 _unitConfigs = Resources.LoadAll<DemoUnitConfig>(UnitResourcePath)
                     .Where(config => config != null)
                     .OrderBy(config => config.SpawnOrder)
-                    .ToArray();
-            }
-            if (_sortieWitches != null && _sortieWitches.Length > 0)
-            {
-                HashSet<DemoUnitConfig> sortieSet = new HashSet<DemoUnitConfig>(_sortieWitches);
-                _unitConfigs = _unitConfigs
-                    .Where(config => config.Team != DemoTeam.Player || sortieSet.Contains(config))
                     .ToArray();
             }
         }
@@ -246,6 +251,10 @@ namespace SWRTS.Demo1
             light.type = LightType.Directional;
             light.intensity = 1.25f;
             lightObject.transform.rotation = Quaternion.Euler(50f, -35f, 0f);
+
+            if (_baseCommandMode)
+                CreateLandmark("501 Base - Folkestone", _simulation.BasePosition + new Vector3(0f, 0.3f, 0f),
+                    new Vector3(2.4f, 0.8f, 2.4f), new Color(0.12f, 0.68f, 0.72f));
         }
 
         private void BuildCamera()
@@ -264,13 +273,12 @@ namespace SWRTS.Demo1
                 cameraObject = _camera.gameObject;
                 cameraObject.name = "Demo1 Camera";
             }
-            Vector3 cameraCenter = _operationalMapTexture != null
-                ? NormalizedMapPosition(_operationalStartNormalized)
-                : GetScenarioCameraCenter();
+            Vector3 cameraCenter = _baseCommandMode ? Vector3.zero :
+                (_operationalMapTexture != null ? NormalizedMapPosition(_operationalStartNormalized) : GetScenarioCameraCenter());
             cameraObject.transform.position = new Vector3(cameraCenter.x, 50f, cameraCenter.z);
             cameraObject.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
             _camera.orthographic = true;
-            _camera.orthographicSize = 24f;
+            _camera.orthographicSize = _baseCommandMode ? _balance.MapHalfHeight : 24f;
             _camera.nearClipPlane = 0.1f;
             _camera.farClipPlane = 100f;
             _camera.backgroundColor = new Color(0.025f, 0.04f, 0.055f);
@@ -281,6 +289,8 @@ namespace SWRTS.Demo1
             if (_cameraController == null)
                 _cameraController = cameraObject.AddComponent<Demo1CameraController>();
             _cameraController.MapHalfExtents = new Vector2(_balance.MapHalfWidth, _balance.MapHalfHeight);
+            if (_baseCommandMode)
+                _cameraController.ConfigureFullTheatre();
         }
 
         private Vector3 NormalizedMapPosition(Vector2 normalized)
@@ -320,12 +330,18 @@ namespace SWRTS.Demo1
             List<KeyValuePair<DemoUnitConfig, DemoUnitModel>> spawned = new List<KeyValuePair<DemoUnitConfig, DemoUnitModel>>();
             foreach (DemoUnitConfig config in _unitConfigs.Where(config => config != null).OrderBy(config => config.SpawnOrder))
             {
-                Vector3 startingPosition = _activeLevel != null ? _activeLevel.GetSpawnPosition(config) : config.StartingPosition;
+                bool startsAtBase = _baseCommandMode && config.Team == DemoTeam.Player;
+                Vector3 startingPosition = startsAtBase
+                    ? _simulation.BasePosition
+                    : (_activeLevel != null ? _activeLevel.GetSpawnPosition(config) : config.StartingPosition);
                 DemoUnitStats runtimeStats = _activeLevel != null
                     ? _activeLevel.CreateRuntimeStats(config, _balance)
                     : config.CreateRuntimeStats(_balance);
                 DemoUnitModel unit = AddUnit(config.DisplayName, config.Team, config.Role,
-                    runtimeStats, startingPosition);
+                    runtimeStats, startingPosition, startsAtBase
+                        ? DemoUnitDeploymentState.Standby
+                        : DemoUnitDeploymentState.Active);
+                _configuredUnitIds[config] = unit.Id;
                 spawned.Add(new KeyValuePair<DemoUnitConfig, DemoUnitModel>(config, unit));
                 if (config.GrantPersistentPlayerIntel)
                     _simulation.GrantPersistentPlayerIntel(unit.Id);
@@ -454,11 +470,19 @@ namespace SWRTS.Demo1
             fortress.ScreenPenetration = 0f;
             fortress.ScreenPower = 0f;
 
-            AddUnit("宫藤芳佳", DemoTeam.Player, DemoUnitRole.Support, support, new Vector3(-27f, 0f, -10f));
-            AddUnit("坂本美绪", DemoTeam.Player, DemoUnitRole.Witch, ace, new Vector3(-25f, 0f, -3f));
-            AddUnit("莉涅特", DemoTeam.Player, DemoUnitRole.Artillery, artillery, new Vector3(-27f, 0f, 5f));
-            AddUnit("佩琳", DemoTeam.Player, DemoUnitRole.Witch, witch, new Vector3(-23f, 0f, 12f));
-            AddUnit("桑妮亚·V·利特维亚克", DemoTeam.Player, DemoUnitRole.Witch, nightWitch, new Vector3(-32f, 0f, 12f));
+            DemoUnitDeploymentState fallbackDeployment = _baseCommandMode
+                ? DemoUnitDeploymentState.Standby
+                : DemoUnitDeploymentState.Active;
+            AddUnit("宫藤芳佳", DemoTeam.Player, DemoUnitRole.Support, support,
+                _baseCommandMode ? _simulation.BasePosition : new Vector3(-27f, 0f, -10f), fallbackDeployment);
+            AddUnit("坂本美绪", DemoTeam.Player, DemoUnitRole.Witch, ace,
+                _baseCommandMode ? _simulation.BasePosition : new Vector3(-25f, 0f, -3f), fallbackDeployment);
+            AddUnit("莉涅特", DemoTeam.Player, DemoUnitRole.Artillery, artillery,
+                _baseCommandMode ? _simulation.BasePosition : new Vector3(-27f, 0f, 5f), fallbackDeployment);
+            AddUnit("佩琳", DemoTeam.Player, DemoUnitRole.Witch, witch,
+                _baseCommandMode ? _simulation.BasePosition : new Vector3(-23f, 0f, 12f), fallbackDeployment);
+            AddUnit("桑妮亚·V·利特维亚克", DemoTeam.Player, DemoUnitRole.Witch, nightWitch,
+                _baseCommandMode ? _simulation.BasePosition : new Vector3(-32f, 0f, 12f), fallbackDeployment);
 
             DemoUnitModel scout = AddUnit("异形军侦察体", DemoTeam.Enemy, DemoUnitRole.Scout, neuroi, new Vector3(2f, 0f, -9f));
             DemoUnitModel guardA = AddUnit("异形军护卫 A", DemoTeam.Enemy, DemoUnitRole.Guard, guard, new Vector3(17f, 0f, -3f));
@@ -482,7 +506,9 @@ namespace SWRTS.Demo1
         {
             _events.Clear();
             SelectAllPlayerUnits();
-            _statusMessage = "全队已选中：右键地面移动，右键红色敌人会自动接近并开战。";
+            _statusMessage = _baseCommandMode
+                ? "敌军活动已经开始。点击福克斯通 501 基地编组出动。"
+                : "全队已选中：右键地面移动，右键红色敌人会自动接近并开战。";
         }
 
         public void SelectAllPlayerUnits()
@@ -491,7 +517,7 @@ namespace SWRTS.Demo1
                 return;
 
             _selection.Clear();
-            foreach (DemoUnitModel unit in _simulation.Units.Where(unit => unit.Team == DemoTeam.Player && unit.IsAlive))
+            foreach (DemoUnitModel unit in _simulation.Units.Where(unit => unit.Team == DemoTeam.Player && unit.IsAlive && unit.IsOperational))
                 _selection.Add(unit.Id);
         }
 
@@ -504,9 +530,41 @@ namespace SWRTS.Demo1
             foreach (int id in unitIds)
             {
                 DemoUnitModel unit = _simulation.GetUnit(id);
-                if (unit != null && unit.IsAlive && unit.Team == DemoTeam.Player)
+                if (unit != null && unit.IsAlive && unit.IsOperational && unit.Team == DemoTeam.Player)
                     _selection.Add(id);
             }
+        }
+
+        public DemoUnitModel GetConfiguredUnit(DemoUnitConfig config)
+        {
+            return config != null && _simulation != null && _configuredUnitIds.TryGetValue(config, out int id)
+                ? _simulation.GetUnit(id)
+                : null;
+        }
+
+        public DemoCommandResult RequestSortie(IEnumerable<DemoUnitConfig> configs)
+        {
+            if (_simulation == null)
+                return DemoCommandResult.Fail("Operational map is still initializing.");
+            int[] ids = (configs ?? Enumerable.Empty<DemoUnitConfig>())
+                .Select(GetConfiguredUnit)
+                .Where(unit => unit != null)
+                .Select(unit => unit.Id)
+                .ToArray();
+            DemoCommandResult result = _simulation.RequestSortie(ids);
+            if (result.Success)
+                SelectUnits(ids);
+            ApplyResult(result);
+            return result;
+        }
+
+        public DemoCommandResult CommandReturnToBase(IEnumerable<int> unitIds)
+        {
+            DemoCommandResult result = _simulation == null
+                ? DemoCommandResult.Fail("Operational map is still initializing.")
+                : _simulation.RequestReturnToBase(unitIds);
+            ApplyResult(result);
+            return result;
         }
 
         public DemoCommandResult CommandMove(Vector3 destination)
@@ -655,9 +713,10 @@ namespace SWRTS.Demo1
             RestartScene();
         }
 
-        private DemoUnitModel AddUnit(string name, DemoTeam team, DemoUnitRole role, DemoUnitStats stats, Vector3 position)
+        private DemoUnitModel AddUnit(string name, DemoTeam team, DemoUnitRole role, DemoUnitStats stats, Vector3 position,
+            DemoUnitDeploymentState deploymentState = DemoUnitDeploymentState.Active)
         {
-            DemoUnitModel model = _simulation.AddUnit(name, team, role, stats, position);
+            DemoUnitModel model = _simulation.AddUnit(name, team, role, stats, position, deploymentState);
             PrimitiveType primitive = role == DemoUnitRole.Fortress
                 ? PrimitiveType.Cube
                 : role == DemoUnitRole.Scout ? PrimitiveType.Sphere : PrimitiveType.Capsule;
@@ -696,6 +755,8 @@ namespace SWRTS.Demo1
                 EnterRemoteStrikeMode();
             if (Input.GetKeyDown(KeyCode.R))
                 ApplyResult(_simulation.RequestRetreat(_selection));
+            if (Input.GetKeyDown(KeyCode.H))
+                ApplyResult(_simulation.RequestReturnToBase(_selection));
             if (Input.GetKeyDown(KeyCode.G))
                 ReinforceNearestBattle();
             if (Input.GetKeyDown(KeyCode.F))
@@ -926,6 +987,7 @@ namespace SWRTS.Demo1
             foreach (KeyValuePair<int, Demo1UnitView> pair in _unitViews)
             {
                 DemoUnitModel model = _simulation.GetUnit(pair.Key);
+                pair.Value.gameObject.SetActive(model != null && model.IsAlive && model.IsOperational);
                 pair.Value.Sync(model, _selection.Contains(pair.Key));
             }
 
@@ -965,7 +1027,7 @@ namespace SWRTS.Demo1
                 Demo1Drawing.SetCircle(visual.Radius, strike.Target, strike.Radius, 0.11f);
             }
 
-            _selection.RemoveWhere(id => _simulation.GetUnit(id)?.IsAlive != true);
+            _selection.RemoveWhere(id => _simulation.GetUnit(id)?.IsAlive != true || _simulation.GetUnit(id)?.IsOperational != true);
         }
 
         private void OnGUI()
@@ -1028,6 +1090,10 @@ namespace SWRTS.Demo1
             if (DrawHudButton(new Rect(120f, y, 98f, 34f), "增援  G", _hudPrimaryButtonStyle, new Color(0.07f, 0.31f, 0.4f), new Color(0.08f, 0.46f, 0.58f))) ReinforceNearestBattle();
             if (DrawHudButton(new Rect(226f, y, 98f, 34f), "打击  B", _hudButtonStyle, new Color(0.09f, 0.16f, 0.2f), new Color(0.13f, 0.25f, 0.3f)))
                 EnterRemoteStrikeMode();
+            y += 42f;
+            if (DrawHudButton(new Rect(14f, y, PanelWidth - 28f, 34f), "返航基地  H", _hudButtonStyle,
+                    new Color(0.09f, 0.16f, 0.2f), new Color(0.13f, 0.25f, 0.3f)))
+                ApplyResult(_simulation.RequestReturnToBase(_selection));
             y += 46f;
 
             Rect feedbackRect = new Rect(14f, y, PanelWidth - 28f, 42f);

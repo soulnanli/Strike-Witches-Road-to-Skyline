@@ -28,6 +28,7 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 884b1ea9ad924493d453746eb819e884, type: 2}
   - {fileID: 11400000, guid: 662f9ce78b704271b231524cf697c662, type: 2}
   - {fileID: 11400000, guid: 995c2fbaeb0345a4e564857fc92af995, type: 2}
+  BasePosition: {x: 187.6, y: 0, z: 100.8}
   PlayerSpawnOffset: {x: 8, y: 0, z: 0}
   EnemySpawnOffset: {x: -5, y: 0, z: 0}
   EnemyHealthMultiplier: 0.9

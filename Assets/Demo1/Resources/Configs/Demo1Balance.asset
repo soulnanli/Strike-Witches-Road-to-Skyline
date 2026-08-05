@@ -64,4 +64,7 @@ MonoBehaviour:
     MapHalfHeight: 157.5
     MapKilometersPerUnit: 1
     StrategicMovementTimeCompression: 12
+    BaseArrivalRadius: 2
+    BaseLaunchSpread: 1.5
+    BaseTurnaroundDuration: 20
     RandomSeed: 1944

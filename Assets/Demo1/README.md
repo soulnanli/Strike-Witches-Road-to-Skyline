@@ -1,11 +1,13 @@
 # Demo 1.0 implementation
 
-The playable entry is `Assets/Prototype/BaseScene/Scenes/BaseCommand.unity`. Select one or more witches in the base readiness panel and deploy them; the selected roster is handed to the live Demo1 simulation in the same scene. `Assets/Demo1/Scenes/Demo1.unity` remains an isolated developer scene for combat iteration.
+The playable entry is `Assets/Prototype/BaseScene/Scenes/BaseCommand.unity`. The 501st base, sortie preparation, flight, combat, return and servicing all run on one persistent world map and one camera; sortie never replaces the theatre with a smaller operational scene. `Assets/Demo1/Scenes/Demo1.unity` remains an isolated developer scene for combat iteration.
 
 ## Real-scale operational map and historical movement
 
 - The English Channel operational map uses a defined prototype extent of `560 x 315 km`; one simulation/world unit represents one kilometre.
 - Base Command's Folkestone anchor and all scenario spawn/patrol coordinates use the same kilometre coordinate system.
+- The initial camera fits the complete `560 x 315 km` theatre. The base is a permanent, invulnerable world landmark at `(187.6, 0, 100.8)`; its readiness UI is only an overlay.
+- Enemy AI begins on scene load, including while every witch is still at base. Witches move through `Standby`, `Active`, `Returning`, `Servicing` and `Lost` deployment states. Return is a separate order, can be intercepted, and resumes after combat; landing within 2 km starts a 20-second full-service turnaround before another sortie is allowed.
 - Aircraft maximum level speed is converted with `move speed = historical km/h / 3600 x 12`. The `12x` strategic time compression keeps a real-distance theatre playable while preserving the historical speed ratios between witches.
 - Historical metadata lives on each `DemoUnitConfig` ScriptableObject, so an individual witch's model, source basis or speed can be tuned without code changes.
 
@@ -67,13 +69,14 @@ This visual pass implements the information requirements of Feishu revision 6 wi
 
 ## Controls
 
-- The full squad is selected on entry so a move or attack can be issued immediately.
+- Click the 501 base marker to open the readiness overlay, select standby witches and launch them into the existing theatre.
 - Left click / drag: select one or several witches. Shift modifies the current selection.
 - Single-selecting a witch opens a live character detail panel on the right. It hides for multi-selection and while the battle panel is open.
 - Right click ground: give every selected witch an independent move order into the same small destination area.
 - Right click a discovered enemy, or `A` then left click it: approach automatically and initiate combat when in engagement range.
 - `G`: send selected eligible witches to reinforce the nearest active battle.
 - `R`: start the delayed retreat process for selected participants.
+- `H`: order selected non-fighting witches to return to Folkestone. A fighting witch must complete the normal retreat first.
 - `B` then left click: use an area-level remote strike if the selected unit has that capability. No witch in the current scenario has it after Lynette's rework.
 - `Space`: pause/resume simulation. Camera, selection and orders remain available while paused.
 - `F`: focus the selected units. WASD/arrow keys, edge scrolling, middle drag and wheel control the camera.
@@ -138,6 +141,6 @@ The Feishu specification revision 6 intentionally leaves formulas and concrete v
 - pathing is direct movement on the unobstructed prototype map; every witch owns her route and destination offset;
 - enemy AI uses the independent scout/guard state machines described above; player operational choices remain manual;
 - orders may be queued while paused;
-- the victory condition is destroying the enemy fortress, and defeat occurs when no player witch remains operational.
+- the victory condition is destroying the enemy fortress, and defeat occurs only after every witch in the base roster is lost; standby, returning and servicing witches prevent premature defeat.
 
 These are implementation defaults, not new game-design source of truth. They can be replaced without changing the simulation API when the corresponding Feishu sections are approved.

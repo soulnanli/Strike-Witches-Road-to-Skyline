@@ -38,6 +38,8 @@ namespace SWRTS.Prototype.BaseScene
         private readonly List<GameObject> _unitTokens = new List<GameObject>();
 
         private RectTransform _mapLayer;
+        private RectTransform _baseAnchor;
+        private RectTransform _canvasRect;
         private GameObject _readinessPanel;
         private Text _statusText;
         private Text _selectionSummary;
@@ -46,6 +48,7 @@ namespace SWRTS.Prototype.BaseScene
         private Font _font;
         private bool _initialized;
         private bool _operationalLevelStarted;
+        private Demo1GameController _operationalController;
 
         public int AvailableWitchCount => _availableWitches?.Count(config => config != null) ?? 0;
         public int SelectedWitchCount => _selected.Count;
@@ -62,6 +65,23 @@ namespace SWRTS.Prototype.BaseScene
             Initialize();
         }
 
+        private void LateUpdate()
+        {
+            if (!_initialized)
+                return;
+
+            RefreshReadinessPanel();
+            if (_baseAnchor == null || _canvasRect == null || _operationalController == null ||
+                !_operationalController.IsInitialized || _operationalController.BattleCamera == null)
+                return;
+
+            Vector3 screen = _operationalController.BattleCamera.WorldToScreenPoint(_operationalController.BasePosition);
+            bool visible = screen.z > 0f && screen.x >= 0f && screen.x <= Screen.width && screen.y >= 0f && screen.y <= Screen.height;
+            _baseAnchor.gameObject.SetActive(visible);
+            if (visible && RectTransformUtility.ScreenPointToLocalPointInRectangle(_canvasRect, screen, null, out Vector2 localPoint))
+                _baseAnchor.anchoredPosition = localPoint;
+        }
+
         public void ConfigureAssets(Texture2D mapTexture, DemoUnitConfig[] witchConfigs)
         {
             _englishChannelMap = mapTexture;
@@ -75,6 +95,7 @@ namespace SWRTS.Prototype.BaseScene
 
             _initialized = true;
             LoadWitchConfigs();
+            StartOperationalLevel(Array.Empty<DemoUnitConfig>());
             BuildInterface();
             SetStatus(StatusMessage);
             RefreshReadinessPanel();
@@ -100,7 +121,7 @@ namespace SWRTS.Prototype.BaseScene
             Initialize();
             DemoUnitConfig config = _availableWitches.FirstOrDefault(item =>
                 item != null && string.Equals(item.DisplayName, displayName, StringComparison.Ordinal));
-            if (config == null || _deployed.Contains(config))
+            if (config == null || !IsStandby(config))
                 return false;
 
             if (selected)
@@ -114,7 +135,7 @@ namespace SWRTS.Prototype.BaseScene
         public void SelectAllAvailable()
         {
             Initialize();
-            foreach (DemoUnitConfig config in _availableWitches.Where(config => config != null && !_deployed.Contains(config)))
+            foreach (DemoUnitConfig config in _availableWitches.Where(config => config != null && IsStandby(config)))
                 _selected.Add(config);
             RefreshReadinessPanel();
         }
@@ -134,12 +155,20 @@ namespace SWRTS.Prototype.BaseScene
                 return false;
             }
 
-            DemoUnitConfig[] sortie = _selected.OrderBy(config => config.SpawnOrder).ToArray();
-            foreach (DemoUnitConfig config in sortie)
-                _deployed.Add(config);
+            if (_operationalController == null || !_operationalController.IsInitialized)
+            {
+                SetStatus("战区地图仍在初始化，请稍候。", true);
+                return false;
+            }
+
+            DemoUnitConfig[] sortie = _selected.Where(IsStandby).OrderBy(config => config.SpawnOrder).ToArray();
+            DemoCommandResult result = _operationalController.RequestSortie(sortie);
+            if (!result.Success)
+            {
+                SetStatus(result.Message, true);
+                return false;
+            }
             _selected.Clear();
-            RebuildDeployedUnitTokens();
-            StartOperationalLevel(sortie);
             SetStatus($"出动命令已下达：{string.Join("、", sortie.Select(config => config.DisplayName))}。", false);
             RefreshReadinessPanel();
             return true;
@@ -147,17 +176,14 @@ namespace SWRTS.Prototype.BaseScene
 
         private void StartOperationalLevel(DemoUnitConfig[] sortie)
         {
-            if (_operationalLevelStarted || _englishChannelMap == null || sortie == null || sortie.Length == 0)
+            if (_operationalLevelStarted)
                 return;
 
             _operationalLevelStarted = true;
-            Transform canvas = transform.Find("Base Command Canvas");
-            if (canvas != null)
-                canvas.gameObject.SetActive(false);
-
             GameObject runtime = new GameObject("Demo1 Operational Runtime");
-            Demo1GameController controller = runtime.AddComponent<Demo1GameController>();
-            controller.ConfigureOperationalLevel(
+            runtime.transform.SetParent(transform, false);
+            _operationalController = runtime.AddComponent<Demo1GameController>();
+            _operationalController.ConfigureOperationalLevel(
                 _englishChannelMap,
                 sortie,
                 EnglishChannelMapSizeKilometers,
@@ -191,27 +217,15 @@ namespace SWRTS.Prototype.BaseScene
             GameObject canvasObject = new GameObject("Base Command Canvas", typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
             canvasObject.transform.SetParent(transform, false);
             Canvas canvas = canvasObject.GetComponent<Canvas>();
-            canvas.renderMode = RenderMode.ScreenSpaceCamera;
-            canvas.worldCamera = Camera.main;
-            canvas.planeDistance = 1f;
+            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
             canvas.sortingOrder = 50;
             CanvasScaler scaler = canvasObject.GetComponent<CanvasScaler>();
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
             scaler.referenceResolution = new Vector2(1920f, 1080f);
             scaler.matchWidthOrHeight = 0.5f;
 
-            _mapLayer = CreateRect("English Channel Map", canvasObject.transform, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
-            RawImage map = _mapLayer.gameObject.AddComponent<RawImage>();
-            map.texture = _englishChannelMap;
-            map.color = _englishChannelMap != null ? Color.white : new Color(0.25f, 0.43f, 0.45f, 1f);
-            map.raycastTarget = false;
-
-            CreateMapGrid(_mapLayer);
-            CreateMapLabels(_mapLayer);
-            SetRealScaleLabel();
-            CreateBaseMarker(_mapLayer);
-            CreateTopBar(canvasObject.transform);
-            CreateStatusBar(canvasObject.transform);
+            _canvasRect = canvasObject.GetComponent<RectTransform>();
+            CreateBaseMarker(canvasObject.transform);
             CreateReadinessPanel(canvasObject.transform);
             _readinessPanel.SetActive(false);
         }
@@ -254,10 +268,11 @@ namespace SWRTS.Prototype.BaseScene
                 label.text = "REAL-SCALE THEATRE  ·  560 × 315 km  ·  1 UNIT = 1 km";
         }
 
-        private void CreateBaseMarker(RectTransform parent)
+        private void CreateBaseMarker(Transform parent)
         {
-            RectTransform anchor = CreateRect("501 Base Anchor", parent, FolkestoneNormalizedPosition, FolkestoneNormalizedPosition,
+            RectTransform anchor = CreateRect("501 Base Anchor", parent, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
                 Vector2.zero, new Vector2(110f, 110f));
+            _baseAnchor = anchor;
 
             Image alertArea = anchor.gameObject.AddComponent<Image>();
             alertArea.color = new Color(0.25f, 0.92f, 0.9f, 0.12f);
@@ -359,9 +374,9 @@ namespace SWRTS.Prototype.BaseScene
 
         private void ToggleWitch(DemoUnitConfig config)
         {
-            if (_deployed.Contains(config))
+            if (!IsStandby(config))
             {
-                SetStatus($"{config.DisplayName} 已经出动，不能重复编入。", true);
+                SetStatus($"{config.DisplayName} 当前不在待命状态。", true);
                 return;
             }
             if (!_selected.Add(config))
@@ -374,19 +389,53 @@ namespace SWRTS.Prototype.BaseScene
             if (!_initialized || _selectionSummary == null)
                 return;
 
-            int standbyCount = _availableWitches.Count(config => config != null && !_deployed.Contains(config));
+            _deployed.Clear();
+            foreach (DemoUnitConfig config in _availableWitches.Where(config => config != null))
+            {
+                DemoUnitModel unit = GetUnit(config);
+                if (unit != null && unit.IsOperational)
+                    _deployed.Add(config);
+            }
+            _selected.RemoveWhere(config => !IsStandby(config));
+            int standbyCount = _availableWitches.Count(config => config != null && IsStandby(config));
             _selectionSummary.text = $"待命 {standbyCount}  ·  已选择 {_selected.Count}  ·  已出动 {_deployed.Count}";
             foreach (WitchRow row in _witchRows.Values)
             {
-                bool deployed = _deployed.Contains(row.Config);
+                DemoUnitModel unit = GetUnit(row.Config);
+                bool deployed = unit != null && unit.IsOperational;
                 bool selected = _selected.Contains(row.Config);
                 row.SelectionMark.color = deployed ? Amber : selected ? Cyan : Muted;
-                row.StateText.text = deployed ? "已出动" : selected ? "已编入" : "待命";
+                row.StateText.text = DeploymentStateLabel(unit, selected);
                 row.StateText.color = deployed ? Amber : selected ? Cyan : Muted;
-                row.Button.interactable = !deployed;
+                row.Button.interactable = IsStandby(row.Config);
             }
             _deployButton.interactable = _selected.Count > 0;
             _deployButtonLabel.text = _selected.Count > 0 ? $"出动  {_selected.Count}" : "选择魔女";
+        }
+
+        private DemoUnitModel GetUnit(DemoUnitConfig config)
+        {
+            return _operationalController != null ? _operationalController.GetConfiguredUnit(config) : null;
+        }
+
+        private bool IsStandby(DemoUnitConfig config)
+        {
+            DemoUnitModel unit = GetUnit(config);
+            return unit != null && unit.DeploymentState == DemoUnitDeploymentState.Standby;
+        }
+
+        private static string DeploymentStateLabel(DemoUnitModel unit, bool selected)
+        {
+            if (unit == null)
+                return "初始化";
+            switch (unit.DeploymentState)
+            {
+                case DemoUnitDeploymentState.Active: return "已出动";
+                case DemoUnitDeploymentState.Returning: return "返航中";
+                case DemoUnitDeploymentState.Servicing: return $"整备 {unit.TurnaroundRemaining:0}s";
+                case DemoUnitDeploymentState.Lost: return "损失";
+                default: return selected ? "已编入" : "待命";
+            }
         }
 
         private void RebuildDeployedUnitTokens()

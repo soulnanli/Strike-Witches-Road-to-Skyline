@@ -12,6 +12,7 @@ namespace SWRTS.Demo1
         [TextArea(2, 4)] public string MissionText = "摧毁东侧异形军巢穴。";
         public Demo1BalanceConfig Balance;
         public DemoUnitConfig[] Units = new DemoUnitConfig[0];
+        public Vector3 BasePosition = new Vector3(187.6f, 0f, 100.8f);
         public Vector3 PlayerSpawnOffset;
         public Vector3 EnemySpawnOffset;
         [Min(0.1f)] public float EnemyHealthMultiplier = 1f;

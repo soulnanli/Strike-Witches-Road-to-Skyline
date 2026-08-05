@@ -811,5 +811,70 @@ namespace SWRTS.Demo1.Tests
             Assert.That(lynette.CreateRuntimeStats(balance).MoveSpeed,
                 Is.GreaterThan(miyafuji.CreateRuntimeStats(balance).MoveSpeed));
         }
+
+        [Test]
+        public void StandbyRoster_DoesNotTriggerDefeatAndCannotAffectTheatre()
+        {
+            Demo1Simulation simulation = new Demo1Simulation();
+            DemoUnitModel witch = simulation.AddUnit("standby", DemoTeam.Player, DemoUnitRole.Witch,
+                BasicStats(), Vector3.zero, DemoUnitDeploymentState.Standby);
+
+            simulation.Advance(1f);
+
+            Assert.That(simulation.Outcome, Is.EqualTo(DemoOutcome.Running));
+            Assert.That(witch.IsOperational, Is.False);
+            Assert.That(simulation.IssueMove(new[] { witch.Id }, Vector3.right * 10f).Success, Is.False);
+        }
+
+        [Test]
+        public void SortieReturnAndService_RestoresWitchForLaterSortie()
+        {
+            Demo1Balance balance = new Demo1Balance
+            {
+                BaseArrivalRadius = 2f,
+                BaseLaunchSpread = 0f,
+                BaseTurnaroundDuration = 2f
+            };
+            Demo1Simulation simulation = new Demo1Simulation(balance);
+            simulation.ConfigureBase(Vector3.zero);
+            DemoUnitModel witch = simulation.AddUnit("witch", DemoTeam.Player, DemoUnitRole.Witch,
+                BasicStats(), Vector3.zero, DemoUnitDeploymentState.Standby);
+
+            Assert.That(simulation.RequestSortie(new[] { witch.Id }).Success, Is.True);
+            witch.Health = 10f;
+            witch.Magic = 5f;
+            witch.Shield = 3f;
+            Assert.That(simulation.RequestReturnToBase(new[] { witch.Id }).Success, Is.True);
+            simulation.Advance(0.1f);
+            Assert.That(witch.DeploymentState, Is.EqualTo(DemoUnitDeploymentState.Servicing));
+
+            float frozen = witch.TurnaroundRemaining;
+            Assert.That(frozen, Is.GreaterThan(0f), "Without Advance (global pause), service time must remain frozen.");
+            Assert.That(witch.TurnaroundRemaining, Is.EqualTo(frozen));
+            simulation.Advance(2.1f);
+
+            Assert.That(witch.DeploymentState, Is.EqualTo(DemoUnitDeploymentState.Standby));
+            Assert.That(witch.Health, Is.EqualTo(witch.Stats.MaxHealth));
+            Assert.That(witch.Magic, Is.EqualTo(witch.Stats.MaxMagic));
+            Assert.That(witch.Shield, Is.EqualTo(witch.Stats.MaxShield));
+            Assert.That(simulation.RequestSortie(new[] { witch.Id }).Success, Is.True);
+        }
+
+        [Test]
+        public void ReturnCommand_RequiresCombatRetreatFirst()
+        {
+            Demo1Simulation simulation = new Demo1Simulation();
+            DemoUnitModel witch = simulation.AddUnit("witch", DemoTeam.Player, DemoUnitRole.Witch,
+                BasicStats(0f), Vector3.zero);
+            DemoUnitModel enemy = simulation.AddUnit("enemy", DemoTeam.Enemy, DemoUnitRole.Guard,
+                BasicStats(0f), Vector3.right);
+            Assert.That(simulation.StartCombat(enemy.Id, witch.Id).Success, Is.True);
+
+            DemoCommandResult result = simulation.RequestReturnToBase(new[] { witch.Id });
+
+            Assert.That(result.Success, Is.False);
+            Assert.That(result.Message, Does.Contain("retreat"));
+            Assert.That(witch.DeploymentState, Is.EqualTo(DemoUnitDeploymentState.Active));
+        }
     }
 }

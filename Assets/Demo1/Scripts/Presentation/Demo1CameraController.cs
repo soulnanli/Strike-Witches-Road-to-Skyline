@@ -13,6 +13,7 @@ namespace SWRTS.Demo1
 
         private Camera _camera;
         private bool _dragging;
+        private bool _fullTheatre;
         private Vector3 _lastGroundPoint;
 
         private void Awake()
@@ -22,6 +23,11 @@ namespace SWRTS.Demo1
 
         private void Update()
         {
+            if (_fullTheatre)
+            {
+                MaxZoom = GetFullTheatreZoom();
+                _camera.orthographicSize = Mathf.Min(_camera.orthographicSize, MaxZoom);
+            }
             float dt = Time.unscaledDeltaTime;
             Vector3 movement = new Vector3(Input.GetAxisRaw("Horizontal"), 0f, Input.GetAxisRaw("Vertical"));
             Vector3 mouse = Input.mousePosition;
@@ -49,9 +55,29 @@ namespace SWRTS.Demo1
                 _camera.orthographicSize = Mathf.Clamp(_camera.orthographicSize - wheel * 2.2f, MinZoom, MaxZoom);
 
             Vector3 position = transform.position;
-            position.x = Mathf.Clamp(position.x, -MapHalfExtents.x, MapHalfExtents.x);
-            position.z = Mathf.Clamp(position.z, -MapHalfExtents.y, MapHalfExtents.y);
+            float halfVisibleHeight = _camera.orthographicSize;
+            float halfVisibleWidth = halfVisibleHeight * Mathf.Max(0.01f, _camera.aspect);
+            float horizontalTravel = Mathf.Max(0f, MapHalfExtents.x - halfVisibleWidth);
+            float verticalTravel = Mathf.Max(0f, MapHalfExtents.y - halfVisibleHeight);
+            position.x = Mathf.Clamp(position.x, -horizontalTravel, horizontalTravel);
+            position.z = Mathf.Clamp(position.z, -verticalTravel, verticalTravel);
             transform.position = position;
+        }
+
+        public void ConfigureFullTheatre()
+        {
+            _fullTheatre = true;
+            MaxZoom = GetFullTheatreZoom();
+            _camera.orthographicSize = MaxZoom;
+            Vector3 position = transform.position;
+            position.x = 0f;
+            position.z = 0f;
+            transform.position = position;
+        }
+
+        private float GetFullTheatreZoom()
+        {
+            return Mathf.Max(MapHalfExtents.y, MapHalfExtents.x / Mathf.Max(0.01f, _camera.aspect));
         }
 
         public void Focus(Vector3 worldPosition)
