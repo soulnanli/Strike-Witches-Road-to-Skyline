@@ -10,6 +10,9 @@ namespace SWRTS.Demo1
         public bool IsDefault;
         public string DisplayName = "多佛海峡·标准作战";
         [TextArea(2, 4)] public string MissionText = "摧毁东侧异形军巢穴。";
+        public DemoMissionObjective MissionObjective = DemoMissionObjective.DestroyFortress;
+        [TextArea(2, 3)] public string VictoryText = "敌方固定目标已被摧毁。";
+        [TextArea(2, 3)] public string DefeatText = "我方已无可继续作战的单位。";
         public Demo1BalanceConfig Balance;
         public DemoUnitConfig[] Units = new DemoUnitConfig[0];
         public Vector3 BasePosition = new Vector3(187.6f, 0f, 100.8f);

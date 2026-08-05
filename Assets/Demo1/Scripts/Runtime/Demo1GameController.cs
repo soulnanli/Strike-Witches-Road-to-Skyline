@@ -107,6 +107,8 @@ namespace SWRTS.Demo1
         public int ActiveLevelIndex => _activeLevel == null || _levelConfigs == null ? -1 : System.Array.IndexOf(_levelConfigs, _activeLevel);
         public string ActiveLevelName => _activeLevel != null ? _activeLevel.DisplayName : "Demo 1.0";
         public string ActiveMissionText => _activeLevel != null ? _activeLevel.MissionText : "摧毁东侧异形军巢穴。";
+        public string ActiveVictoryText => _activeLevel != null ? _activeLevel.VictoryText : "敌方固定目标已被摧毁。";
+        public string ActiveDefeatText => _activeLevel != null ? _activeLevel.DefeatText : "我方已无可继续作战的单位。";
         public bool IsInitialized => _simulation != null;
         public Vector3 BasePosition => _simulation != null
             ? _simulation.BasePosition
@@ -140,6 +142,9 @@ namespace SWRTS.Demo1
             _simulation.ConfigureBase(_activeLevel != null
                 ? _activeLevel.BasePosition
                 : NormalizedMapPosition(_operationalStartNormalized));
+            _simulation.ConfigureMissionObjective(_activeLevel != null
+                ? _activeLevel.MissionObjective
+                : DemoMissionObjective.DestroyFortress);
             _simulation.EventRaised += OnBattleEvent;
             BuildEnvironment();
             BuildCamera();
@@ -1351,7 +1356,7 @@ namespace SWRTS.Demo1
             string title = _simulation.Outcome == DemoOutcome.Victory ? "任务完成" : "任务失败";
             GUI.Label(new Rect(box.x + 20f, box.y + 28f, box.width - 40f, 40f), title, _titleStyle);
             GUI.Label(new Rect(box.x + 20f, box.y + 75f, box.width - 40f, 36f),
-                _simulation.Outcome == DemoOutcome.Victory ? "敌方固定目标已被摧毁。" : "我方已无可继续作战的单位。", _centerStyle);
+                _simulation.Outcome == DemoOutcome.Victory ? ActiveVictoryText : ActiveDefeatText, _centerStyle);
             if (GUI.Button(new Rect(box.x + 120f, box.y + 132f, 200f, 38f), "重新开始 [Enter]"))
                 RestartScene();
         }

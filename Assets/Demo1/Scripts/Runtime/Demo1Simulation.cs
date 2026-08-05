@@ -104,6 +104,12 @@ namespace SWRTS.Demo1
         Defeat
     }
 
+    public enum DemoMissionObjective
+    {
+        DestroyFortress,
+        DestroyAllEnemies
+    }
+
     [Serializable]
     public sealed class Demo1Balance
     {
@@ -495,6 +501,7 @@ namespace SWRTS.Demo1
         public IReadOnlyList<DemoRemoteStrikeModel> RemoteStrikes => _remoteStrikes;
         public float SimulationTime { get; private set; }
         public DemoOutcome Outcome { get; private set; } = DemoOutcome.Running;
+        public DemoMissionObjective MissionObjective { get; private set; } = DemoMissionObjective.DestroyFortress;
         public Vector3 BasePosition { get; private set; } = new Vector3(187.6f, 0f, 100.8f);
         public event Action<DemoBattleEvent> EventRaised;
 
@@ -521,6 +528,11 @@ namespace SWRTS.Demo1
         public void ConfigureBase(Vector3 basePosition)
         {
             BasePosition = ClampToMap(basePosition);
+        }
+
+        public void ConfigureMissionObjective(DemoMissionObjective objective)
+        {
+            MissionObjective = objective;
         }
 
         public DemoCommandResult RequestSortie(IEnumerable<int> unitIds)
@@ -1690,12 +1702,24 @@ namespace SWRTS.Demo1
 
         private void EvaluateOutcome()
         {
-            DemoUnitModel fortress = _units.Values.FirstOrDefault(unit => unit.Team == DemoTeam.Enemy && unit.Role == DemoUnitRole.Fortress);
-            if (fortress != null && !fortress.IsAlive)
+            List<DemoUnitModel> enemies = _units.Values.Where(unit => unit.Team == DemoTeam.Enemy).ToList();
+            if (MissionObjective == DemoMissionObjective.DestroyAllEnemies &&
+                enemies.Count > 0 && enemies.All(unit => !unit.IsAlive))
             {
                 Outcome = DemoOutcome.Victory;
-                Raise("任务完成：敌方固定目标已摧毁", fortress.Position, true);
+                Raise("任务完成：来袭敌军已全部歼灭", enemies[0].Position, true);
                 return;
+            }
+
+            if (MissionObjective == DemoMissionObjective.DestroyFortress)
+            {
+                List<DemoUnitModel> fortresses = enemies.Where(unit => unit.Role == DemoUnitRole.Fortress).ToList();
+                if (fortresses.Count > 0 && fortresses.All(unit => !unit.IsAlive))
+                {
+                    Outcome = DemoOutcome.Victory;
+                    Raise("任务完成：敌方固定目标已摧毁", fortresses[0].Position, true);
+                    return;
+                }
             }
 
             List<DemoUnitModel> playerRoster = _units.Values.Where(unit => unit.Team == DemoTeam.Player).ToList();

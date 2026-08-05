@@ -12,11 +12,14 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 96dc59b1664f42049a9bc311997f3536, type: 3}
   m_Name: 02_CloseContact
   m_EditorClassIdentifier:
-  LevelId: close-contact
+  LevelId: french-coast-assault
   SortOrder: 20
   IsDefault: 0
-  DisplayName: "\u591A\u4F5B\u6D77\u5CE1\xB7\u5FEB\u901F\u63A5\u654C"
-  MissionText: "\u7F29\u77ED\u63A5\u654C\u8DDD\u79BB\uFF0C\u8FC5\u901F\u6467\u6BC1\u4E1C\u4FA7\u5DE2\u7A74"
+  DisplayName: 法国海岸·前沿攻坚
+  MissionText: 突入法国海岸防区，突破护卫并摧毁异形军前沿巢穴。
+  MissionObjective: 0
+  VictoryText: 法国海岸前沿巢穴已被摧毁。
+  DefeatText: 我方已无可继续攻坚的作战单位。
   Balance: {fileID: 11400000, guid: 44ad7ac5695e4f1adf8950d68d59d440, type: 2}
   Units:
   - {fileID: 11400000, guid: 773a0df89c814382c342635da708d773, type: 2}
@@ -29,7 +32,7 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 662f9ce78b704271b231524cf697c662, type: 2}
   - {fileID: 11400000, guid: 995c2fbaeb0345a4e564857fc92af995, type: 2}
   BasePosition: {x: 187.6, y: 0, z: 100.8}
-  PlayerSpawnOffset: {x: 8, y: 0, z: 0}
-  EnemySpawnOffset: {x: -5, y: 0, z: 0}
-  EnemyHealthMultiplier: 0.9
-  EnemyAttackMultiplier: 0.9
+  PlayerSpawnOffset: {x: 0, y: 0, z: 0}
+  EnemySpawnOffset: {x: 0, y: 0, z: 0}
+  EnemyHealthMultiplier: 1
+  EnemyAttackMultiplier: 1

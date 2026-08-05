@@ -784,14 +784,34 @@ namespace SWRTS.Demo1.Tests
         {
             DemoLevelConfig[] levels = Resources.LoadAll<DemoLevelConfig>("Configs/Levels");
             DemoUnitConfig enemy = Resources.LoadAll<DemoUnitConfig>("Configs/Units")
-                .First(unit => unit.Team == DemoTeam.Enemy);
+                .Single(unit => unit.name == "NeuroiGuardA");
 
             Assert.That(levels.Length, Is.EqualTo(3));
             Assert.That(levels.Select(level => level.LevelId).Distinct().Count(), Is.EqualTo(3));
             Assert.That(levels.Count(level => level.IsDefault), Is.EqualTo(1));
-            Assert.That(levels.All(level => level.Units.Length == 9), Is.True);
+            Assert.That(levels.Select(level => level.MissionText).Distinct().Count(), Is.EqualTo(3));
 
-            DemoLevelConfig assault = levels.Single(level => level.LevelId == "high-pressure-assault");
+            DemoLevelConfig interception = levels.Single(level => level.LevelId == "channel-interception");
+            DemoLevelConfig coast = levels.Single(level => level.LevelId == "french-coast-assault");
+            DemoLevelConfig assault = levels.Single(level => level.LevelId == "nest-high-pressure");
+
+            Assert.That(interception.MissionObjective, Is.EqualTo(DemoMissionObjective.DestroyAllEnemies));
+            Assert.That(interception.Units.Count(unit => unit.Team == DemoTeam.Enemy), Is.EqualTo(4));
+            Assert.That(interception.Units.Any(unit => unit.Role == DemoUnitRole.Fortress), Is.False);
+            Assert.That(interception.Units.Where(unit => unit.Team == DemoTeam.Enemy)
+                .All(unit => unit.EnemyAiProfile == DemoEnemyAiProfile.Scout), Is.True);
+            Assert.That(interception.Units.Where(unit => unit.Team == DemoTeam.Enemy)
+                .All(unit => unit.ScoutPatrolPoints.Any(point => point.z > 0f)), Is.True,
+                "Every interception raider must advance north from France into the Channel.");
+
+            Assert.That(coast.MissionObjective, Is.EqualTo(DemoMissionObjective.DestroyFortress));
+            Assert.That(coast.Units.Count(unit => unit.Team == DemoTeam.Enemy), Is.EqualTo(4));
+            Assert.That(coast.Units.Count(unit => unit.Role == DemoUnitRole.Fortress), Is.EqualTo(1));
+
+            Assert.That(assault.MissionObjective, Is.EqualTo(DemoMissionObjective.DestroyFortress));
+            Assert.That(assault.Units.Count(unit => unit.Team == DemoTeam.Enemy), Is.EqualTo(5));
+            Assert.That(assault.Units.Count(unit => unit.Role == DemoUnitRole.Guard), Is.EqualTo(3));
+
             DemoUnitStats runtimeStats = assault.CreateRuntimeStats(enemy);
             Assert.That(runtimeStats, Is.Not.SameAs(enemy.Stats));
             Assert.That(runtimeStats.MaxHealth, Is.EqualTo(enemy.Stats.MaxHealth * 1.25f).Within(0.001f));
@@ -819,6 +839,50 @@ namespace SWRTS.Demo1.Tests
                         $"{level.LevelId}: {enemy.name} starts too close to Folkestone base.");
                 }
             }
+        }
+
+        [Test]
+        public void DestroyAllEnemiesObjective_CompletesOnlyAfterEntireRaidIsDestroyed()
+        {
+            Demo1Simulation simulation = new Demo1Simulation();
+            simulation.ConfigureMissionObjective(DemoMissionObjective.DestroyAllEnemies);
+            simulation.AddUnit("witch", DemoTeam.Player, DemoUnitRole.Witch, BasicStats(0f), Vector3.zero);
+            DemoUnitModel first = simulation.AddUnit("raider-a", DemoTeam.Enemy, DemoUnitRole.Scout,
+                BasicStats(0f), Vector3.right * 5f);
+            DemoUnitModel second = simulation.AddUnit("raider-b", DemoTeam.Enemy, DemoUnitRole.Guard,
+                BasicStats(0f), Vector3.right * 10f);
+
+            first.Health = 0f;
+            first.Activity = DemoUnitActivity.Destroyed;
+            simulation.Advance(0.1f);
+            Assert.That(simulation.Outcome, Is.EqualTo(DemoOutcome.Running));
+
+            second.Health = 0f;
+            second.Activity = DemoUnitActivity.Destroyed;
+            simulation.Advance(0.1f);
+            Assert.That(simulation.Outcome, Is.EqualTo(DemoOutcome.Victory));
+        }
+
+        [Test]
+        public void DestroyFortressObjective_IgnoresDestroyedEscortUntilFortressFalls()
+        {
+            Demo1Simulation simulation = new Demo1Simulation();
+            simulation.ConfigureMissionObjective(DemoMissionObjective.DestroyFortress);
+            simulation.AddUnit("witch", DemoTeam.Player, DemoUnitRole.Witch, BasicStats(0f), Vector3.zero);
+            DemoUnitModel escort = simulation.AddUnit("escort", DemoTeam.Enemy, DemoUnitRole.Guard,
+                BasicStats(0f), Vector3.right * 5f);
+            DemoUnitModel fortress = simulation.AddUnit("fortress", DemoTeam.Enemy, DemoUnitRole.Fortress,
+                BasicStats(0f), Vector3.right * 10f);
+
+            escort.Health = 0f;
+            escort.Activity = DemoUnitActivity.Destroyed;
+            simulation.Advance(0.1f);
+            Assert.That(simulation.Outcome, Is.EqualTo(DemoOutcome.Running));
+
+            fortress.Health = 0f;
+            fortress.Activity = DemoUnitActivity.Destroyed;
+            simulation.Advance(0.1f);
+            Assert.That(simulation.Outcome, Is.EqualTo(DemoOutcome.Victory));
         }
 
         [Test]

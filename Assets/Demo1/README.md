@@ -62,8 +62,10 @@ This visual pass implements the information requirements of Feishu revision 6 wi
 
 - A compact selector is pinned to the top edge of the Game View and remains above the strategic and live-battle interfaces.
 - Open the dropdown, choose a level and press **Load**. Choosing an item alone does not interrupt the current simulation; loading the current item acts as a clean reset.
-- Level identity, mission copy, unit roster, team spawn offsets and enemy health/attack multipliers are stored in `DemoLevelConfig` ScriptableObjects under `Assets/Demo1/Resources/Configs/Levels`.
-- The first prototype set contains **Dover Strait · Standard Operation**, **Close Contact Exercise** and **High-pressure Assault**. All three retain the same core-loop objective while changing deployment distance and enemy pressure.
+- Level identity, mission objective, outcome copy, unit roster, team spawn offsets and enemy health/attack multipliers are stored in `DemoLevelConfig` ScriptableObjects under `Assets/Demo1/Resources/Configs/Levels`.
+- **English Channel - Raid Interception** deploys three scouts and a mobile escort from the French coast. All four use independent northbound patrol routes into the Channel; the mission ends only after the entire raid is destroyed.
+- **French Coast - Forward Assault** uses one scout, two guards and a fixed fortress. The player must cross the Channel, break the coastal screen and destroy the mission-known fortress.
+- **French Interior - High-pressure Nest Raid** moves the fortress group farther inland, adds a third guard and applies 1.25x enemy health plus 1.1x attack. Destroying the reinforced fortress completes the mission even if escorts remain.
 - Level selection is deliberately session-local: it does not add unlocking, save data, campaign progression or a separate front-end menu.
 - Feishu revision 6 excludes out-of-battle level selection from Demo 1.0. This selector is therefore a user-requested code prototype and has not been written back to the design document.
 
@@ -141,6 +143,6 @@ The Feishu specification revision 6 intentionally leaves formulas and concrete v
 - pathing is direct movement on the unobstructed prototype map; every witch owns her route and destination offset;
 - enemy AI uses the independent scout/guard state machines described above; player operational choices remain manual;
 - orders may be queued while paused;
-- the victory condition is destroying the enemy fortress, and defeat occurs only after every witch in the base roster is lost; standby, returning and servicing witches prevent premature defeat.
+- victory is objective-driven per level: interception requires every raider to be destroyed, while both assault missions require their fortress to be destroyed; defeat occurs only after every witch in the base roster is lost, so standby, returning and servicing witches prevent premature defeat.
 
 These are implementation defaults, not new game-design source of truth. They can be replaced without changing the simulation API when the corresponding Feishu sections are approved.

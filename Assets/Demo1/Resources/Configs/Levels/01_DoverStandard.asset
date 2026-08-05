@@ -12,24 +12,27 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 96dc59b1664f42049a9bc311997f3536, type: 3}
   m_Name: 01_DoverStandard
   m_EditorClassIdentifier:
-  LevelId: dover-standard
+  LevelId: channel-interception
   SortOrder: 10
   IsDefault: 1
-  DisplayName: "\u591A\u4F5B\u6D77\u5CE1\xB7\u6807\u51C6\u4F5C\u6218"
-  MissionText: "\u6467\u6BC1\u4E1C\u4FA7\u5F02\u5F62\u519B\u5DE2\u7A74 \xB7 \u6807\u51C6\u90E8\u7F72"
+  DisplayName: 英吉利海峡·来袭拦截
+  MissionText: 拦截从法国海岸北上的异形军袭击群，歼灭全部来袭单位。
+  MissionObjective: 1
+  VictoryText: 来袭异形军已全部歼灭，海峡航线恢复安全。
+  DefeatText: 我方已无可继续拦截的作战单位。
   Balance: {fileID: 11400000, guid: 44ad7ac5695e4f1adf8950d68d59d440, type: 2}
   Units:
   - {fileID: 11400000, guid: 773a0df89c814382c342635da708d773, type: 2}
   - {fileID: 11400000, guid: 551e8bd67a6f4160a120413bf586b551, type: 2}
-  - {fileID: 11400000, guid: dd9063fe2f4749e828a8c9b30d6e3dd9, type: 2}
-  - {fileID: 11400000, guid: bb7e41dc0d2547c60686a791eb4c1bb7, type: 2}
-  - {fileID: 11400000, guid: cc8f52ed1e3648d71797b8a2fc5d2cc8, type: 2}
-  - {fileID: 11400000, guid: aa6d30cbfc1446b5f6759680da3b0aa6, type: 2}
   - {fileID: 11400000, guid: 884b1ea9ad924493d453746eb819e884, type: 2}
   - {fileID: 11400000, guid: 662f9ce78b704271b231524cf697c662, type: 2}
   - {fileID: 11400000, guid: 995c2fbaeb0345a4e564857fc92af995, type: 2}
+  - {fileID: 11400000, guid: 7f4f59fda31d4d6a9358cdb2a6ebf001, type: 2}
+  - {fileID: 11400000, guid: 8a9e2d785c7143ba9a4405a22b9cf002, type: 2}
+  - {fileID: 11400000, guid: 14c7bb18332c4b36bf79f0506c5af003, type: 2}
+  - {fileID: 11400000, guid: 26d5e2c037ad46e3910ca01d797cf004, type: 2}
   BasePosition: {x: 187.6, y: 0, z: 100.8}
   PlayerSpawnOffset: {x: 0, y: 0, z: 0}
   EnemySpawnOffset: {x: 0, y: 0, z: 0}
-  EnemyHealthMultiplier: 1
-  EnemyAttackMultiplier: 1
+  EnemyHealthMultiplier: 0.85
+  EnemyAttackMultiplier: 0.85

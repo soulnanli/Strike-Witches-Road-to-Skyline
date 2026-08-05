@@ -1,0 +1,52 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c552e19d0ec64a22ae602432885cc8bf, type: 3}
+  m_Name: NeuroiRaiderScoutA
+  m_EditorClassIdentifier:
+  SpawnOrder: 10
+  DisplayName: 异形军袭击侦察 A
+  Team: 1
+  Role: 3
+  StartingPosition: {x: 145, y: 0, z: -25}
+  Stats:
+    MaxHealth: 160
+    Attack: 22
+    CriticalChance: 0.1
+    Defense: 9
+    MaxMagic: 100
+    MaxShield: 60
+    GlobalShieldBonus: 0
+    CoreDiscovery: 0.18
+    CoreConcealment: 0.58
+    AttackInterval: 1.55
+    MagicRecovery: 4
+    Mobility: 1.1
+    MoveSpeed: 5.2
+    VisionRadius: 26
+    VisionAngle: 110
+    WitchVisionType: 0
+    EngagementRadius: 7
+    CanRemoteStrike: 0
+    PreferredBattleLine: 1
+    AttackProfile: 1
+    ScreenPower: 0.4
+    ScreenPenetration: 0.45
+    Traits: 0
+  GrantPersistentPlayerIntel: 0
+  EnemyAiProfile: 1
+  UseStartingPositionAsAiHome: 1
+  EnemyAiHomePosition: {x: 0, y: 0, z: 0}
+  ScoutPatrolPoints:
+  - {x: 145, y: 0, z: -25}
+  - {x: 160, y: 0, z: 10}
+  - {x: 175, y: 0, z: 45}
+  - {x: 185, y: 0, z: 70}
