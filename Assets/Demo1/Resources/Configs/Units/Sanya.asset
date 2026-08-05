@@ -35,7 +35,7 @@ MonoBehaviour:
     MagicRecovery: 7
     Mobility: 1
     MoveSpeed: 2.42
-    VisionRadius: 28
+    VisionRadius: 48
     VisionAngle: 360
     WitchVisionType: 2
     EngagementRadius: 8

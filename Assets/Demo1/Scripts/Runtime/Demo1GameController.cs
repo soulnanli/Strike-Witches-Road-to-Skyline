@@ -429,7 +429,7 @@ namespace SWRTS.Demo1
             nightWitch.CoreDiscovery = 0.24f;
             nightWitch.PreferredBattleLine = DemoBattleLine.Main;
             nightWitch.WitchVisionType = DemoWitchVisionType.Night;
-            nightWitch.VisionRadius = 28f;
+            nightWitch.VisionRadius = 48f;
             nightWitch.VisionAngle = 360f;
 
             DemoUnitStats neuroi = witch.Clone();

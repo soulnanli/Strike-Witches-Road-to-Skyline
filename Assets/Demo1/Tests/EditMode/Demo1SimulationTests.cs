@@ -53,6 +53,17 @@ namespace SWRTS.Demo1.Tests
         }
 
         [Test]
+        public void SanyaConfig_UsesExtendedNightDetectionRadius()
+        {
+            DemoUnitConfig sanya = Resources.Load<DemoUnitConfig>("Configs/Units/Sanya");
+
+            Assert.That(sanya, Is.Not.Null);
+            Assert.That(sanya.Stats.WitchVisionType, Is.EqualTo(DemoWitchVisionType.Night));
+            Assert.That(sanya.Stats.VisionRadius, Is.EqualTo(48f));
+            Assert.That(sanya.Stats.VisionAngle, Is.EqualTo(360f));
+        }
+
+        [Test]
         public void OperationalMapMaterial_FlipsOnlyTextureVerticalAxis()
         {
             Texture2D texture = new Texture2D(2, 2);

@@ -118,7 +118,7 @@ This visual pass implements the information requirements of Feishu revision 6 wi
 ## Witch vision and player intelligence prototype
 
 - Witch vision is independent from combat role. The original four witches are ordinary witches with a 100-degree forward visual sector and no circular radar.
-- Sanya V. Litvyak is added as the fifth player unit. She is a night witch with a 28-unit, 360-degree circular detection area and no visual sector.
+- Sanya V. Litvyak is added as the fifth player unit. She is a night witch with a 48-unit, 360-degree circular detection area and no visual sector.
 - Moving or engaging turns an ordinary witch's sector toward her destination or target. Selecting a witch shows only the area produced by her own vision type.
 - A newly observed enemy starts as an unknown contact, becomes identified after 0.5 seconds of observation, and becomes assessed after another 1.5 seconds. Only assessed intelligence exposes health on the strategic map.
 - When observation is lost, the enemy marker freezes at its last known position. Intelligence degrades from assessed to identified after 3 seconds, to contact after 7 seconds, and disappears after 15 seconds.

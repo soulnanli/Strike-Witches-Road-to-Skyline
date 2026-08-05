@@ -49,6 +49,7 @@ namespace SWRTS.Demo1.PlayModeTests
                 Is.EqualTo(new[] { 188f, 38f, 12f, 121f, 74f, 5f }));
             Assert.That(new[] { sanya.Stats.MaxHealth, sanya.Stats.Attack, sanya.Stats.Defense, sanya.Stats.MaxMagic, sanya.Stats.MaxShield, sanya.Stats.MagicRecovery },
                 Is.EqualTo(new[] { 181f, 35f, 11f, 168f, 91f, 7f }));
+            Assert.That(sanya.Stats.VisionRadius, Is.EqualTo(48f), "The night witch should retain her extended circular detection radius.");
             Assert.That(sakamoto.Stats.HasTrait(DemoUnitTrait.SakamotoCoreInsight), Is.True);
             Assert.That(miyafuji.Stats.HasTrait(DemoUnitTrait.MiyafujiShieldAura), Is.True);
             Assert.That(lynette.Stats.HasTrait(DemoUnitTrait.LynetteSharpshooter), Is.True);
