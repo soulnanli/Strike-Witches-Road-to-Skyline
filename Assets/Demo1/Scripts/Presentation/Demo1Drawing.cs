@@ -97,7 +97,13 @@ namespace SWRTS.Demo1
         {
             Material material = CreateMaterial(tint);
             if (material != null && texture != null)
+            {
                 material.SetTexture("_BaseMap", texture);
+                // Unity's world Plane UVs run opposite to the previous RawImage map on screen.
+                // Flip only the texture V axis so north remains screen-up without changing world coordinates.
+                material.SetTextureScale("_BaseMap", new Vector2(1f, -1f));
+                material.SetTextureOffset("_BaseMap", new Vector2(0f, 1f));
+            }
             return material;
         }
 

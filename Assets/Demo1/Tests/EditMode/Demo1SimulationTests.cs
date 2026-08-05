@@ -53,6 +53,24 @@ namespace SWRTS.Demo1.Tests
         }
 
         [Test]
+        public void OperationalMapMaterial_FlipsOnlyTextureVerticalAxis()
+        {
+            Texture2D texture = new Texture2D(2, 2);
+            Material material = Demo1Drawing.CreateMapMaterial(texture, Color.white);
+            try
+            {
+                Assert.That(material, Is.Not.Null);
+                Assert.That(material.GetTextureScale("_BaseMap"), Is.EqualTo(new Vector2(1f, -1f)));
+                Assert.That(material.GetTextureOffset("_BaseMap"), Is.EqualTo(new Vector2(0f, 1f)));
+            }
+            finally
+            {
+                Object.DestroyImmediate(material);
+                Object.DestroyImmediate(texture);
+            }
+        }
+
+        [Test]
         public void Damage_ConsumesShieldAndMagicBeforeHealth()
         {
             Demo1Balance balance = new Demo1Balance();
