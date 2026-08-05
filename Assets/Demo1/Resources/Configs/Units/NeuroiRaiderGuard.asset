@@ -41,7 +41,7 @@ MonoBehaviour:
     ScreenPower: 1.05
     ScreenPenetration: 0
     Traits: 0
-  GrantPersistentPlayerIntel: 1
+  GrantPersistentPlayerIntel: 0
   EnemyAiProfile: 1
   UseStartingPositionAsAiHome: 1
   EnemyAiHomePosition: {x: 0, y: 0, z: 0}

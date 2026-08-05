@@ -801,6 +801,9 @@ namespace SWRTS.Demo1.Tests
             Assert.That(interception.Units.Where(unit => unit.Team == DemoTeam.Enemy)
                 .All(unit => unit.EnemyAiProfile == DemoEnemyAiProfile.Scout), Is.True);
             Assert.That(interception.Units.Where(unit => unit.Team == DemoTeam.Enemy)
+                .All(unit => !unit.GrantPersistentPlayerIntel), Is.True,
+                "Mobile interception enemies must not leak their position before witch observation.");
+            Assert.That(interception.Units.Where(unit => unit.Team == DemoTeam.Enemy)
                 .All(unit => unit.ScoutPatrolPoints.Any(point => point.z > 0f)), Is.True,
                 "Every interception raider must advance north from France into the Channel.");
 
@@ -928,6 +931,30 @@ namespace SWRTS.Demo1.Tests
             Assert.That(simulation.Outcome, Is.EqualTo(DemoOutcome.Running));
             Assert.That(witch.IsOperational, Is.False);
             Assert.That(simulation.IssueMove(new[] { witch.Id }, Vector3.right * 10f).Success, Is.False);
+        }
+
+        [Test]
+        public void StrategicMapVisibility_RequiresAnOperationalWitchAndKnownEnemyIntel()
+        {
+            Demo1Simulation simulation = new Demo1Simulation();
+            DemoUnitModel witch = simulation.AddUnit("standby", DemoTeam.Player, DemoUnitRole.Witch,
+                BasicStats(), Vector3.zero, DemoUnitDeploymentState.Standby);
+            DemoUnitModel unknownEnemy = simulation.AddUnit("unknown", DemoTeam.Enemy, DemoUnitRole.Scout,
+                BasicStats(), Vector3.right * 20f);
+            DemoUnitModel missionObjective = simulation.AddUnit("objective", DemoTeam.Enemy, DemoUnitRole.Fortress,
+                BasicStats(), Vector3.right * 30f);
+            simulation.GrantPersistentPlayerIntel(missionObjective.Id);
+
+            Assert.That(simulation.IsUnitVisibleOnStrategicMap(witch.Id), Is.False);
+            Assert.That(simulation.IsUnitVisibleOnStrategicMap(unknownEnemy.Id), Is.False);
+            Assert.That(simulation.IsUnitVisibleOnStrategicMap(missionObjective.Id), Is.False,
+                "Pre-mission intel must not render an enemy marker while the entire roster is still at base.");
+
+            Assert.That(simulation.RequestSortie(new[] { witch.Id }).Success, Is.True);
+
+            Assert.That(simulation.IsUnitVisibleOnStrategicMap(witch.Id), Is.True);
+            Assert.That(simulation.IsUnitVisibleOnStrategicMap(unknownEnemy.Id), Is.False);
+            Assert.That(simulation.IsUnitVisibleOnStrategicMap(missionObjective.Id), Is.True);
         }
 
         [Test]

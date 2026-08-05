@@ -18,6 +18,17 @@ namespace SWRTS.Prototype.BaseScene.PlayModeTests
 
             yield return null;
 
+            Demo1GameController operational = Object.FindFirstObjectByType<Demo1GameController>();
+            Assert.That(operational, Is.Not.Null);
+            Assert.That(operational.Simulation.Units.All(unit =>
+                !operational.Simulation.IsUnitVisibleOnStrategicMap(unit.Id)), Is.True,
+                "No strategic unit marker may appear before the first witch sortie.");
+            Demo1UnitView[] preSortieViews = Object.FindObjectsByType<Demo1UnitView>(
+                FindObjectsInactive.Include, FindObjectsSortMode.None);
+            Assert.That(preSortieViews, Is.Not.Empty);
+            Assert.That(preSortieViews.All(view => !view.gameObject.activeSelf), Is.True,
+                "Standby witches and enemies must not leave models or labels on the base map.");
+
             Assert.That(controller.AvailableWitchCount, Is.EqualTo(5));
             Assert.That(controller.BaseMapPosition.x, Is.InRange(0.8f, 0.9f));
             Assert.That(controller.BaseMapPosition.y, Is.InRange(0.75f, 0.9f));
@@ -35,10 +46,15 @@ namespace SWRTS.Prototype.BaseScene.PlayModeTests
             Assert.That(controller.DeploySelected(), Is.True);
             Assert.That(controller.DeployedWitchCount, Is.EqualTo(2));
             Assert.That(controller.SelectedWitchCount, Is.Zero);
-            Demo1GameController operational = Object.FindFirstObjectByType<Demo1GameController>();
-            Assert.That(operational, Is.Not.Null);
             Assert.That(operational.Simulation.Units.Count(unit => unit.Team == DemoTeam.Player), Is.EqualTo(5));
             Assert.That(operational.Simulation.Units.Count(unit => unit.Team == DemoTeam.Player && unit.IsOperational), Is.EqualTo(2));
+            Demo1UnitView[] postSortieViews = Object.FindObjectsByType<Demo1UnitView>(
+                FindObjectsInactive.Include, FindObjectsSortMode.None);
+            Assert.That(postSortieViews.Count(view => view.gameObject.activeSelf &&
+                operational.Simulation.GetUnit(view.UnitId).Team == DemoTeam.Player), Is.EqualTo(2));
+            Assert.That(postSortieViews.Any(view => view.gameObject.activeSelf &&
+                operational.Simulation.GetUnit(view.UnitId).Team == DemoTeam.Enemy), Is.False,
+                "Undetected mobile enemies must remain hidden after sortie.");
             Assert.That(GameObject.Find("Base Command Canvas"), Is.Not.Null,
                 "The base overlay must remain in the same world after sortie.");
 

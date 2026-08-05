@@ -34,11 +34,10 @@ namespace SWRTS.Demo1
             SetSelected(false, model);
         }
 
-        public void Sync(DemoUnitModel model, bool selected)
+        public void Sync(DemoUnitModel model, bool selected, bool visible)
         {
             Vector3 displayPosition = model.Team == DemoTeam.Enemy ? model.PlayerVisiblePosition : model.Position;
             transform.position = new Vector3(displayPosition.x, model.IsFixed ? 1.1f : 0.75f, displayPosition.z);
-            bool visible = model.Team == DemoTeam.Player || model.HasPlayerIntel;
             _renderer.enabled = visible && model.IsAlive;
             foreach (Transform child in transform)
                 child.gameObject.SetActive(visible && model.IsAlive);

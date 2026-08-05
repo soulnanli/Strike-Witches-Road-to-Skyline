@@ -604,6 +604,20 @@ namespace SWRTS.Demo1
             return _units.TryGetValue(id, out unit) ? unit : null;
         }
 
+        public bool IsUnitVisibleOnStrategicMap(int unitId)
+        {
+            DemoUnitModel unit = GetUnit(unitId);
+            if (unit == null || !unit.IsAlive || !unit.IsOperational)
+                return false;
+
+            bool hasDeployedWitch = _units.Values.Any(candidate =>
+                candidate.Team == DemoTeam.Player && candidate.IsAlive && candidate.IsOperational);
+            if (!hasDeployedWitch)
+                return false;
+
+            return unit.Team == DemoTeam.Player || unit.HasPlayerIntel;
+        }
+
         public DemoCommandResult ConfigureScoutAi(int unitId, IEnumerable<Vector3> patrolPoints)
         {
             DemoUnitModel unit = GetUnit(unitId);

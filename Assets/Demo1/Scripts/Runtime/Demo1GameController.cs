@@ -867,7 +867,8 @@ namespace SWRTS.Demo1
             if (!additive)
                 _selection.Clear();
             Rect rect = ScreenRect(start, end);
-            foreach (DemoUnitModel unit in _simulation.Units.Where(unit => unit.Team == DemoTeam.Player && unit.IsAlive))
+            foreach (DemoUnitModel unit in _simulation.Units.Where(unit =>
+                         unit.Team == DemoTeam.Player && _simulation.IsUnitVisibleOnStrategicMap(unit.Id)))
             {
                 Vector3 screen = _camera.WorldToScreenPoint(unit.Position);
                 if (screen.z > 0f && rect.Contains(new Vector2(screen.x, screen.y)))
@@ -992,8 +993,10 @@ namespace SWRTS.Demo1
             foreach (KeyValuePair<int, Demo1UnitView> pair in _unitViews)
             {
                 DemoUnitModel model = _simulation.GetUnit(pair.Key);
-                pair.Value.gameObject.SetActive(model != null && model.IsAlive && model.IsOperational);
-                pair.Value.Sync(model, _selection.Contains(pair.Key));
+                bool visible = model != null && _simulation.IsUnitVisibleOnStrategicMap(pair.Key);
+                pair.Value.gameObject.SetActive(visible);
+                if (model != null)
+                    pair.Value.Sync(model, _selection.Contains(pair.Key), visible);
             }
 
             foreach (DemoCombatModel combat in _simulation.Combats)
@@ -1307,7 +1310,7 @@ namespace SWRTS.Demo1
         {
             foreach (DemoUnitModel unit in _simulation.Units)
             {
-                if (!unit.IsAlive || (unit.Team == DemoTeam.Enemy && !unit.HasPlayerIntel))
+                if (!_simulation.IsUnitVisibleOnStrategicMap(unit.Id))
                     continue;
                 Vector3 displayPosition = unit.Team == DemoTeam.Enemy ? unit.PlayerVisiblePosition : unit.Position;
                 Vector3 screen = _camera.WorldToScreenPoint(displayPosition + Vector3.up * (unit.IsFixed ? 2.8f : 2f));
@@ -1543,7 +1546,7 @@ namespace SWRTS.Demo1
                 .FirstOrDefault(view =>
                 {
                     DemoUnitModel unit = view == null ? null : _simulation.GetUnit(view.UnitId);
-                    return unit != null && unit.IsAlive && (unit.Team == DemoTeam.Player || unit.HasPlayerIntel);
+                    return unit != null && _simulation.IsUnitVisibleOnStrategicMap(unit.Id);
                 });
         }
 
