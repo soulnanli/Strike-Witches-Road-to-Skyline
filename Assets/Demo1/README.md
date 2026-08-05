@@ -34,6 +34,15 @@ These values remain code-prototype balance and are not additions to Feishu revis
 
 This visual pass implements the information requirements of Feishu revision 6 without defining a final production art direction.
 
+### Level selector prototype
+
+- A compact selector is pinned to the top edge of the Game View and remains above the strategic and live-battle interfaces.
+- Open the dropdown, choose a level and press **Load**. Choosing an item alone does not interrupt the current simulation; loading the current item acts as a clean reset.
+- Level identity, mission copy, unit roster, team spawn offsets and enemy health/attack multipliers are stored in `DemoLevelConfig` ScriptableObjects under `Assets/Demo1/Resources/Configs/Levels`.
+- The first prototype set contains **Dover Strait · Standard Operation**, **Close Contact Exercise** and **High-pressure Assault**. All three retain the same core-loop objective while changing deployment distance and enemy pressure.
+- Level selection is deliberately session-local: it does not add unlocking, save data, campaign progression or a separate front-end menu.
+- Feishu revision 6 excludes out-of-battle level selection from Demo 1.0. This selector is therefore a user-requested code prototype and has not been written back to the design document.
+
 ## Controls
 
 - The full squad is selected on entry so a move or attack can be issued immediately.

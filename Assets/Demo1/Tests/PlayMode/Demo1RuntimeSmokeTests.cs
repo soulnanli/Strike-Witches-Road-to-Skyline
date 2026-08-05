@@ -22,8 +22,12 @@ namespace SWRTS.Demo1.PlayModeTests
             Assert.That(controller.Simulation, Is.Not.Null);
             Demo1BalanceConfig balanceConfig = Resources.Load<Demo1BalanceConfig>("Configs/Demo1Balance");
             DemoUnitConfig[] unitConfigs = Resources.LoadAll<DemoUnitConfig>("Configs/Units");
+            DemoLevelConfig[] levelConfigs = Resources.LoadAll<DemoLevelConfig>("Configs/Levels");
             Assert.That(balanceConfig, Is.Not.Null, "The scenario must use its balance ScriptableObject.");
             Assert.That(unitConfigs.Length, Is.EqualTo(9));
+            Assert.That(levelConfigs.Length, Is.EqualTo(3), "The edge selector needs three playable level configurations.");
+            Assert.That(levelConfigs.Select(level => level.LevelId).Distinct().Count(), Is.EqualTo(3));
+            Assert.That(levelConfigs.Count(level => level.IsDefault), Is.EqualTo(1));
             Assert.That(unitConfigs.Select(config => config.SpawnOrder).Distinct().Count(), Is.EqualTo(9));
             Assert.That(unitConfigs.Select(config => config.DisplayName).Distinct().Count(), Is.EqualTo(9));
             Assert.That(controller.Simulation.Units.Count, Is.EqualTo(9));
@@ -60,6 +64,18 @@ namespace SWRTS.Demo1.PlayModeTests
             Assert.That(controller.Simulation.Outcome, Is.EqualTo(DemoOutcome.Running));
             Assert.That(controller.SelectedUnitIds.Count, Is.EqualTo(5), "The squad should be ready to command on entry.");
             Assert.That(controller.CharacterDetailUnitId, Is.EqualTo(-1), "Multi-selection should hide the character detail panel.");
+            Demo1LevelSelector levelSelector = Object.FindFirstObjectByType<Demo1LevelSelector>();
+            Assert.That(levelSelector, Is.Not.Null);
+            Assert.That(levelSelector.OptionCount, Is.EqualTo(3));
+            Assert.That(levelSelector.SelectedLevelIndex, Is.EqualTo(controller.ActiveLevelIndex));
+            Assert.That(GameObject.Find("Level Selector"), Is.Not.Null);
+            Assert.That(GameObject.Find("Level Dropdown"), Is.Not.Null);
+            Assert.That(GameObject.Find("Load Level"), Is.Not.Null);
+            levelSelector.ToggleDropdown();
+            Assert.That(levelSelector.IsExpanded, Is.True);
+            levelSelector.SelectLevel((controller.ActiveLevelIndex + 1) % controller.LevelCount);
+            Assert.That(levelSelector.IsExpanded, Is.False);
+            Assert.That(levelSelector.SelectedLevelIndex, Is.Not.EqualTo(controller.ActiveLevelIndex));
 
             DemoUnitModel mover = controller.Simulation.Units.First(unit => unit.Team == DemoTeam.Player);
             controller.SelectUnits(new[] { mover.Id });

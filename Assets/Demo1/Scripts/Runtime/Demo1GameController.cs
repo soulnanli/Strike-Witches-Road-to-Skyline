@@ -46,9 +46,12 @@ namespace SWRTS.Demo1
         private Demo1Balance _balance;
         [SerializeField] private Demo1BalanceConfig _balanceConfig;
         [SerializeField] private DemoUnitConfig[] _unitConfigs;
+        [SerializeField] private DemoLevelConfig[] _levelConfigs;
+        private DemoLevelConfig _activeLevel;
         private Camera _camera;
         private Demo1CameraController _cameraController;
         private Demo1BattleUI _battleUi;
+        private Demo1LevelSelector _levelSelector;
         private CommandMode _commandMode;
         private Vector2 _dragStart;
         private bool _dragSelecting;
@@ -84,6 +87,8 @@ namespace SWRTS.Demo1
         private static readonly Color WarningAccent = new Color(1f, 0.66f, 0.2f, 1f);
         private const string BalanceResourcePath = "Configs/Demo1Balance";
         private const string UnitResourcePath = "Configs/Units";
+        private const string LevelResourcePath = "Configs/Levels";
+        private static string s_requestedLevelId;
 
         public Demo1Simulation Simulation => _simulation;
         public IReadOnlyCollection<int> SelectedUnitIds => _selection;
@@ -92,6 +97,10 @@ namespace SWRTS.Demo1
         public IReadOnlyList<DemoBattleEvent> BattleEvents => _events;
         public Camera BattleCamera => _camera;
         public int CharacterDetailUnitId => IsCharacterDetailVisible(out DemoUnitModel unit) ? unit.Id : -1;
+        public int LevelCount => _levelConfigs?.Length ?? 0;
+        public int ActiveLevelIndex => _activeLevel == null || _levelConfigs == null ? -1 : System.Array.IndexOf(_levelConfigs, _activeLevel);
+        public string ActiveLevelName => _activeLevel != null ? _activeLevel.DisplayName : "Demo 1.0";
+        public string ActiveMissionText => _activeLevel != null ? _activeLevel.MissionText : "摧毁东侧异形军巢穴。";
 
         private void Start()
         {
@@ -103,11 +112,41 @@ namespace SWRTS.Demo1
             BuildCamera();
             CreateScenario();
             BuildBattleUi();
+            BuildLevelSelector();
             SyncViews();
         }
 
         private void LoadScenarioConfigs()
         {
+            if (_levelConfigs == null || _levelConfigs.Length == 0)
+            {
+                _levelConfigs = Resources.LoadAll<DemoLevelConfig>(LevelResourcePath)
+                    .Where(config => config != null)
+                    .OrderBy(config => config.SortOrder)
+                    .ThenBy(config => config.LevelId)
+                    .ToArray();
+            }
+            else
+            {
+                _levelConfigs = _levelConfigs
+                    .Where(config => config != null)
+                    .OrderBy(config => config.SortOrder)
+                    .ThenBy(config => config.LevelId)
+                    .ToArray();
+            }
+
+            if (_levelConfigs.Length > 0)
+            {
+                _activeLevel = _levelConfigs.FirstOrDefault(config => config.LevelId == s_requestedLevelId)
+                    ?? _levelConfigs.FirstOrDefault(config => config.IsDefault)
+                    ?? _levelConfigs[0];
+                s_requestedLevelId = _activeLevel.LevelId;
+                if (_activeLevel.Balance != null)
+                    _balanceConfig = _activeLevel.Balance;
+                if (_activeLevel.Units != null && _activeLevel.Units.Length > 0)
+                    _unitConfigs = _activeLevel.Units;
+            }
+
             if (_balanceConfig == null)
                 _balanceConfig = Resources.Load<Demo1BalanceConfig>(BalanceResourcePath);
             if (_unitConfigs != null)
@@ -206,8 +245,10 @@ namespace SWRTS.Demo1
             List<KeyValuePair<DemoUnitConfig, DemoUnitModel>> spawned = new List<KeyValuePair<DemoUnitConfig, DemoUnitModel>>();
             foreach (DemoUnitConfig config in _unitConfigs.Where(config => config != null).OrderBy(config => config.SpawnOrder))
             {
+                Vector3 startingPosition = _activeLevel != null ? _activeLevel.GetSpawnPosition(config) : config.StartingPosition;
+                DemoUnitStats runtimeStats = _activeLevel != null ? _activeLevel.CreateRuntimeStats(config) : config.CreateRuntimeStats();
                 DemoUnitModel unit = AddUnit(config.DisplayName, config.Team, config.Role,
-                    config.CreateRuntimeStats(), config.StartingPosition);
+                    runtimeStats, startingPosition);
                 spawned.Add(new KeyValuePair<DemoUnitConfig, DemoUnitModel>(config, unit));
                 if (config.GrantPersistentPlayerIntel)
                     _simulation.GrantPersistentPlayerIntel(unit.Id);
@@ -218,10 +259,14 @@ namespace SWRTS.Demo1
                 switch (item.Key.EnemyAiProfile)
                 {
                     case DemoEnemyAiProfile.Scout:
-                        _simulation.ConfigureScoutAi(item.Value.Id, item.Key.ScoutPatrolPoints);
+                        Vector3 scoutOffset = _activeLevel != null ? _activeLevel.GetTeamOffset(item.Key.Team) : Vector3.zero;
+                        _simulation.ConfigureScoutAi(item.Value.Id, item.Key.ScoutPatrolPoints.Select(point => point + scoutOffset));
                         break;
                     case DemoEnemyAiProfile.Combat:
-                        _simulation.ConfigureCombatAi(item.Value.Id, item.Key.GetEnemyAiHomePosition());
+                        Vector3 homePosition = item.Key.UseStartingPositionAsAiHome
+                            ? item.Value.Position
+                            : item.Key.EnemyAiHomePosition + (_activeLevel != null ? _activeLevel.GetTeamOffset(item.Key.Team) : Vector3.zero);
+                        _simulation.ConfigureCombatAi(item.Value.Id, homePosition);
                         break;
                 }
             }
@@ -502,6 +547,35 @@ namespace SWRTS.Demo1
             uiObject.transform.SetParent(transform, false);
             _battleUi = uiObject.AddComponent<Demo1BattleUI>();
             _battleUi.Initialize(this);
+        }
+
+        private void BuildLevelSelector()
+        {
+            if (LevelCount == 0)
+                return;
+            GameObject selectorObject = new GameObject("Demo1 Level Selector UI");
+            selectorObject.transform.SetParent(transform, false);
+            _levelSelector = selectorObject.AddComponent<Demo1LevelSelector>();
+            _levelSelector.Initialize(this);
+        }
+
+        public string GetLevelName(int index)
+        {
+            return index >= 0 && index < LevelCount && _levelConfigs[index] != null
+                ? _levelConfigs[index].DisplayName
+                : "未知关卡";
+        }
+
+        public void RequestLevelLoad(int index)
+        {
+            if (index < 0 || index >= LevelCount || _levelConfigs[index] == null)
+            {
+                _statusMessage = "无法载入关卡：选择无效。";
+                return;
+            }
+
+            s_requestedLevelId = _levelConfigs[index].LevelId;
+            RestartScene();
         }
 
         private DemoUnitModel AddUnit(string name, DemoTeam team, DemoUnitRole role, DemoUnitStats stats, Vector3 position)
@@ -839,7 +913,7 @@ namespace SWRTS.Demo1
             FillRect(new Rect(0f, 0f, Screen.width, TopBarHeight), new Color(0.018f, 0.034f, 0.048f, 0.99f));
             FillRect(new Rect(0f, TopBarHeight - 2f, Screen.width, 2f), new Color(0.12f, 0.42f, 0.52f, 0.9f));
             FillRect(new Rect(16f, 12f, 4f, 28f), PlayerAccent);
-            GUI.Label(new Rect(30f, 8f, 470f, 34f), "DEMO 1.0  ·  多佛海峡防卫战", _titleStyle);
+            GUI.Label(new Rect(30f, 8f, 560f, 34f), $"DEMO 1.0  ·  {ActiveLevelName}", _titleStyle);
             string state = _paused ? "已暂停" : "进行中";
             Color stateColor = _paused ? WarningAccent : new Color(0.3f, 0.95f, 0.62f, 1f);
             Rect stateRect = new Rect(Screen.width - 254f, 10f, 230f, 32f);
@@ -860,7 +934,7 @@ namespace SWRTS.Demo1
             FillRect(missionRect, HudCardColor);
             FillRect(new Rect(missionRect.x, missionRect.y, 4f, missionRect.height), PlayerAccent);
             GUI.Label(new Rect(26f, y + 7f, 130f, 20f), "当前任务", _detailHeaderStyle);
-            GUI.Label(new Rect(26f, y + 28f, PanelWidth - 54f, 30f), "摧毁东侧异形军巢穴  ·  自动战斗", _smallStyle);
+            GUI.Label(new Rect(26f, y + 28f, PanelWidth - 54f, 30f), ActiveMissionText, _smallStyle);
             y += 76f;
 
             GUI.Label(new Rect(14f, y, 180f, 22f), "战术命令", _detailHeaderStyle);

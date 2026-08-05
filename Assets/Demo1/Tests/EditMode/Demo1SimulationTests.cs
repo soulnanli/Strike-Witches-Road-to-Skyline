@@ -760,5 +760,25 @@ namespace SWRTS.Demo1.Tests
             Assert.That(guard.EnemyAiState, Is.EqualTo(DemoEnemyAiState.Guard));
             Assert.That(Vector3.Distance(guard.Position, guard.EnemyAiHomePosition), Is.LessThanOrEqualTo(simulation.Balance.EnemyAiArrivalRadius));
         }
+
+        [Test]
+        public void LevelConfigs_ProvideUniquePlayableVariantsWithoutMutatingUnitAssets()
+        {
+            DemoLevelConfig[] levels = Resources.LoadAll<DemoLevelConfig>("Configs/Levels");
+            DemoUnitConfig enemy = Resources.LoadAll<DemoUnitConfig>("Configs/Units")
+                .First(unit => unit.Team == DemoTeam.Enemy);
+
+            Assert.That(levels.Length, Is.EqualTo(3));
+            Assert.That(levels.Select(level => level.LevelId).Distinct().Count(), Is.EqualTo(3));
+            Assert.That(levels.Count(level => level.IsDefault), Is.EqualTo(1));
+            Assert.That(levels.All(level => level.Units.Length == 9), Is.True);
+
+            DemoLevelConfig assault = levels.Single(level => level.LevelId == "high-pressure-assault");
+            DemoUnitStats runtimeStats = assault.CreateRuntimeStats(enemy);
+            Assert.That(runtimeStats, Is.Not.SameAs(enemy.Stats));
+            Assert.That(runtimeStats.MaxHealth, Is.EqualTo(enemy.Stats.MaxHealth * 1.25f).Within(0.001f));
+            Assert.That(runtimeStats.Attack, Is.EqualTo(enemy.Stats.Attack * 1.1f).Within(0.001f));
+            Assert.That(enemy.Stats.MaxHealth, Is.Not.EqualTo(runtimeStats.MaxHealth), "Level pressure must not write back to the unit asset.");
+        }
     }
 }
