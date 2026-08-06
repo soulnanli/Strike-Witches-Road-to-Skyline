@@ -9,7 +9,9 @@ namespace SWRTS.Demo1
         private LineRenderer _visionCircle;
         private LineRenderer _visionSector;
         private LineRenderer _engagementCircle;
+        private LineRenderer _attackCircle;
         private LineRenderer _routeLine;
+        private LineRenderer _targetLine;
         private Material _material;
         private Color _baseColor;
 
@@ -30,7 +32,11 @@ namespace SWRTS.Demo1
             _visionCircle = Demo1Drawing.CreateCircle(transform, "Night Vision", new Color(0.42f, 0.55f, 1f, 0.48f), 2f, 72);
             _visionSector = Demo1Drawing.CreateSector(transform, "Ordinary Vision", new Color(0.25f, 0.78f, 1f, 0.5f), 2f, 40);
             _engagementCircle = Demo1Drawing.CreateCircle(transform, "Engagement", new Color(1f, 0.72f, 0.18f, 0.55f), 2f, 64);
+            _attackCircle = Demo1Drawing.CreateCircle(transform, "Attack Range", new Color(1f, 0.22f, 0.16f, 0.78f), 2.5f, 64);
             _routeLine = Demo1Drawing.CreateLine(transform, "Route", new Color(0.2f, 1f, 0.9f, 0.75f), 3f);
+            _targetLine = Demo1Drawing.CreateLine(transform, "Target Lock", new Color(1f, 0.24f, 0.16f, 0.9f), 3.5f);
+            _routeLine.enabled = false;
+            _targetLine.enabled = false;
             SetSelected(false, model);
         }
 
@@ -45,9 +51,9 @@ namespace SWRTS.Demo1
             if (!visible || !model.IsAlive)
                 return;
 
-            Color activityColor = model.Activity == DemoUnitActivity.Retreating
+            Color activityColor = model.Activity == DemoUnitActivity.Attacking
                 ? new Color(1f, 0.65f, 0.1f)
-                : model.Activity == DemoUnitActivity.Protected ? new Color(0.35f, 0.9f, 1f) : _baseColor;
+                : model.Activity == DemoUnitActivity.Pursuing ? new Color(1f, 0.42f, 0.16f) : _baseColor;
             if (model.Team == DemoTeam.Enemy && !model.IsCurrentlyObservedByPlayer && !model.HasPersistentPlayerIntel)
                 activityColor = model.PlayerIntelLevel == DemoIntelLevel.Contact
                     ? new Color(0.58f, 0.62f, 0.66f)
@@ -62,6 +68,12 @@ namespace SWRTS.Demo1
                 _routeLine.SetPosition(0, model.Position + Vector3.up * 0.12f);
                 _routeLine.SetPosition(1, model.Destination + Vector3.up * 0.12f);
             }
+            _targetLine.enabled = selected && model.LockedTargetId >= 0 && model.HasTargetLastKnownPosition;
+            if (_targetLine.enabled)
+            {
+                _targetLine.SetPosition(0, model.Position + Vector3.up * 0.18f);
+                _targetLine.SetPosition(1, model.TargetLastKnownPosition + Vector3.up * 0.18f);
+            }
         }
 
         private void SetSelected(bool selected, DemoUnitModel model)
@@ -72,6 +84,7 @@ namespace SWRTS.Demo1
             _visionSector.enabled = selected && model.Team == DemoTeam.Player &&
                                     model.Stats.WitchVisionType == DemoWitchVisionType.Ordinary;
             _engagementCircle.enabled = selected;
+            _attackCircle.enabled = selected;
             if (!selected)
                 return;
 
@@ -82,6 +95,7 @@ namespace SWRTS.Demo1
             if (_visionSector.enabled)
                 Demo1Drawing.SetSector(_visionSector, model.Position, model.Facing, model.Stats.VisionRadius, model.Stats.VisionAngle, 0.055f);
             Demo1Drawing.SetCircle(_engagementCircle, model.Position, model.Stats.EngagementRadius, 0.065f);
+            Demo1Drawing.SetCircle(_attackCircle, model.Position, model.Stats.AttackRange, 0.075f);
         }
 
         private static Color RoleColor(DemoUnitRole role)

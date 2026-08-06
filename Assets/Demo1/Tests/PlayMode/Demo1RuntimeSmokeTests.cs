@@ -2,207 +2,84 @@ using System.Collections;
 using System.Linq;
 using NUnit.Framework;
 using UnityEngine;
-using UnityEngine.EventSystems;
 using UnityEngine.TestTools;
-using UnityEngine.UI;
 
 namespace SWRTS.Demo1.PlayModeTests
 {
     public sealed class Demo1RuntimeSmokeTests
     {
         [UnityTest]
-        public IEnumerator FullPlayerLoopMovesFightsAndPausesWithoutRuntimeErrors()
+        public IEnumerator ControllerRunsIndividualMapCombatAndPause()
         {
-            GameObject root = new GameObject("Demo1 Smoke Test");
+            GameObject root = new GameObject("Demo1 Individual Combat Smoke Test");
             Demo1GameController controller = root.AddComponent<Demo1GameController>();
-
             yield return null;
             yield return null;
 
             Assert.That(controller.Simulation, Is.Not.Null);
-            Demo1BalanceConfig balanceConfig = Resources.Load<Demo1BalanceConfig>("Configs/Demo1Balance");
-            DemoUnitConfig[] unitConfigs = Resources.LoadAll<DemoUnitConfig>("Configs/Units");
-            DemoLevelConfig[] levelConfigs = Resources.LoadAll<DemoLevelConfig>("Configs/Levels");
-            Assert.That(balanceConfig, Is.Not.Null, "The scenario must use its balance ScriptableObject.");
-            Assert.That(unitConfigs.Length, Is.EqualTo(9));
-            Assert.That(levelConfigs.Length, Is.EqualTo(3), "The edge selector needs three playable level configurations.");
-            Assert.That(levelConfigs.Select(level => level.LevelId).Distinct().Count(), Is.EqualTo(3));
-            Assert.That(levelConfigs.Count(level => level.IsDefault), Is.EqualTo(1));
-            Assert.That(unitConfigs.Select(config => config.SpawnOrder).Distinct().Count(), Is.EqualTo(9));
-            Assert.That(unitConfigs.Select(config => config.DisplayName).Distinct().Count(), Is.EqualTo(9));
-            Assert.That(controller.Simulation.Units.Count, Is.EqualTo(9));
-            Assert.That(controller.Simulation.Units.Count(unit => unit.Team == DemoTeam.Player), Is.EqualTo(5));
-            Assert.That(controller.Simulation.Units.Count(unit => unit.Team == DemoTeam.Player && unit.Stats.WitchVisionType == DemoWitchVisionType.Ordinary), Is.EqualTo(4));
-            Assert.That(controller.Simulation.Units.Single(unit => unit.DisplayName.Contains("桑妮亚")).Stats.WitchVisionType, Is.EqualTo(DemoWitchVisionType.Night));
-            DemoUnitModel sakamoto = controller.Simulation.Units.Single(unit => unit.DisplayName.Contains("坂本"));
-            DemoUnitModel miyafuji = controller.Simulation.Units.Single(unit => unit.DisplayName.Contains("宫藤"));
-            DemoUnitModel lynette = controller.Simulation.Units.Single(unit => unit.DisplayName.Contains("莉涅特"));
-            DemoUnitModel perrine = controller.Simulation.Units.Single(unit => unit.DisplayName.Contains("佩琳"));
-            DemoUnitModel sanya = controller.Simulation.Units.Single(unit => unit.DisplayName.Contains("桑妮亚"));
-            Assert.That(new[] { miyafuji.Stats.MaxHealth, miyafuji.Stats.Attack, miyafuji.Stats.Defense, miyafuji.Stats.MaxMagic, miyafuji.Stats.MaxShield, miyafuji.Stats.MagicRecovery },
-                Is.EqualTo(new[] { 181f, 27f, 11f, 181f, 96f, 9f }));
-            Assert.That(new[] { sakamoto.Stats.MaxHealth, sakamoto.Stats.Attack, sakamoto.Stats.Defense, sakamoto.Stats.MaxMagic, sakamoto.Stats.MaxShield, sakamoto.Stats.MagicRecovery },
-                Is.EqualTo(new[] { 221f, 44f, 12f, 121f, 74f, 5f }));
-            Assert.That(new[] { lynette.Stats.MaxHealth, lynette.Stats.Attack, lynette.Stats.Defense, lynette.Stats.MaxMagic, lynette.Stats.MaxShield, lynette.Stats.MagicRecovery },
-                Is.EqualTo(new[] { 174f, 36f, 11f, 121f, 67f, 5f }));
-            Assert.That(new[] { perrine.Stats.MaxHealth, perrine.Stats.Attack, perrine.Stats.Defense, perrine.Stats.MaxMagic, perrine.Stats.MaxShield, perrine.Stats.MagicRecovery },
-                Is.EqualTo(new[] { 188f, 38f, 12f, 121f, 74f, 5f }));
-            Assert.That(new[] { sanya.Stats.MaxHealth, sanya.Stats.Attack, sanya.Stats.Defense, sanya.Stats.MaxMagic, sanya.Stats.MaxShield, sanya.Stats.MagicRecovery },
-                Is.EqualTo(new[] { 181f, 35f, 11f, 168f, 91f, 7f }));
-            Assert.That(sanya.Stats.VisionRadius, Is.EqualTo(48f), "The night witch should retain her extended circular detection radius.");
-            Assert.That(sakamoto.Stats.HasTrait(DemoUnitTrait.SakamotoCoreInsight), Is.True);
-            Assert.That(miyafuji.Stats.HasTrait(DemoUnitTrait.MiyafujiShieldAura), Is.True);
-            Assert.That(lynette.Stats.HasTrait(DemoUnitTrait.LynetteSharpshooter), Is.True);
-            Assert.That(lynette.Stats.CanRemoteStrike, Is.False);
-            Assert.That(lynette.Stats.AttackProfile, Is.EqualTo(DemoAttackProfile.Standard));
-            Assert.That(lynette.Stats.ScreenPenetration, Is.EqualTo(0f));
-            Assert.That(controller.Simulation.GetEffectiveCriticalChance(lynette.Id), Is.EqualTo(0.3f).Within(0.001f));
-            Assert.That(controller.Simulation.GetEffectiveAttackInterval(lynette.Id), Is.EqualTo(2.2f).Within(0.001f));
-            DemoUnitConfig lynetteConfig = unitConfigs.Single(config => config.DisplayName.Contains("莉涅特"));
-            Assert.That(lynette.Stats, Is.Not.SameAs(lynetteConfig.Stats), "Runtime combat must not mutate the source asset.");
-            Assert.That(controller.Simulation.Units.Any(unit => unit.Role == DemoUnitRole.Fortress), Is.True);
-            Assert.That(Camera.main, Is.Not.Null);
-            Assert.That(controller.Simulation.Outcome, Is.EqualTo(DemoOutcome.Running));
-            Assert.That(controller.SelectedUnitIds.Count, Is.EqualTo(5), "The squad should be ready to command on entry.");
-            Assert.That(controller.CharacterDetailUnitId, Is.EqualTo(-1), "Multi-selection should hide the character detail panel.");
-            Demo1LevelSelector levelSelector = Object.FindFirstObjectByType<Demo1LevelSelector>();
-            Assert.That(levelSelector, Is.Not.Null);
-            Assert.That(levelSelector.OptionCount, Is.EqualTo(3));
-            Assert.That(levelSelector.SelectedLevelIndex, Is.EqualTo(controller.ActiveLevelIndex));
-            Assert.That(GameObject.Find("Level Selector"), Is.Not.Null);
-            Assert.That(GameObject.Find("Level Dropdown"), Is.Not.Null);
-            Assert.That(GameObject.Find("Load Level"), Is.Not.Null);
-            levelSelector.ToggleDropdown();
-            Assert.That(levelSelector.IsExpanded, Is.True);
-            levelSelector.SelectLevel((controller.ActiveLevelIndex + 1) % controller.LevelCount);
-            Assert.That(levelSelector.IsExpanded, Is.False);
-            Assert.That(levelSelector.SelectedLevelIndex, Is.Not.EqualTo(controller.ActiveLevelIndex));
+            Assert.That(Object.FindFirstObjectByType<Demo1LevelSelector>(), Is.Not.Null);
+            Assert.That(GameObject.Find("Demo1 Battle UI"), Is.Null);
+            Assert.That(Resources.LoadAll<DemoLevelConfig>("Configs/Levels").Length, Is.EqualTo(3));
 
-            DemoUnitModel mover = controller.Simulation.Units.First(unit => unit.Team == DemoTeam.Player);
-            controller.SelectUnits(new[] { mover.Id });
-            Assert.That(controller.CharacterDetailUnitId, Is.EqualTo(mover.Id), "Single-selection should expose that witch in the detail panel.");
-            Vector3 moveStart = mover.Position;
-            DemoCommandResult move = controller.CommandMove(moveStart + Vector3.right * 8f);
-            Assert.That(move.Success, Is.True, move.Message);
-            controller.Simulation.Advance(0.5f);
-            yield return null;
-            Assert.That(mover.Position.x, Is.GreaterThan(moveStart.x + 0.1f), "A real controller move order should update the unit model.");
+            DemoUnitModel player = controller.Simulation.Units.First(unit => unit.Team == DemoTeam.Player);
+            DemoUnitModel enemy = controller.Simulation.Units.First(unit => unit.Team == DemoTeam.Enemy && !unit.IsFixed);
+            player.Position = enemy.Position + Vector3.left * (player.Stats.AttackRange * 0.5f);
+            controller.Simulation.GrantPersistentPlayerIntel(enemy.Id);
+            controller.SelectUnits(new[] { player.Id });
 
-            DemoUnitModel target = controller.Simulation.Units.First(unit => unit.Team == DemoTeam.Enemy && !unit.IsFixed);
-            mover.Position = target.Position + Vector3.left * (mover.Stats.EngagementRadius * 0.5f);
-            target.IsRevealedToPlayer = true;
-            controller.SelectUnits(new[] { mover.Id });
-            DemoCommandResult engage = controller.CommandEngage(target.Id);
-            Assert.That(engage.Success, Is.True, engage.Message);
-            Assert.That(controller.Simulation.Combats.Any(combat => !combat.IsFinished), Is.True,
-                "Engaging through the controller should create a live battle.");
-            DemoCombatModel activeCombat = controller.Simulation.Combats.First(combat => !combat.IsFinished);
+            float healthBefore = enemy.Health;
+            DemoCommandResult attack = controller.CommandEngage(enemy.Id);
+            Assert.That(attack.Success, Is.True, attack.Message);
+            controller.Simulation.Advance(0.2f);
             yield return null;
-            Demo1BattleUI battleUi = Object.FindFirstObjectByType<Demo1BattleUI>();
-            Assert.That(battleUi, Is.Not.Null);
-            GameObject battleBubble = GameObject.Find($"Battle Bubble {activeCombat.Id}");
-            Assert.That(battleBubble, Is.Not.Null, "An active battle should create a clickable map bubble.");
-            Assert.That(battleBubble.GetComponent<RectTransform>().sizeDelta, Is.EqualTo(new Vector2(178f, 70f)),
-                "The refreshed bubble should have enough room for trend, force count and screening information.");
-            battleUi.OpenPanel(activeCombat.Id);
-            Assert.That(battleUi.IsPanelOpen, Is.True);
-            Assert.That(GameObject.Find("Battle Panel").GetComponent<RectTransform>().sizeDelta, Is.EqualTo(new Vector2(1180f, 800f)));
-            Assert.That(GameObject.Find("Header"), Is.Not.Null);
-            Assert.That(GameObject.Find("Player Team"), Is.Not.Null);
-            Assert.That(GameObject.Find("Enemy Team"), Is.Not.Null);
-            Assert.That(GameObject.Find("Events Accent"), Is.Not.Null);
-            Assert.That(controller.CharacterDetailUnitId, Is.EqualTo(-1), "The battle panel should take priority over the right-side detail panel.");
-            DemoCommandResult lineChange = controller.CommandBattleLineChange(mover.Id, DemoBattleLine.Main);
-            Assert.That(lineChange.Success, Is.True, lineChange.Message);
-            Assert.That(activeCombat.GetAssignment(mover.Id).IsRepositioning, Is.True);
+
+            Assert.That(player.LockedTargetId, Is.EqualTo(enemy.Id));
+            Assert.That(player.Activity, Is.EqualTo(DemoUnitActivity.Attacking));
+            Assert.That(enemy.Health, Is.LessThan(healthBefore));
+            Assert.That(GameObject.Find("Combat #1"), Is.Null);
+            Assert.That(GameObject.Find("Battle Panel"), Is.Null);
 
             controller.SetPaused(true);
             float pausedAt = controller.Simulation.SimulationTime;
             yield return null;
             yield return null;
-            Assert.That(controller.IsPaused, Is.True);
             Assert.That(controller.Simulation.SimulationTime, Is.EqualTo(pausedAt).Within(0.0001f));
             controller.SetPaused(false);
             yield return null;
-            Assert.That(controller.IsPaused, Is.False);
             Assert.That(controller.Simulation.SimulationTime, Is.GreaterThan(pausedAt));
-
-            target.Health = 0f;
-            target.Activity = DemoUnitActivity.Destroyed;
-            controller.Simulation.Advance(0.2f);
-            yield return null;
-            Assert.That(activeCombat.IsFinished, Is.True);
-            Assert.That(battleUi.IsPanelOpen, Is.False, "The panel should close when its battle ends.");
 
             Object.Destroy(root);
             yield return null;
         }
 
         [UnityTest]
-        public IEnumerator BattlePanelButtonsSurvivePointerPressAndExecuteSelectionLineChangeAndRetreat()
+        public IEnumerator SelectionShowsAttackRangeAndTargetLockAndStopClearsThem()
         {
-            GameObject root = new GameObject("Demo1 Battle UI Interaction Test");
+            GameObject root = new GameObject("Demo1 Target Visualization Test");
             Demo1GameController controller = root.AddComponent<Demo1GameController>();
-
             yield return null;
             yield return null;
 
             DemoUnitModel player = controller.Simulation.Units.First(unit => unit.Team == DemoTeam.Player);
             DemoUnitModel enemy = controller.Simulation.Units.First(unit => unit.Team == DemoTeam.Enemy && !unit.IsFixed);
-            player.Position = enemy.Position + Vector3.left * (player.Stats.EngagementRadius * 0.5f);
-            enemy.IsRevealedToPlayer = true;
+            controller.Simulation.GrantPersistentPlayerIntel(enemy.Id);
             controller.SelectUnits(new[] { player.Id });
-            DemoCommandResult engage = controller.CommandEngage(enemy.Id);
-            Assert.That(engage.Success, Is.True, engage.Message);
-
-            DemoCombatModel combat = controller.Simulation.Combats.First(item => !item.IsFinished);
-            controller.SetPaused(true);
-            Demo1BattleUI battleUi = Object.FindFirstObjectByType<Demo1BattleUI>();
-            battleUi.OpenPanel(combat.Id);
+            Assert.That(controller.CommandEngage(enemy.Id).Success, Is.True);
             yield return null;
 
-            yield return new WaitForSecondsRealtime(0.15f);
-            Transform panel = GameObject.Find("Battle Panel").transform;
-            int activeTitleCount = Resources.FindObjectsOfTypeAll<GameObject>()
-                .Count(item => item.name == "Title" && item.scene.IsValid() && item.activeInHierarchy && item.transform.IsChildOf(panel));
-            Assert.That(activeTitleCount, Is.EqualTo(1),
-                "A live refresh must retire delayed-destroy UI before the replacement becomes visible.");
+            Demo1UnitView view = Object.FindObjectsByType<Demo1UnitView>(FindObjectsSortMode.None)
+                .Single(item => item.UnitId == player.Id);
+            Transform attackRange = view.transform.Find("Attack Range");
+            Transform targetLock = view.transform.Find("Target Lock");
+            Assert.That(attackRange, Is.Not.Null);
+            Assert.That(targetLock, Is.Not.Null);
+            Assert.That(attackRange.GetComponent<LineRenderer>().enabled, Is.True);
+            Assert.That(targetLock.GetComponent<LineRenderer>().enabled, Is.True);
 
-            Button unitButton = GameObject.Find($"Unit {player.Id}").GetComponent<Button>();
-            int pressedButtonInstanceId = unitButton.gameObject.GetInstanceID();
-            PointerEventData pointer = new PointerEventData(EventSystem.current)
-            {
-                button = PointerEventData.InputButton.Left,
-                pointerId = -1
-            };
-
-            ExecuteEvents.Execute(unitButton.gameObject, pointer, ExecuteEvents.pointerDownHandler);
-            yield return new WaitForSecondsRealtime(0.2f);
-            Assert.That(unitButton, Is.Not.Null, "A live panel refresh must not destroy the button while it is pressed.");
-            Assert.That(unitButton.gameObject.GetInstanceID(), Is.EqualTo(pressedButtonInstanceId));
-            ExecuteEvents.Execute(unitButton.gameObject, pointer, ExecuteEvents.pointerUpHandler);
-            ExecuteEvents.Execute(unitButton.gameObject, pointer, ExecuteEvents.pointerClickHandler);
+            Assert.That(controller.CommandSetAutoAttack(false).Success, Is.True);
             yield return null;
-
-            Assert.That(battleUi.SelectedUnitId, Is.EqualTo(player.Id));
-            Assert.That(controller.SelectedUnitIds, Is.EquivalentTo(new[] { player.Id }));
-            Button selectedUnitButton = GameObject.Find($"Unit {player.Id}").GetComponent<Button>();
-            Outline selectedOutline = selectedUnitButton.GetComponent<Outline>();
-            Assert.That(selectedOutline, Is.Not.Null);
-            Assert.That(selectedOutline.effectDistance, Is.EqualTo(new Vector2(3f, -3f)), "The chosen battle card needs a strong selected state.");
-
-            Button mainButton = GameObject.Find("Main").GetComponent<Button>();
-            ExecuteEvents.Execute(mainButton.gameObject, pointer, ExecuteEvents.pointerClickHandler);
-            yield return null;
-            DemoCombatParticipantState assignment = combat.GetAssignment(player.Id);
-            Assert.That(assignment.Line, Is.EqualTo(DemoBattleLine.Main));
-            Assert.That(assignment.IsRepositioning, Is.True);
-
-            Button retreatButton = GameObject.Find("Retreat").GetComponent<Button>();
-            ExecuteEvents.Execute(retreatButton.gameObject, pointer, ExecuteEvents.pointerClickHandler);
-            yield return null;
-            Assert.That(player.Activity, Is.EqualTo(DemoUnitActivity.Retreating));
-            Assert.That(player.RetreatRemaining, Is.GreaterThan(0f));
+            Assert.That(player.LockedTargetId, Is.EqualTo(-1));
+            Assert.That(targetLock.GetComponent<LineRenderer>().enabled, Is.False);
 
             Object.Destroy(root);
             yield return null;

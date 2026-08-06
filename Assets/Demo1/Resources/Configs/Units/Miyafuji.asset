@@ -39,11 +39,9 @@ MonoBehaviour:
     VisionAngle: 100
     WitchVisionType: 1
     EngagementRadius: 8
+    AttackRange: 8
+    SupportRadius: 12
     CanRemoteStrike: 0
-    PreferredBattleLine: 2
-    AttackProfile: 0
-    ScreenPower: 0.35
-    ScreenPenetration: 0
     Traits: 2
   GrantPersistentPlayerIntel: 0
   EnemyAiProfile: 0

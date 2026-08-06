@@ -6,1053 +6,279 @@ namespace SWRTS.Demo1.Tests
 {
     public sealed class Demo1SimulationTests
     {
-        private static DemoUnitStats BasicStats(float attack = 20f)
+        private static DemoUnitStats Stats(float attack = 10f, float range = 4f)
         {
             return new DemoUnitStats
             {
-                MaxHealth = 100f,
+                MaxHealth = 500f,
                 Attack = attack,
                 CriticalChance = 0f,
                 Defense = 0f,
-                MaxMagic = 100f,
-                MaxShield = 100f,
+                MaxMagic = 0f,
+                MaxShield = 0f,
                 CoreDiscovery = 0f,
                 CoreConcealment = 1f,
-                AttackInterval = 1f,
-                MagicRecovery = 0f,
-                Mobility = 1f,
+                AttackInterval = 0.2f,
                 MoveSpeed = 10f,
                 VisionRadius = 30f,
-                EngagementRadius = 10f
+                VisionAngle = 120f,
+                WitchVisionType = DemoWitchVisionType.Ordinary,
+                EngagementRadius = 12f,
+                AttackRange = range
             };
         }
 
-        [Test]
-        public void ScriptableConfigs_CreateIndependentRuntimeCopies()
+        private static Demo1Simulation Scenario(out DemoUnitModel player, out DemoUnitModel enemy,
+            float distance = 3f, float attack = 10f, float range = 4f)
         {
-            DemoUnitConfig unitConfig = ScriptableObject.CreateInstance<DemoUnitConfig>();
-            Demo1BalanceConfig balanceConfig = ScriptableObject.CreateInstance<Demo1BalanceConfig>();
-            try
-            {
-                unitConfig.Stats.Attack = 31f;
-                balanceConfig.Values.CoreMultiplier = 2.75f;
-
-                DemoUnitStats runtimeStats = unitConfig.CreateRuntimeStats();
-                Demo1Balance runtimeBalance = balanceConfig.CreateRuntimeValue();
-                runtimeStats.Attack = 99f;
-                runtimeBalance.CoreMultiplier = 9f;
-
-                Assert.That(unitConfig.Stats.Attack, Is.EqualTo(31f));
-                Assert.That(balanceConfig.Values.CoreMultiplier, Is.EqualTo(2.75f));
-            }
-            finally
-            {
-                Object.DestroyImmediate(unitConfig);
-                Object.DestroyImmediate(balanceConfig);
-            }
+            Demo1Simulation simulation = new Demo1Simulation(new Demo1Balance { RandomSeed = 7 });
+            simulation.ConfigureMissionObjective(DemoMissionObjective.DestroyAllEnemies);
+            player = simulation.AddUnit("player", DemoTeam.Player, DemoUnitRole.Witch, Stats(attack, range), Vector3.zero);
+            enemy = simulation.AddUnit("enemy", DemoTeam.Enemy, DemoUnitRole.Guard, Stats(0f, range), new Vector3(distance, 0f, 0f));
+            simulation.GrantPersistentPlayerIntel(enemy.Id);
+            return simulation;
         }
 
         [Test]
-        public void SanyaConfig_UsesExtendedNightDetectionRadius()
+        public void ManualAttack_PursuesAndFiresWithoutCreatingBattleState()
         {
-            DemoUnitConfig sanya = Resources.Load<DemoUnitConfig>("Configs/Units/Sanya");
+            Demo1Simulation simulation = Scenario(out DemoUnitModel player, out DemoUnitModel enemy, 12f, 25f, 3f);
 
-            Assert.That(sanya, Is.Not.Null);
-            Assert.That(sanya.Stats.WitchVisionType, Is.EqualTo(DemoWitchVisionType.Night));
-            Assert.That(sanya.Stats.VisionRadius, Is.EqualTo(48f));
-            Assert.That(sanya.Stats.VisionAngle, Is.EqualTo(360f));
+            Assert.That(simulation.RequestAttack(new[] { player.Id }, enemy.Id).Success, Is.True);
+            simulation.Advance(1.5f);
+
+            Assert.That(player.LockedTargetId, Is.EqualTo(enemy.Id));
+            Assert.That(player.Position.x, Is.GreaterThan(0f));
+            Assert.That(enemy.Health, Is.LessThan(enemy.Stats.MaxHealth));
+            Assert.That(player.AttacksPerformed, Is.GreaterThan(0));
         }
 
         [Test]
-        public void OperationalMapMaterial_FlipsOnlyTextureVerticalAxis()
+        public void AttackRange_IsIndependentFromWarningRadius()
         {
-            Texture2D texture = new Texture2D(2, 2);
-            Material material = Demo1Drawing.CreateMapMaterial(texture, Color.white);
-            try
-            {
-                Assert.That(material, Is.Not.Null);
-                Assert.That(material.GetTextureScale("_BaseMap"), Is.EqualTo(new Vector2(1f, -1f)));
-                Assert.That(material.GetTextureOffset("_BaseMap"), Is.EqualTo(new Vector2(0f, 1f)));
-            }
-            finally
-            {
-                Object.DestroyImmediate(material);
-                Object.DestroyImmediate(texture);
-            }
-        }
-
-        [Test]
-        public void StrategicLineWidth_RemainsConstantInScreenPixelsAcrossZoomLevels()
-        {
-            GameObject root = new GameObject("line-width-test");
-            GameObject cameraObject = new GameObject("line-width-camera");
-            Camera camera = cameraObject.AddComponent<Camera>();
-            RenderTexture target = new RenderTexture(1000, 500, 0);
-            try
-            {
-                camera.orthographic = true;
-                camera.targetTexture = target;
-                LineRenderer line = Demo1Drawing.CreateLine(root.transform, "line", Color.white, 3f);
-                Demo1ScreenSpaceLineWidth width = line.GetComponent<Demo1ScreenSpaceLineWidth>();
-
-                Assert.That(width, Is.Not.Null);
-                Assert.That(width.PixelWidth, Is.EqualTo(3f));
-
-                camera.orthographicSize = 25f;
-                width.Refresh(camera);
-                float nearPixels = line.startWidth / (camera.orthographicSize * 2f) * camera.pixelHeight;
-
-                camera.orthographicSize = 157.5f;
-                width.Refresh(camera);
-                float farPixels = line.startWidth / (camera.orthographicSize * 2f) * camera.pixelHeight;
-
-                Assert.That(nearPixels, Is.EqualTo(3f).Within(0.001f));
-                Assert.That(farPixels, Is.EqualTo(3f).Within(0.001f));
-            }
-            finally
-            {
-                Object.DestroyImmediate(root);
-                Object.DestroyImmediate(cameraObject);
-                Object.DestroyImmediate(target);
-            }
-        }
-
-        [Test]
-        public void Damage_ConsumesShieldAndMagicBeforeHealth()
-        {
-            Demo1Balance balance = new Demo1Balance();
-            Demo1Simulation simulation = new Demo1Simulation(balance);
-            DemoUnitModel attacker = simulation.AddUnit("attacker", DemoTeam.Player, DemoUnitRole.Witch, BasicStats(30f), Vector3.zero);
-            DemoUnitModel target = simulation.AddUnit("target", DemoTeam.Enemy, DemoUnitRole.Witch, BasicStats(), Vector3.right);
-
-            DemoDamageResult result = DemoDamageResolver.Resolve(attacker, target, balance, new System.Random(1));
-
-            Assert.That(result.ShieldDamage, Is.GreaterThan(0f));
-            Assert.That(result.HealthDamage, Is.EqualTo(0f).Within(0.001f));
-            Assert.That(target.Magic, Is.LessThan(target.Stats.MaxMagic));
-            Assert.That(target.Health, Is.EqualTo(target.Stats.MaxHealth));
-        }
-
-        [Test]
-        public void GroupMove_AssignsIndependentDestinationsInsideArrivalArea()
-        {
-            Demo1Simulation simulation = new Demo1Simulation();
-            DemoUnitModel first = simulation.AddUnit("first", DemoTeam.Player, DemoUnitRole.Witch, BasicStats(), new Vector3(-8f, 0f, 0f));
-            DemoUnitModel second = simulation.AddUnit("second", DemoTeam.Player, DemoUnitRole.Witch, BasicStats(), new Vector3(-8f, 0f, 2f));
-
-            DemoCommandResult result = simulation.IssueMove(new[] { first.Id, second.Id }, new Vector3(8f, 0f, 0f));
-            for (int i = 0; i < 250; i++) simulation.Advance(0.1f);
-
-            Assert.That(result.Success, Is.True);
-            Assert.That(first.HasDestination, Is.False);
-            Assert.That(second.HasDestination, Is.False);
-            Assert.That(first.Position, Is.Not.EqualTo(second.Position));
-            Assert.That(Vector3.Distance(first.Position, new Vector3(8f, 0f, 0f)), Is.LessThanOrEqualTo(simulation.Balance.DestinationRadius));
-            Assert.That(Vector3.Distance(second.Position, new Vector3(8f, 0f, 0f)), Is.LessThanOrEqualTo(simulation.Balance.DestinationRadius));
-        }
-
-        [Test]
-        public void Combat_CreatesInstanceAndAutomaticallyDealsDamage()
-        {
-            Demo1Simulation simulation = new Demo1Simulation();
-            DemoUnitModel attacker = simulation.AddUnit("attacker", DemoTeam.Player, DemoUnitRole.Witch, BasicStats(60f), Vector3.zero);
-            DemoUnitModel target = simulation.AddUnit("target", DemoTeam.Enemy, DemoUnitRole.Witch, BasicStats(), new Vector3(2f, 0f, 0f));
-            target.IsRevealedToPlayer = true;
-            target.Shield = 0f;
-            target.Magic = 0f;
-
-            DemoCommandResult result = simulation.StartCombat(attacker.Id, target.Id);
-            for (int i = 0; i < 15; i++) simulation.Advance(0.1f);
-
-            Assert.That(result.Success, Is.True);
-            Assert.That(simulation.Combats.Count, Is.EqualTo(1));
-            Assert.That(target.Health, Is.LessThan(target.Stats.MaxHealth));
-        }
-
-        [Test]
-        public void Reinforcement_MovesIndependentlyThenJoinsExistingBattle()
-        {
-            Demo1Simulation simulation = new Demo1Simulation();
-            DemoUnitStats harmless = BasicStats(0f);
-            DemoUnitModel attacker = simulation.AddUnit("attacker", DemoTeam.Player, DemoUnitRole.Witch, harmless, Vector3.zero);
-            DemoUnitModel target = simulation.AddUnit("target", DemoTeam.Enemy, DemoUnitRole.Witch, harmless, new Vector3(2f, 0f, 0f));
-            DemoUnitModel reinforcement = simulation.AddUnit("reinforcement", DemoTeam.Player, DemoUnitRole.Witch, harmless, new Vector3(-30f, 0f, 0f));
-            target.IsRevealedToPlayer = true;
-            simulation.StartCombat(attacker.Id, target.Id);
-            DemoCombatModel combat = simulation.Combats.Single();
-
-            DemoCommandResult result = simulation.RequestReinforcement(new[] { reinforcement.Id }, combat.Id);
-            for (int i = 0; i < 300 && reinforcement.CombatId < 0; i++) simulation.Advance(0.1f);
-
-            Assert.That(result.Success, Is.True);
-            Assert.That(reinforcement.CombatId, Is.EqualTo(combat.Id));
-            Assert.That(combat.Participants, Does.Contain(reinforcement.Id));
-        }
-
-        [Test]
-        public void Retreat_IsDelayedAndGrantsDisengageProtection()
-        {
-            Demo1Simulation simulation = new Demo1Simulation();
-            DemoUnitStats harmless = BasicStats(0f);
-            DemoUnitModel player = simulation.AddUnit("player", DemoTeam.Player, DemoUnitRole.Witch, harmless, Vector3.zero);
-            DemoUnitModel enemy = simulation.AddUnit("enemy", DemoTeam.Enemy, DemoUnitRole.Witch, harmless, Vector3.right * 2f);
-            enemy.IsRevealedToPlayer = true;
-            simulation.StartCombat(player.Id, enemy.Id);
-
-            DemoCommandResult result = simulation.RequestRetreat(new[] { player.Id });
-            Assert.That(player.Activity, Is.EqualTo(DemoUnitActivity.Retreating));
-            for (int i = 0; i < 100 && player.CombatId >= 0; i++) simulation.Advance(0.1f);
-
-            Assert.That(result.Success, Is.True);
-            Assert.That(player.CombatId, Is.EqualTo(-1));
-            Assert.That(player.Activity, Is.EqualTo(DemoUnitActivity.Protected));
-            Assert.That(player.ProtectedUntil, Is.GreaterThan(simulation.SimulationTime));
-        }
-
-        [Test]
-        public void RemoteStrike_IsDelayedAndDoesNotCreateCombat()
-        {
-            Demo1Balance balance = new Demo1Balance { RemoteStrikeDelay = 0.5f };
-            Demo1Simulation simulation = new Demo1Simulation(balance);
-            DemoUnitStats artilleryStats = BasicStats(45f);
-            artilleryStats.CanRemoteStrike = true;
-            DemoUnitModel artillery = simulation.AddUnit("artillery", DemoTeam.Player, DemoUnitRole.Artillery, artilleryStats, Vector3.zero);
-            DemoUnitModel target = simulation.AddUnit("target", DemoTeam.Enemy, DemoUnitRole.Witch, BasicStats(), new Vector3(20f, 0f, 0f));
-            target.Shield = 0f;
-            target.Magic = 0f;
-
-            DemoCommandResult result = simulation.ScheduleRemoteStrike(artillery.Id, target.Position);
-            simulation.Advance(0.2f);
-            Assert.That(target.Health, Is.EqualTo(target.Stats.MaxHealth));
-            for (int i = 0; i < 10; i++) simulation.Advance(0.1f);
-
-            Assert.That(result.Success, Is.True);
-            Assert.That(target.Health, Is.LessThan(target.Stats.MaxHealth));
-            Assert.That(simulation.Combats, Is.Empty);
-            Assert.That(artillery.CombatId, Is.EqualTo(-1));
-        }
-
-        [Test]
-        public void Fortress_CannotMoveOrRetreat()
-        {
-            Demo1Simulation simulation = new Demo1Simulation();
-            DemoUnitModel fortress = simulation.AddUnit("fortress", DemoTeam.Player, DemoUnitRole.Fortress, BasicStats(), Vector3.zero);
-
-            DemoCommandResult move = simulation.IssueMove(new[] { fortress.Id }, Vector3.right * 10f);
-            DemoCommandResult retreat = simulation.RequestRetreat(new[] { fortress.Id });
-
-            Assert.That(move.Success, Is.False);
-            Assert.That(retreat.Success, Is.False);
-            Assert.That(fortress.Position, Is.EqualTo(Vector3.zero));
-        }
-
-        [Test]
-        public void BattleLines_HaveUnlimitedCapacityAndKeepPreferredLine()
-        {
-            Demo1Simulation simulation = new Demo1Simulation();
-            DemoUnitStats harmless = BasicStats(0f);
-            DemoUnitModel attacker = simulation.AddUnit("attacker", DemoTeam.Player, DemoUnitRole.Witch, harmless, Vector3.zero);
-            DemoUnitModel enemy = simulation.AddUnit("enemy", DemoTeam.Enemy, DemoUnitRole.Guard, harmless, Vector3.right * 2f);
-            enemy.IsRevealedToPlayer = true;
-            simulation.StartCombat(attacker.Id, enemy.Id);
-            DemoCombatModel combat = simulation.Combats.Single();
-
-            DemoUnitModel[] reinforcements = Enumerable.Range(0, 6)
-                .Select(index => simulation.AddUnit($"reinforcement-{index}", DemoTeam.Player, DemoUnitRole.Witch, harmless, combat.Center))
-                .ToArray();
-            simulation.RequestReinforcement(reinforcements.Select(unit => unit.Id), combat.Id);
-            DemoUnitStats mainStats = harmless.Clone();
-            mainStats.PreferredBattleLine = DemoBattleLine.Main;
-            DemoUnitModel mainUnit = simulation.AddUnit("main-reinforcement", DemoTeam.Player, DemoUnitRole.Artillery, mainStats, combat.Center);
-            simulation.RequestReinforcement(new[] { mainUnit.Id }, combat.Id);
-
-            Assert.That(combat.Participants.Select(simulation.GetUnit).Count(unit => unit.Team == DemoTeam.Player && combat.GetAssignment(unit.Id).Line == DemoBattleLine.Vanguard), Is.EqualTo(7));
-            Assert.That(simulation.RequestBattleLineChange(mainUnit.Id, DemoBattleLine.Vanguard).Success, Is.True);
-            Assert.That(combat.Participants.Select(simulation.GetUnit).Count(unit => unit.Team == DemoTeam.Player && combat.GetAssignment(unit.Id).Line == DemoBattleLine.Vanguard), Is.EqualTo(8));
-            Assert.That(combat.Participants.Select(simulation.GetUnit).Any(unit => unit.Team == DemoTeam.Player && combat.GetAssignment(unit.Id).Line != DemoBattleLine.Vanguard), Is.False);
-        }
-
-        [Test]
-        public void BattleLineChange_IsDelayedAndRejectsFixedTargets()
-        {
-            Demo1Simulation simulation = new Demo1Simulation();
-            DemoUnitStats harmless = BasicStats(0f);
-            DemoUnitModel player = simulation.AddUnit("player", DemoTeam.Player, DemoUnitRole.Witch, harmless, Vector3.zero);
-            DemoUnitStats fortressStats = harmless.Clone();
-            fortressStats.PreferredBattleLine = DemoBattleLine.Support;
-            DemoUnitModel fortress = simulation.AddUnit("fortress", DemoTeam.Enemy, DemoUnitRole.Fortress, fortressStats, Vector3.right * 2f);
-            fortress.IsRevealedToPlayer = true;
-            simulation.StartCombat(player.Id, fortress.Id);
-            DemoCombatModel combat = simulation.Combats.Single();
-
-            DemoCommandResult move = simulation.RequestBattleLineChange(player.Id, DemoBattleLine.Main);
-            DemoCommandResult fixedMove = simulation.RequestBattleLineChange(fortress.Id, DemoBattleLine.Main);
-
-            Assert.That(move.Success, Is.True);
-            Assert.That(combat.GetAssignment(player.Id).Line, Is.EqualTo(DemoBattleLine.Main));
-            Assert.That(combat.GetAssignment(player.Id).IsRepositioning, Is.True);
-            simulation.Advance(simulation.Balance.BattleLineChangeDuration + 0.1f);
-            Assert.That(combat.GetAssignment(player.Id).IsRepositioning, Is.False);
-            Assert.That(fixedMove.Success, Is.False);
-        }
-
-        [Test]
-        public void Screening_BlocksStandardAndFullyScreenedPiercingAttacks()
-        {
-            Demo1Simulation simulation = new Demo1Simulation();
-            DemoUnitStats piercing = BasicStats(10f);
-            piercing.AttackProfile = DemoAttackProfile.ScreenPiercing;
-            piercing.ScreenPenetration = 1f;
-            DemoUnitModel attacker = simulation.AddUnit("piercer", DemoTeam.Player, DemoUnitRole.Artillery, piercing, Vector3.zero);
-
-            DemoUnitStats screenStats = BasicStats(0f);
-            screenStats.PreferredBattleLine = DemoBattleLine.Vanguard;
-            screenStats.ScreenPower = 1f;
-            DemoUnitModel screen = simulation.AddUnit("screen", DemoTeam.Enemy, DemoUnitRole.Guard, screenStats, Vector3.right * 2f);
-            screen.IsRevealedToPlayer = true;
-            simulation.StartCombat(attacker.Id, screen.Id);
-            DemoCombatModel combat = simulation.Combats.Single();
-
-            DemoUnitStats rearStats = BasicStats(0f);
-            rearStats.PreferredBattleLine = DemoBattleLine.Support;
-            DemoUnitModel rear = simulation.AddUnit("rear", DemoTeam.Enemy, DemoUnitRole.Support, rearStats, combat.Center);
-            rear.Shield = 0f;
-            rear.Magic = 0f;
-            simulation.RequestReinforcement(new[] { rear.Id }, combat.Id);
-            float rearHealth = rear.Health;
-
-            Assert.That(simulation.GetScreeningEfficiency(combat.Id, DemoTeam.Enemy), Is.EqualTo(1f).Within(0.001f));
-            simulation.Advance(1.1f);
-            Assert.That(rear.Health, Is.EqualTo(rearHealth), "Full screening must block even a 100% base piercing attack.");
-        }
-
-        [Test]
-        public void ScreeningLoss_ExposesRearLineToPiercingAttack()
-        {
-            Demo1Simulation simulation = new Demo1Simulation();
-            DemoUnitStats piercing = BasicStats(25f);
-            piercing.AttackProfile = DemoAttackProfile.ScreenPiercing;
-            piercing.ScreenPenetration = 1f;
-            DemoUnitModel attacker = simulation.AddUnit("piercer", DemoTeam.Player, DemoUnitRole.Scout, piercing, Vector3.zero);
-
-            DemoUnitStats screenStats = BasicStats(0f);
-            screenStats.PreferredBattleLine = DemoBattleLine.Vanguard;
-            screenStats.ScreenPower = 1f;
-            DemoUnitModel screen = simulation.AddUnit("screen", DemoTeam.Enemy, DemoUnitRole.Guard, screenStats, Vector3.right * 2f);
-            screen.IsRevealedToPlayer = true;
-            simulation.StartCombat(attacker.Id, screen.Id);
-            DemoCombatModel combat = simulation.Combats.Single();
-
-            DemoUnitStats rearStats = BasicStats(0f);
-            rearStats.PreferredBattleLine = DemoBattleLine.Support;
-            DemoUnitModel rear = simulation.AddUnit("rear", DemoTeam.Enemy, DemoUnitRole.Support, rearStats, combat.Center);
-            rear.Shield = 0f;
-            rear.Magic = 0f;
-            simulation.RequestReinforcement(new[] { rear.Id }, combat.Id);
-            screen.Health = 0f;
-            screen.Activity = DemoUnitActivity.Destroyed;
-            float rearHealth = rear.Health;
-
-            simulation.Advance(1.1f);
-
-            Assert.That(simulation.GetScreeningEfficiency(combat.Id, DemoTeam.Enemy), Is.EqualTo(0f));
-            Assert.That(rear.Health, Is.LessThan(rearHealth));
-        }
-
-        [Test]
-        public void BattleLines_ApplyDistinctAttackDefenseAndSupportTradeoffs()
-        {
-            Demo1Simulation simulation = new Demo1Simulation();
-
-            Assert.That(simulation.GetBattleLineAttackMultiplier(DemoBattleLine.Vanguard), Is.EqualTo(0.9f).Within(0.001f));
-            Assert.That(simulation.GetBattleLineDamageTakenMultiplier(DemoBattleLine.Vanguard), Is.EqualTo(0.85f).Within(0.001f));
-            Assert.That(simulation.GetBattleLineAttackMultiplier(DemoBattleLine.Main), Is.EqualTo(1.15f).Within(0.001f));
-            Assert.That(simulation.GetBattleLineAttackMultiplier(DemoBattleLine.Support), Is.EqualTo(0.8f).Within(0.001f));
-            Assert.That(simulation.Balance.SupportEffectMultiplier, Is.EqualTo(1.5f).Within(0.001f));
-        }
-
-        [Test]
-        public void Witch_PrioritizesScreenPiercingThreatOnExposedLine()
-        {
-            Demo1Simulation simulation = new Demo1Simulation();
-            DemoUnitStats harmless = BasicStats(0f);
-            DemoUnitModel witch = simulation.AddUnit("witch", DemoTeam.Player, DemoUnitRole.Witch, BasicStats(10f), Vector3.zero);
-            DemoUnitModel guard = simulation.AddUnit("guard", DemoTeam.Enemy, DemoUnitRole.Guard, harmless, Vector3.right * 2f);
-            guard.IsRevealedToPlayer = true;
-            simulation.StartCombat(witch.Id, guard.Id);
-            DemoCombatModel combat = simulation.Combats.Single();
-            DemoUnitStats piercing = harmless.Clone();
-            piercing.AttackProfile = DemoAttackProfile.ScreenPiercing;
-            DemoUnitModel artillery = simulation.AddUnit("artillery", DemoTeam.Enemy, DemoUnitRole.Artillery, piercing, combat.Center);
-            simulation.RequestReinforcement(new[] { artillery.Id }, combat.Id);
-
-            simulation.Advance(0.1f);
-
-            Assert.That(combat.GetAssignment(witch.Id).LastTargetId, Is.EqualTo(artillery.Id));
-        }
-
-        [Test]
-        public void Artillery_EveryThirdAttackUsesCalibratedSalvo()
-        {
-            Demo1Simulation simulation = new Demo1Simulation();
-            DemoUnitStats artilleryStats = BasicStats(10f);
-            artilleryStats.PreferredBattleLine = DemoBattleLine.Main;
-            DemoUnitModel artillery = simulation.AddUnit("artillery", DemoTeam.Player, DemoUnitRole.Artillery, artilleryStats, Vector3.zero);
-            DemoUnitStats targetStats = BasicStats(0f);
-            targetStats.MaxHealth = 1000f;
-            DemoUnitModel target = simulation.AddUnit("target", DemoTeam.Enemy, DemoUnitRole.Guard, targetStats, Vector3.right * 2f);
-            target.IsRevealedToPlayer = true;
-            target.Shield = 0f;
-            target.Magic = 0f;
-            simulation.StartCombat(artillery.Id, target.Id);
-
-            float before = target.Health;
-            simulation.Advance(0.1f);
-            float firstDamage = before - target.Health;
-            before = target.Health;
-            simulation.Advance(1f);
-            float secondDamage = before - target.Health;
-            before = target.Health;
-            simulation.Advance(1f);
-            float thirdDamage = before - target.Health;
-
-            Assert.That(secondDamage, Is.EqualTo(firstDamage).Within(0.01f));
-            Assert.That(thirdDamage, Is.GreaterThan(firstDamage * 1.4f));
-        }
-
-        [Test]
-        public void TeamTraits_ApplyToHolderAndAlliesOnlyWhileProviderIsActive()
-        {
-            Demo1Simulation simulation = new Demo1Simulation();
-            DemoUnitStats sakamotoStats = BasicStats(0f);
-            sakamotoStats.CoreDiscovery = 0.2f;
-            sakamotoStats.Traits = DemoUnitTrait.SakamotoCoreInsight;
-            DemoUnitModel sakamoto = simulation.AddUnit("sakamoto", DemoTeam.Player, DemoUnitRole.Witch, sakamotoStats, Vector3.zero);
-            DemoUnitModel enemy = simulation.AddUnit("enemy", DemoTeam.Enemy, DemoUnitRole.Guard, BasicStats(0f), Vector3.right * 2f);
-            enemy.IsRevealedToPlayer = true;
-            simulation.StartCombat(sakamoto.Id, enemy.Id);
-            DemoCombatModel combat = simulation.Combats.Single();
-
-            DemoUnitStats allyStats = BasicStats(0f);
-            allyStats.CoreDiscovery = 0.1f;
-            DemoUnitModel ally = simulation.AddUnit("ally", DemoTeam.Player, DemoUnitRole.Witch, allyStats, combat.Center);
-            simulation.RequestReinforcement(new[] { ally.Id }, combat.Id);
-
-            DemoUnitStats miyafujiStats = BasicStats(0f);
-            miyafujiStats.PreferredBattleLine = DemoBattleLine.Support;
-            miyafujiStats.Traits = DemoUnitTrait.MiyafujiShieldAura;
-            DemoUnitModel miyafuji = simulation.AddUnit("miyafuji", DemoTeam.Player, DemoUnitRole.Support, miyafujiStats, combat.Center);
-            simulation.RequestReinforcement(new[] { miyafuji.Id }, combat.Id);
-
-            Assert.That(simulation.GetEffectiveCoreDiscovery(sakamoto.Id), Is.EqualTo(0.4f).Within(0.001f));
-            Assert.That(simulation.GetEffectiveCoreDiscovery(ally.Id), Is.EqualTo(0.2f).Within(0.001f));
-            Assert.That(simulation.GetEffectiveShieldBonus(combat.Id, miyafuji.Id), Is.EqualTo(0.15f).Within(0.001f));
-            Assert.That(simulation.GetEffectiveShieldBonus(combat.Id, ally.Id), Is.EqualTo(0.15f).Within(0.001f));
-
-            Assert.That(simulation.RequestBattleLineChange(sakamoto.Id, DemoBattleLine.Main).Success, Is.True);
-            Assert.That(simulation.GetEffectiveCoreDiscovery(sakamoto.Id), Is.EqualTo(0.2f).Within(0.001f));
-            Assert.That(simulation.GetEffectiveCoreDiscovery(ally.Id), Is.EqualTo(0.1f).Within(0.001f));
-
-            Assert.That(simulation.RequestBattleLineChange(miyafuji.Id, DemoBattleLine.Main).Success, Is.True);
-            Assert.That(simulation.GetEffectiveShieldBonus(combat.Id, miyafuji.Id), Is.EqualTo(0f).Within(0.001f));
-            Assert.That(simulation.GetEffectiveShieldBonus(combat.Id, ally.Id), Is.EqualTo(0f).Within(0.001f));
-        }
-
-        [Test]
-        public void LynetteTrait_IncreasesCriticalAndIntervalButUsesOnlyStandardAttacks()
-        {
-            Demo1Balance balance = new Demo1Balance
-            {
-                LynetteCriticalChanceBonus = 0f,
-                LynetteAttackIntervalMultiplier = 1f
-            };
-            Demo1Simulation simulation = new Demo1Simulation(balance);
-            DemoUnitStats lynetteStats = BasicStats(10f);
-            lynetteStats.PreferredBattleLine = DemoBattleLine.Main;
-            lynetteStats.Traits = DemoUnitTrait.LynetteSharpshooter;
-            lynetteStats.CanRemoteStrike = false;
-            lynetteStats.AttackProfile = DemoAttackProfile.Standard;
-            lynetteStats.ScreenPenetration = 0f;
-            DemoUnitModel lynette = simulation.AddUnit("lynette", DemoTeam.Player, DemoUnitRole.Artillery, lynetteStats, Vector3.zero);
-            DemoUnitStats targetStats = BasicStats(0f);
-            targetStats.MaxHealth = 1000f;
-            DemoUnitModel target = simulation.AddUnit("target", DemoTeam.Enemy, DemoUnitRole.Guard, targetStats, Vector3.right * 2f);
-            target.IsRevealedToPlayer = true;
-            target.Shield = 0f;
-            target.Magic = 0f;
-            simulation.StartCombat(lynette.Id, target.Id);
-
-            float before = target.Health;
-            simulation.Advance(0.1f);
-            float firstDamage = before - target.Health;
-            before = target.Health;
-            simulation.Advance(1f);
-            float secondDamage = before - target.Health;
-            before = target.Health;
-            simulation.Advance(1f);
-            float thirdDamage = before - target.Health;
-
-            Assert.That(secondDamage, Is.EqualTo(firstDamage).Within(0.01f));
-            Assert.That(thirdDamage, Is.EqualTo(firstDamage).Within(0.01f), "Lynette's third shot must not use the artillery salvo multiplier.");
-
-            Demo1Simulation effectiveStatsSimulation = new Demo1Simulation();
-            DemoUnitStats effectiveStats = BasicStats();
-            effectiveStats.CriticalChance = 0.12f;
-            effectiveStats.AttackInterval = 1.6f;
-            effectiveStats.Traits = DemoUnitTrait.LynetteSharpshooter;
-            DemoUnitModel effectiveLynette = effectiveStatsSimulation.AddUnit(
-                "effective-lynette", DemoTeam.Player, DemoUnitRole.Artillery, effectiveStats, Vector3.zero);
-            Assert.That(effectiveStatsSimulation.GetEffectiveCriticalChance(effectiveLynette.Id), Is.EqualTo(0.3f).Within(0.001f));
-            Assert.That(effectiveStatsSimulation.GetEffectiveAttackInterval(effectiveLynette.Id), Is.EqualTo(2.2f).Within(0.001f));
-        }
-
-        [Test]
-        public void Scout_MarksTargetAndAmplifiesFollowingAlliedAttack()
-        {
-            Demo1Simulation simulation = new Demo1Simulation();
-            DemoUnitStats scoutStats = BasicStats(0f);
-            scoutStats.PreferredBattleLine = DemoBattleLine.Main;
-            DemoUnitModel scout = simulation.AddUnit("scout", DemoTeam.Player, DemoUnitRole.Scout, scoutStats, Vector3.zero);
-            DemoUnitStats targetStats = BasicStats(0f);
-            targetStats.MaxHealth = 1000f;
-            DemoUnitModel target = simulation.AddUnit("target", DemoTeam.Enemy, DemoUnitRole.Guard, targetStats, Vector3.right * 2f);
-            target.IsRevealedToPlayer = true;
-            target.Shield = 0f;
-            target.Magic = 0f;
-            simulation.StartCombat(scout.Id, target.Id);
-            DemoCombatModel combat = simulation.Combats.Single();
-            DemoUnitStats allyStats = BasicStats(10f);
-            allyStats.PreferredBattleLine = DemoBattleLine.Main;
-            DemoUnitModel ally = simulation.AddUnit("ally", DemoTeam.Player, DemoUnitRole.Witch, allyStats, combat.Center);
-            simulation.RequestReinforcement(new[] { ally.Id }, combat.Id);
-
-            float before = target.Health;
-            simulation.Advance(0.1f);
-            float totalDamage = before - target.Health;
-
-            Assert.That(simulation.GetMarkRemaining(combat.Id, target.Id), Is.GreaterThan(3.8f));
-            Assert.That(totalDamage, Is.GreaterThan(12f), "The allied attack in the same combat tick should consume the scout's mark bonus.");
-        }
-
-        [Test]
-        public void Support_PulsesOnlyWhileActiveOnSupportLine()
-        {
-            Demo1Balance balance = new Demo1Balance { SupportPulseInterval = 0.5f };
-            Demo1Simulation simulation = new Demo1Simulation(balance);
-            DemoUnitStats supportStats = BasicStats(0f);
-            supportStats.PreferredBattleLine = DemoBattleLine.Support;
-            supportStats.GlobalShieldBonus = 0.25f;
-            DemoUnitModel support = simulation.AddUnit("support", DemoTeam.Player, DemoUnitRole.Support, supportStats, Vector3.zero);
-            DemoUnitModel enemy = simulation.AddUnit("enemy", DemoTeam.Enemy, DemoUnitRole.Guard, BasicStats(0f), Vector3.right * 2f);
-            enemy.IsRevealedToPlayer = true;
-            simulation.StartCombat(support.Id, enemy.Id);
-            DemoCombatModel combat = simulation.Combats.Single();
-            DemoUnitModel ally = simulation.AddUnit("ally", DemoTeam.Player, DemoUnitRole.Witch, BasicStats(0f), combat.Center);
-            ally.Shield = 0f;
-            ally.Magic = 0f;
-            simulation.RequestReinforcement(new[] { ally.Id }, combat.Id);
-
-            simulation.Advance(0.6f);
-            Assert.That(ally.Shield, Is.GreaterThan(0f));
-            Assert.That(ally.Magic, Is.GreaterThan(0f));
-
-            simulation.RequestBattleLineChange(support.Id, DemoBattleLine.Main);
-            simulation.Advance(balance.BattleLineChangeDuration + 0.1f);
-            ally.Shield = 0f;
-            ally.Magic = 0f;
-            simulation.Advance(0.6f);
-            Assert.That(ally.Shield, Is.EqualTo(0f));
-            Assert.That(ally.Magic, Is.EqualTo(0f));
-        }
-
-        [Test]
-        public void Guard_InterceptsSuccessfulRearLinePenetration()
-        {
-            Demo1Balance balance = new Demo1Balance { GuardInterceptionChance = 1f };
-            Demo1Simulation simulation = new Demo1Simulation(balance);
-            DemoUnitStats piercing = BasicStats(10f);
-            piercing.PreferredBattleLine = DemoBattleLine.Main;
-            piercing.AttackProfile = DemoAttackProfile.ScreenPiercing;
-            piercing.ScreenPenetration = 1f;
-            DemoUnitModel attacker = simulation.AddUnit("piercer", DemoTeam.Player, DemoUnitRole.Artillery, piercing, Vector3.zero);
-            DemoUnitStats guardStats = BasicStats(0f);
-            guardStats.ScreenPower = 0f;
-            DemoUnitModel guard = simulation.AddUnit("guard", DemoTeam.Enemy, DemoUnitRole.Guard, guardStats, Vector3.right * 2f);
-            guard.IsRevealedToPlayer = true;
-            simulation.StartCombat(attacker.Id, guard.Id);
-            DemoCombatModel combat = simulation.Combats.Single();
-            DemoUnitStats rearStats = BasicStats(0f);
-            rearStats.PreferredBattleLine = DemoBattleLine.Support;
-            DemoUnitModel rear = simulation.AddUnit("rear", DemoTeam.Enemy, DemoUnitRole.Support, rearStats, combat.Center);
-            simulation.RequestReinforcement(new[] { rear.Id }, combat.Id);
-            string interceptEvent = null;
-            simulation.EventRaised += item =>
-            {
-                if (item.Message.Contains("拦截")) interceptEvent = item.Message;
-            };
-
-            simulation.Advance(0.1f);
-
-            Assert.That(combat.GetAssignment(attacker.Id).LastTargetId, Is.EqualTo(guard.Id));
-            Assert.That(interceptEvent, Does.Contain("拦截"));
-        }
-
-        [Test]
-        public void Fortress_EntersFasterEmergencyBarrageBelowHalfHealth()
-        {
-            Demo1Simulation simulation = new Demo1Simulation();
-            DemoUnitModel attacker = simulation.AddUnit("attacker", DemoTeam.Player, DemoUnitRole.Witch, BasicStats(0f), Vector3.zero);
-            DemoUnitStats fortressStats = BasicStats(20f);
-            fortressStats.MaxHealth = 500f;
-            fortressStats.PreferredBattleLine = DemoBattleLine.Support;
-            DemoUnitModel fortress = simulation.AddUnit("fortress", DemoTeam.Enemy, DemoUnitRole.Fortress, fortressStats, Vector3.right * 2f);
-            fortress.IsRevealedToPlayer = true;
-            fortress.Health = fortress.Stats.MaxHealth * 0.49f;
-            simulation.StartCombat(attacker.Id, fortress.Id);
-
-            simulation.Advance(0.1f);
-
-            Assert.That(simulation.Combats.Single().GetAssignment(fortress.Id).FortressBarrageAnnounced, Is.True);
-            Assert.That(fortress.AttackCooldown, Is.EqualTo(fortress.Stats.AttackInterval * simulation.Balance.FortressBarrageIntervalMultiplier).Within(0.01f));
-        }
-
-        [Test]
-        public void OrdinaryWitch_ObservesOnlyInsideForwardVisualSector()
-        {
-            Demo1Simulation simulation = new Demo1Simulation();
-            DemoUnitStats observerStats = BasicStats(0f);
-            observerStats.WitchVisionType = DemoWitchVisionType.Ordinary;
-            observerStats.VisionRadius = 20f;
-            observerStats.VisionAngle = 90f;
-            DemoUnitModel observer = simulation.AddUnit("ordinary", DemoTeam.Player, DemoUnitRole.Witch, observerStats, Vector3.zero);
-            observer.Facing = Vector3.right;
-            DemoUnitStats enemyStats = BasicStats(0f);
-            enemyStats.EngagementRadius = 0f;
-            DemoUnitModel front = simulation.AddUnit("front", DemoTeam.Enemy, DemoUnitRole.Guard, enemyStats, Vector3.right * 12f);
-            DemoUnitModel behind = simulation.AddUnit("behind", DemoTeam.Enemy, DemoUnitRole.Guard, enemyStats, Vector3.left * 12f);
-
+            Demo1Simulation simulation = Scenario(out DemoUnitModel player, out DemoUnitModel enemy, 9f, 0f, 2f);
+            player.Stats.EngagementRadius = 12f;
             simulation.Advance(0.6f);
 
-            Assert.That(front.PlayerIntelLevel, Is.GreaterThanOrEqualTo(DemoIntelLevel.Identified));
-            Assert.That(front.IsCurrentlyObservedByPlayer, Is.True);
-            Assert.That(behind.PlayerIntelLevel, Is.EqualTo(DemoIntelLevel.Unknown));
-            observer.Facing = Vector3.left;
-            simulation.Advance(0.6f);
-            Assert.That(behind.PlayerIntelLevel, Is.GreaterThanOrEqualTo(DemoIntelLevel.Identified));
+            Assert.That(player.LockedTargetId, Is.EqualTo(enemy.Id));
+            Assert.That(player.Activity, Is.EqualTo(DemoUnitActivity.Pursuing));
+            Assert.That(Vector3.Distance(player.Position, enemy.Position), Is.GreaterThan(player.Stats.AttackRange));
         }
 
         [Test]
-        public void NightWitch_ObservesEveryDirectionInsideCircularArea()
+        public void AutoAttack_AcquiresNearestIdentifiedEnemy()
         {
-            Demo1Simulation simulation = new Demo1Simulation();
-            DemoUnitStats observerStats = BasicStats(0f);
-            observerStats.WitchVisionType = DemoWitchVisionType.Night;
-            observerStats.VisionRadius = 15f;
-            DemoUnitModel observer = simulation.AddUnit("night", DemoTeam.Player, DemoUnitRole.Witch, observerStats, Vector3.zero);
-            observer.Facing = Vector3.right;
-            DemoUnitStats enemyStats = BasicStats(0f);
-            enemyStats.EngagementRadius = 0f;
-            DemoUnitModel front = simulation.AddUnit("front", DemoTeam.Enemy, DemoUnitRole.Guard, enemyStats, Vector3.right * 12f);
-            DemoUnitModel behind = simulation.AddUnit("behind", DemoTeam.Enemy, DemoUnitRole.Guard, enemyStats, Vector3.left * 12f);
-            DemoUnitModel outside = simulation.AddUnit("outside", DemoTeam.Enemy, DemoUnitRole.Guard, enemyStats, Vector3.forward * 18f);
+            Demo1Simulation simulation = Scenario(out DemoUnitModel player, out DemoUnitModel farther, 8f, 0f, 2f);
+            DemoUnitModel nearer = simulation.AddUnit("nearer", DemoTeam.Enemy, DemoUnitRole.Scout, Stats(0f), new Vector3(4f, 0f, 0f));
+            simulation.GrantPersistentPlayerIntel(nearer.Id);
+            simulation.Advance(0.1f);
 
-            simulation.Advance(0.6f);
-
-            Assert.That(front.PlayerIntelLevel, Is.GreaterThanOrEqualTo(DemoIntelLevel.Identified));
-            Assert.That(behind.PlayerIntelLevel, Is.GreaterThanOrEqualTo(DemoIntelLevel.Identified));
-            Assert.That(outside.PlayerIntelLevel, Is.EqualTo(DemoIntelLevel.Unknown));
+            Assert.That(player.LockedTargetId, Is.EqualTo(nearer.Id));
+            Assert.That(player.HasExplicitAttackOrder, Is.False);
+            Assert.That(farther.IsAlive, Is.True);
         }
 
         [Test]
-        public void LostContact_FreezesLastKnownPositionAndDecaysToUnknown()
+        public void DisablingAutoAttack_ClearsManualLockAndHoldsFire()
         {
-            Demo1Balance balance = new Demo1Balance
-            {
-                VisionIdentificationDuration = 0.1f,
-                VisionAssessmentDuration = 0.1f,
-                AssessedIntelMemoryDuration = 0.3f,
-                IdentifiedIntelMemoryDuration = 0.6f,
-                ContactIntelMemoryDuration = 0.9f
-            };
-            Demo1Simulation simulation = new Demo1Simulation(balance);
-            DemoUnitStats observerStats = BasicStats(0f);
-            observerStats.WitchVisionType = DemoWitchVisionType.Ordinary;
-            observerStats.VisionRadius = 20f;
-            observerStats.VisionAngle = 90f;
-            DemoUnitModel observer = simulation.AddUnit("ordinary", DemoTeam.Player, DemoUnitRole.Witch, observerStats, Vector3.zero);
-            observer.Facing = Vector3.right;
-            DemoUnitStats enemyStats = BasicStats(0f);
-            enemyStats.EngagementRadius = 0f;
-            DemoUnitModel enemy = simulation.AddUnit("enemy", DemoTeam.Enemy, DemoUnitRole.Guard, enemyStats, Vector3.right * 10f);
+            Demo1Simulation simulation = Scenario(out DemoUnitModel player, out DemoUnitModel enemy);
+            simulation.RequestAttack(new[] { player.Id }, enemy.Id);
 
-            simulation.Advance(0.3f);
-            Assert.That(enemy.PlayerIntelLevel, Is.EqualTo(DemoIntelLevel.Assessed));
-            Vector3 lastKnown = enemy.LastKnownPosition;
-            enemy.Position = Vector3.left * 10f;
-            simulation.Advance(0.4f);
-            Assert.That(enemy.PlayerIntelLevel, Is.EqualTo(DemoIntelLevel.Identified));
-            Assert.That(enemy.PlayerVisiblePosition, Is.EqualTo(lastKnown));
-            simulation.Advance(0.3f);
-            Assert.That(enemy.PlayerIntelLevel, Is.EqualTo(DemoIntelLevel.Contact));
-            Assert.That(enemy.CanBeDirectlyTargetedByPlayer, Is.False);
-            simulation.Advance(0.3f);
-            Assert.That(enemy.PlayerIntelLevel, Is.EqualTo(DemoIntelLevel.Unknown));
-            Assert.That(enemy.HasPlayerIntel, Is.False);
-        }
-
-        [Test]
-        public void PersistentMissionIntel_RemainsIdentifiedOutsideVision()
-        {
-            Demo1Balance balance = new Demo1Balance { ContactIntelMemoryDuration = 0.2f };
-            Demo1Simulation simulation = new Demo1Simulation(balance);
-            DemoUnitModel objective = simulation.AddUnit("objective", DemoTeam.Enemy, DemoUnitRole.Fortress, BasicStats(0f), Vector3.right * 30f);
-
-            simulation.GrantPersistentPlayerIntel(objective.Id);
+            Assert.That(simulation.SetAutoAttack(new[] { player.Id }, false).Success, Is.True);
             simulation.Advance(1f);
 
-            Assert.That(objective.PlayerIntelLevel, Is.GreaterThanOrEqualTo(DemoIntelLevel.Identified));
-            Assert.That(objective.HasPlayerIntel, Is.True);
-            Assert.That(objective.CanBeDirectlyTargetedByPlayer, Is.True);
+            Assert.That(player.AutoAttackEnabled, Is.False);
+            Assert.That(player.LockedTargetId, Is.EqualTo(-1));
+            Assert.That(enemy.Health, Is.EqualTo(enemy.Stats.MaxHealth));
         }
 
         [Test]
-        public void ScoutAi_PatrolsConfiguredRouteWithoutAVisibleTarget()
+        public void MoveOrder_CancelsTargetLock()
         {
-            Demo1Simulation simulation = new Demo1Simulation();
-            DemoUnitStats scoutStats = BasicStats(0f);
-            scoutStats.VisionRadius = 5f;
-            DemoUnitModel scout = simulation.AddUnit("scout", DemoTeam.Enemy, DemoUnitRole.Scout, scoutStats, Vector3.zero);
-            simulation.AddUnit("distant-player", DemoTeam.Player, DemoUnitRole.Witch, BasicStats(0f), Vector3.right * 30f);
+            Demo1Simulation simulation = Scenario(out DemoUnitModel player, out DemoUnitModel enemy);
+            simulation.RequestAttack(new[] { player.Id }, enemy.Id);
 
-            DemoCommandResult configured = simulation.ConfigureScoutAi(scout.Id, new[]
-            {
-                Vector3.zero,
-                Vector3.right * 10f
-            });
-            simulation.Advance(0.7f);
+            simulation.IssueMove(new[] { player.Id }, new Vector3(0f, 0f, 10f));
 
-            Assert.That(configured.Success, Is.True);
-            Assert.That(scout.EnemyAiState, Is.EqualTo(DemoEnemyAiState.Patrol));
-            Assert.That(scout.Position.x, Is.GreaterThan(0f));
-            Assert.That(scout.Destination, Is.EqualTo(Vector3.right * 10f));
+            Assert.That(player.LockedTargetId, Is.EqualTo(-1));
+            Assert.That(player.Activity, Is.EqualTo(DemoUnitActivity.Moving));
+            Assert.That(player.HasDestination, Is.True);
         }
 
         [Test]
-        public void ScoutAi_UsesOwnVisionThenInvestigatesItsLastKnownPosition()
-        {
-            Demo1Simulation simulation = new Demo1Simulation();
-            DemoUnitStats scoutStats = BasicStats(0f);
-            scoutStats.VisionRadius = 15f;
-            scoutStats.EngagementRadius = 2f;
-            DemoUnitModel scout = simulation.AddUnit("scout", DemoTeam.Enemy, DemoUnitRole.Scout, scoutStats, Vector3.zero);
-            DemoUnitModel player = simulation.AddUnit("player", DemoTeam.Player, DemoUnitRole.Witch, BasicStats(0f), Vector3.right * 10f);
-            simulation.ConfigureScoutAi(scout.Id, new[] { Vector3.zero });
-
-            simulation.Advance(0.1f);
-            Assert.That(scout.EnemyAiState, Is.EqualTo(DemoEnemyAiState.Pursue));
-            Assert.That(scout.EnemyAiTargetId, Is.EqualTo(player.Id));
-            Assert.That(scout.EnemyAiLastKnownPosition, Is.EqualTo(Vector3.right * 10f));
-
-            player.Position = Vector3.right * 30f;
-            simulation.Advance(0.6f);
-
-            Assert.That(scout.EnemyAiState, Is.EqualTo(DemoEnemyAiState.Investigate));
-            Assert.That(scout.EnemyAiTargetId, Is.EqualTo(-1));
-            Assert.That(scout.Destination, Is.EqualTo(Vector3.right * 10f));
-        }
-
-        [Test]
-        public void EnemyAi_DoesNotShareAnotherUnitsContact()
-        {
-            Demo1Simulation simulation = new Demo1Simulation();
-            DemoUnitStats scoutStats = BasicStats(0f);
-            scoutStats.VisionRadius = 20f;
-            scoutStats.EngagementRadius = 1f;
-            DemoUnitStats guardStats = BasicStats(0f);
-            guardStats.VisionRadius = 6f;
-            guardStats.EngagementRadius = 1f;
-            DemoUnitModel scout = simulation.AddUnit("scout", DemoTeam.Enemy, DemoUnitRole.Scout, scoutStats, Vector3.zero);
-            DemoUnitModel guard = simulation.AddUnit("guard", DemoTeam.Enemy, DemoUnitRole.Guard, guardStats, Vector3.left * 15f);
-            DemoUnitModel player = simulation.AddUnit("player", DemoTeam.Player, DemoUnitRole.Witch, BasicStats(0f), Vector3.right * 10f);
-            simulation.ConfigureScoutAi(scout.Id, new[] { Vector3.zero });
-            simulation.ConfigureCombatAi(guard.Id, guard.Position);
-
-            simulation.Advance(0.1f);
-
-            Assert.That(scout.EnemyAiTargetId, Is.EqualTo(player.Id));
-            Assert.That(guard.EnemyAiTargetId, Is.EqualTo(-1));
-            Assert.That(guard.EnemyAiState, Is.EqualTo(DemoEnemyAiState.Guard));
-            Assert.That(guard.HasDestination, Is.False);
-        }
-
-        [Test]
-        public void ScoutAi_RetreatsFromCombatBelowHealthThreshold()
-        {
-            Demo1Simulation simulation = new Demo1Simulation();
-            DemoUnitStats harmless = BasicStats(0f);
-            DemoUnitModel scout = simulation.AddUnit("scout", DemoTeam.Enemy, DemoUnitRole.Scout, harmless, Vector3.zero);
-            DemoUnitModel player = simulation.AddUnit("player", DemoTeam.Player, DemoUnitRole.Witch, harmless, Vector3.right * 2f);
-            simulation.ConfigureScoutAi(scout.Id, new[] { Vector3.zero });
-            simulation.StartCombat(scout.Id, player.Id);
-            scout.Health = scout.Stats.MaxHealth * 0.2f;
-
-            simulation.Advance(0.1f);
-
-            Assert.That(scout.EnemyAiState, Is.EqualTo(DemoEnemyAiState.Retreating));
-            Assert.That(scout.Activity, Is.EqualTo(DemoUnitActivity.Retreating));
-            Assert.That(scout.RetreatRemaining, Is.GreaterThan(0f));
-        }
-
-        [Test]
-        public void CombatAi_PursuesVisibleTargetThenReturnsToItsOwnPost()
-        {
-            Demo1Simulation simulation = new Demo1Simulation();
-            DemoUnitStats guardStats = BasicStats(0f);
-            guardStats.VisionRadius = 15f;
-            guardStats.EngagementRadius = 2f;
-            DemoUnitModel guard = simulation.AddUnit("guard", DemoTeam.Enemy, DemoUnitRole.Guard, guardStats, Vector3.zero);
-            DemoUnitModel player = simulation.AddUnit("player", DemoTeam.Player, DemoUnitRole.Witch, BasicStats(0f), Vector3.right * 10f);
-            simulation.ConfigureCombatAi(guard.Id, guard.Position);
-
-            simulation.Advance(0.6f);
-            Assert.That(guard.EnemyAiState, Is.EqualTo(DemoEnemyAiState.Pursue));
-            Assert.That(guard.Position.x, Is.GreaterThan(0f));
-
-            player.Position = Vector3.right * 30f;
-            simulation.Advance(2f);
-
-            Assert.That(guard.EnemyAiTargetId, Is.EqualTo(-1));
-            Assert.That(guard.EnemyAiState, Is.EqualTo(DemoEnemyAiState.Guard));
-            Assert.That(Vector3.Distance(guard.Position, guard.EnemyAiHomePosition), Is.LessThanOrEqualTo(simulation.Balance.EnemyAiArrivalRadius));
-        }
-
-        [Test]
-        public void LevelConfigs_ProvideUniquePlayableVariantsWithoutMutatingUnitAssets()
-        {
-            DemoLevelConfig[] levels = Resources.LoadAll<DemoLevelConfig>("Configs/Levels");
-            DemoUnitConfig enemy = Resources.LoadAll<DemoUnitConfig>("Configs/Units")
-                .Single(unit => unit.name == "NeuroiGuardA");
-
-            Assert.That(levels.Length, Is.EqualTo(3));
-            Assert.That(levels.Select(level => level.LevelId).Distinct().Count(), Is.EqualTo(3));
-            Assert.That(levels.Count(level => level.IsDefault), Is.EqualTo(1));
-            Assert.That(levels.Select(level => level.MissionText).Distinct().Count(), Is.EqualTo(3));
-
-            DemoLevelConfig interception = levels.Single(level => level.LevelId == "channel-interception");
-            DemoLevelConfig coast = levels.Single(level => level.LevelId == "french-coast-assault");
-            DemoLevelConfig assault = levels.Single(level => level.LevelId == "nest-high-pressure");
-
-            Assert.That(interception.MissionObjective, Is.EqualTo(DemoMissionObjective.DestroyAllEnemies));
-            Assert.That(interception.Units.Count(unit => unit.Team == DemoTeam.Enemy), Is.EqualTo(4));
-            Assert.That(interception.Units.Any(unit => unit.Role == DemoUnitRole.Fortress), Is.False);
-            Assert.That(interception.Units.Where(unit => unit.Team == DemoTeam.Enemy)
-                .All(unit => unit.EnemyAiProfile == DemoEnemyAiProfile.Scout), Is.True);
-            Assert.That(interception.Units.Where(unit => unit.Team == DemoTeam.Enemy)
-                .All(unit => !unit.GrantPersistentPlayerIntel), Is.True,
-                "Mobile interception enemies must not leak their position before witch observation.");
-            Assert.That(interception.Units.Where(unit => unit.Team == DemoTeam.Enemy)
-                .All(unit => unit.ScoutPatrolPoints.Any(point => point.z > 0f)), Is.True,
-                "Every interception raider must advance north from France into the Channel.");
-
-            Assert.That(coast.MissionObjective, Is.EqualTo(DemoMissionObjective.DestroyFortress));
-            Assert.That(coast.Units.Count(unit => unit.Team == DemoTeam.Enemy), Is.EqualTo(4));
-            Assert.That(coast.Units.Count(unit => unit.Role == DemoUnitRole.Fortress), Is.EqualTo(1));
-
-            Assert.That(assault.MissionObjective, Is.EqualTo(DemoMissionObjective.DestroyFortress));
-            Assert.That(assault.Units.Count(unit => unit.Team == DemoTeam.Enemy), Is.EqualTo(5));
-            Assert.That(assault.Units.Count(unit => unit.Role == DemoUnitRole.Guard), Is.EqualTo(3));
-
-            DemoUnitStats runtimeStats = assault.CreateRuntimeStats(enemy);
-            Assert.That(runtimeStats, Is.Not.SameAs(enemy.Stats));
-            Assert.That(runtimeStats.MaxHealth, Is.EqualTo(enemy.Stats.MaxHealth * 1.25f).Within(0.001f));
-            Assert.That(runtimeStats.Attack, Is.EqualTo(enemy.Stats.Attack * 1.1f).Within(0.001f));
-            Assert.That(enemy.Stats.MaxHealth, Is.Not.EqualTo(runtimeStats.MaxHealth), "Level pressure must not write back to the unit asset.");
-        }
-
-        [Test]
-        public void LevelConfigs_DeployEnemiesOnFrenchSideAwayFromFolkestoneBase()
-        {
-            DemoLevelConfig[] levels = Resources.LoadAll<DemoLevelConfig>("Configs/Levels");
-
-            foreach (DemoLevelConfig level in levels)
-            {
-                DemoUnitConfig[] enemies = level.Units
-                    .Where(unit => unit != null && unit.Team == DemoTeam.Enemy)
-                    .ToArray();
-
-                Assert.That(enemies, Is.Not.Empty, level.LevelId);
-                foreach (DemoUnitConfig enemy in enemies)
-                {
-                    Vector3 spawn = level.GetSpawnPosition(enemy);
-                    Assert.That(spawn.z, Is.LessThan(0f), $"{level.LevelId}: {enemy.name} must start on the French side of the theatre.");
-                    Assert.That(Vector3.Distance(spawn, level.BasePosition), Is.GreaterThan(120f),
-                        $"{level.LevelId}: {enemy.name} starts too close to Folkestone base.");
-                }
-            }
-        }
-
-        [Test]
-        public void DestroyAllEnemiesObjective_CompletesOnlyAfterEntireRaidIsDestroyed()
+        public void LostManualTarget_IsPursuedToLastKnownPositionThenCleared()
         {
             Demo1Simulation simulation = new Demo1Simulation();
             simulation.ConfigureMissionObjective(DemoMissionObjective.DestroyAllEnemies);
-            simulation.AddUnit("witch", DemoTeam.Player, DemoUnitRole.Witch, BasicStats(0f), Vector3.zero);
-            DemoUnitModel first = simulation.AddUnit("raider-a", DemoTeam.Enemy, DemoUnitRole.Scout,
-                BasicStats(0f), Vector3.right * 5f);
-            DemoUnitModel second = simulation.AddUnit("raider-b", DemoTeam.Enemy, DemoUnitRole.Guard,
-                BasicStats(0f), Vector3.right * 10f);
+            DemoUnitModel player = simulation.AddUnit("player", DemoTeam.Player, DemoUnitRole.Witch, Stats(0f, 2f), Vector3.zero);
+            DemoUnitModel enemy = simulation.AddUnit("enemy", DemoTeam.Enemy, DemoUnitRole.Guard, Stats(0f), new Vector3(5f, 0f, 0f));
+            simulation.Advance(0.6f);
+            Assert.That(enemy.CanBeDirectlyTargetedByPlayer, Is.True);
+            simulation.RequestAttack(new[] { player.Id }, enemy.Id);
+            enemy.Position = new Vector3(-25f, 0f, 0f);
 
-            first.Health = 0f;
-            first.Activity = DemoUnitActivity.Destroyed;
-            simulation.Advance(0.1f);
-            Assert.That(simulation.Outcome, Is.EqualTo(DemoOutcome.Running));
+            simulation.Advance(1.5f);
 
-            second.Health = 0f;
-            second.Activity = DemoUnitActivity.Destroyed;
-            simulation.Advance(0.1f);
-            Assert.That(simulation.Outcome, Is.EqualTo(DemoOutcome.Victory));
+            Assert.That(player.LockedTargetId, Is.EqualTo(-1));
+            Assert.That(player.Position.x, Is.EqualTo(5f).Within(1.3f));
         }
 
         [Test]
-        public void DestroyFortressObjective_IgnoresDestroyedEscortUntilFortressFalls()
+        public void DestroyedTarget_IsClearedAndAutoAttackCanAcquireAnother()
+        {
+            Demo1Simulation simulation = Scenario(out DemoUnitModel player, out DemoUnitModel first, 2f, 1000f, 5f);
+            DemoUnitModel second = simulation.AddUnit("second", DemoTeam.Enemy, DemoUnitRole.Guard, Stats(0f), new Vector3(4f, 0f, 0f));
+            second.Stats.MaxHealth = 5000f;
+            second.Health = 5000f;
+            simulation.GrantPersistentPlayerIntel(second.Id);
+            first.IsCurrentlyObservedByPlayer = true;
+            second.IsCurrentlyObservedByPlayer = true;
+            simulation.RequestAttack(new[] { player.Id }, first.Id);
+            simulation.Advance(0.2f);
+            Assert.That(first.IsAlive, Is.False);
+
+            simulation.Advance(0.2f);
+
+            Assert.That(player.LockedTargetId, Is.EqualTo(second.Id));
+        }
+
+        [Test]
+        public void TraitAuras_AffectSelfAndNearbyAlliesOnly()
         {
             Demo1Simulation simulation = new Demo1Simulation();
-            simulation.ConfigureMissionObjective(DemoMissionObjective.DestroyFortress);
-            simulation.AddUnit("witch", DemoTeam.Player, DemoUnitRole.Witch, BasicStats(0f), Vector3.zero);
-            DemoUnitModel escort = simulation.AddUnit("escort", DemoTeam.Enemy, DemoUnitRole.Guard,
-                BasicStats(0f), Vector3.right * 5f);
-            DemoUnitModel fortress = simulation.AddUnit("fortress", DemoTeam.Enemy, DemoUnitRole.Fortress,
-                BasicStats(0f), Vector3.right * 10f);
+            DemoUnitStats sakamotoStats = Stats();
+            sakamotoStats.CoreDiscovery = 0.2f;
+            sakamotoStats.SupportRadius = 12f;
+            sakamotoStats.Traits = DemoUnitTrait.SakamotoCoreInsight;
+            DemoUnitModel sakamoto = simulation.AddUnit("Sakamoto", DemoTeam.Player, DemoUnitRole.Witch, sakamotoStats, Vector3.zero);
+            DemoUnitModel nearby = simulation.AddUnit("near", DemoTeam.Player, DemoUnitRole.Witch, Stats(), new Vector3(10f, 0f, 0f));
+            nearby.Stats.CoreDiscovery = 0.2f;
+            DemoUnitModel far = simulation.AddUnit("far", DemoTeam.Player, DemoUnitRole.Witch, Stats(), new Vector3(13f, 0f, 0f));
+            far.Stats.CoreDiscovery = 0.2f;
 
-            escort.Health = 0f;
-            escort.Activity = DemoUnitActivity.Destroyed;
-            simulation.Advance(0.1f);
-            Assert.That(simulation.Outcome, Is.EqualTo(DemoOutcome.Running));
-
-            fortress.Health = 0f;
-            fortress.Activity = DemoUnitActivity.Destroyed;
-            simulation.Advance(0.1f);
-            Assert.That(simulation.Outcome, Is.EqualTo(DemoOutcome.Victory));
+            Assert.That(simulation.GetEffectiveCoreDiscovery(sakamoto.Id), Is.EqualTo(0.4f).Within(0.001f));
+            Assert.That(simulation.GetEffectiveCoreDiscovery(nearby.Id), Is.EqualTo(0.4f).Within(0.001f));
+            Assert.That(simulation.GetEffectiveCoreDiscovery(far.Id), Is.EqualTo(0.2f).Within(0.001f));
         }
 
         [Test]
-        public void WitchConfigs_ConvertHistoricalAircraftSpeedOntoKilometerMap()
+        public void MiyafujiAuraAndSupportPulse_UseSupportRadius()
         {
-            Demo1Balance balance = Resources.Load<Demo1BalanceConfig>("Configs/Demo1Balance").CreateRuntimeValue();
-            DemoUnitConfig[] witches = Resources.LoadAll<DemoUnitConfig>("Configs/Units")
-                .Where(unit => unit.Team == DemoTeam.Player)
-                .ToArray();
+            Demo1Balance balance = new Demo1Balance { SupportPulseInterval = 0.2f };
+            Demo1Simulation simulation = new Demo1Simulation(balance);
+            DemoUnitStats supportStats = Stats();
+            supportStats.MaxMagic = 100f;
+            supportStats.MaxShield = 100f;
+            supportStats.SupportRadius = 12f;
+            supportStats.Traits = DemoUnitTrait.MiyafujiShieldAura;
+            DemoUnitModel miyafuji = simulation.AddUnit("Miyafuji", DemoTeam.Player, DemoUnitRole.Support, supportStats, Vector3.zero);
+            DemoUnitStats allyStats = supportStats.Clone();
+            allyStats.Traits = DemoUnitTrait.None;
+            DemoUnitModel nearby = simulation.AddUnit("near", DemoTeam.Player, DemoUnitRole.Witch, allyStats, new Vector3(10f, 0f, 0f));
+            DemoUnitModel far = simulation.AddUnit("far", DemoTeam.Player, DemoUnitRole.Witch, allyStats, new Vector3(13f, 0f, 0f));
+            miyafuji.Shield = nearby.Shield = far.Shield = 0f;
 
-            Assert.That(balance.MapHalfWidth, Is.EqualTo(280f));
-            Assert.That(balance.MapHalfHeight, Is.EqualTo(157.5f));
-            Assert.That(balance.MapKilometersPerUnit, Is.EqualTo(1f));
-            Assert.That(balance.StrategicMovementTimeCompression, Is.EqualTo(12f));
-            Assert.That(witches.Length, Is.EqualTo(5));
-            Assert.That(witches.All(unit => unit.UseHistoricalMovementSpeed), Is.True);
-            Assert.That(witches.All(unit => !string.IsNullOrWhiteSpace(unit.StrikerUnitModel)), Is.True);
-            Assert.That(witches.All(unit => unit.HistoricalMaxSpeedKph > 0f), Is.True);
-
-            foreach (DemoUnitConfig witch in witches)
-            {
-                DemoUnitStats runtime = witch.CreateRuntimeStats(balance);
-                float expected = witch.HistoricalMaxSpeedKph / 3600f * 12f;
-                Assert.That(runtime.MoveSpeed, Is.EqualTo(expected).Within(0.0001f), witch.DisplayName);
-                Assert.That(runtime, Is.Not.SameAs(witch.Stats));
-            }
-
-            DemoUnitConfig lynette = witches.Single(unit => unit.StrikerUnitModel.Contains("Spitfire"));
-            DemoUnitConfig miyafuji = witches.Single(unit => unit.StrikerUnitModel.Contains("A6M3"));
-            Assert.That(lynette.CreateRuntimeStats(balance).MoveSpeed,
-                Is.GreaterThan(miyafuji.CreateRuntimeStats(balance).MoveSpeed));
+            Assert.That(simulation.GetEffectiveShieldBonus(miyafuji.Id), Is.EqualTo(0.15f).Within(0.001f));
+            Assert.That(simulation.GetEffectiveShieldBonus(nearby.Id), Is.EqualTo(0.15f).Within(0.001f));
+            Assert.That(simulation.GetEffectiveShieldBonus(far.Id), Is.Zero);
+            simulation.Advance(0.3f);
+            Assert.That(miyafuji.Shield, Is.GreaterThan(0f));
+            Assert.That(nearby.Shield, Is.GreaterThan(far.Shield + 5f));
+            Assert.That(far.Shield, Is.LessThan(1f), "The distant ally should receive only passive recovery, not the support pulse.");
         }
 
         [Test]
-        public void StandbyRoster_DoesNotTriggerDefeatAndCannotAffectTheatre()
+        public void Artillery_PerformsCalibratedSalvoEveryThirdAttack()
+        {
+            Demo1Simulation simulation = Scenario(out DemoUnitModel attacker, out DemoUnitModel enemy, 2f, 10f, 5f);
+            DemoUnitStats artillery = attacker.Stats;
+            simulation.SetAutoAttack(new[] { attacker.Id }, false);
+            DemoUnitModel gunner = simulation.AddUnit("gunner", DemoTeam.Player, DemoUnitRole.Artillery, artillery, Vector3.zero);
+            simulation.RequestAttack(new[] { gunner.Id }, enemy.Id);
+            float start = enemy.Health;
+            simulation.Advance(0.1f);
+            float first = start - enemy.Health;
+            simulation.Advance(0.2f);
+            float second = start - first - enemy.Health;
+            simulation.Advance(0.2f);
+            float third = start - first - second - enemy.Health;
+
+            Assert.That(gunner.AttacksPerformed, Is.EqualTo(3));
+            Assert.That(third, Is.GreaterThan(first));
+        }
+
+        [Test]
+        public void ScoutAttack_MarksTarget()
+        {
+            Demo1Simulation simulation = Scenario(out DemoUnitModel unused, out DemoUnitModel enemy, 2f, 0f, 5f);
+            simulation.SetAutoAttack(new[] { unused.Id }, false);
+            DemoUnitModel scout = simulation.AddUnit("scout", DemoTeam.Player, DemoUnitRole.Scout, Stats(5f, 5f), Vector3.zero);
+            simulation.RequestAttack(new[] { scout.Id }, enemy.Id);
+            simulation.Advance(0.1f);
+
+            Assert.That(simulation.GetMarkRemaining(enemy.Id), Is.GreaterThan(3.8f));
+        }
+
+        [Test]
+        public void LynetteTrait_AdjustsCriticalChanceAndAttackInterval()
         {
             Demo1Simulation simulation = new Demo1Simulation();
-            DemoUnitModel witch = simulation.AddUnit("standby", DemoTeam.Player, DemoUnitRole.Witch,
-                BasicStats(), Vector3.zero, DemoUnitDeploymentState.Standby);
+            DemoUnitStats stats = Stats();
+            stats.CriticalChance = 0.12f;
+            stats.AttackInterval = 1.6f;
+            stats.Traits = DemoUnitTrait.LynetteSharpshooter;
+            DemoUnitModel lynette = simulation.AddUnit("Lynette", DemoTeam.Player, DemoUnitRole.Artillery, stats, Vector3.zero);
 
-            simulation.Advance(1f);
-
-            Assert.That(simulation.Outcome, Is.EqualTo(DemoOutcome.Running));
-            Assert.That(witch.IsOperational, Is.False);
-            Assert.That(simulation.IssueMove(new[] { witch.Id }, Vector3.right * 10f).Success, Is.False);
+            Assert.That(simulation.GetEffectiveCriticalChance(lynette.Id), Is.EqualTo(0.3f).Within(0.001f));
+            Assert.That(simulation.GetEffectiveAttackInterval(lynette.Id), Is.EqualTo(2.2f).Within(0.001f));
         }
 
         [Test]
-        public void StrategicMapVisibility_RequiresAnOperationalWitchAndKnownEnemyIntel()
+        public void RemoteStrike_ResolvesOnMapWithoutLockingUnits()
         {
-            Demo1Simulation simulation = new Demo1Simulation();
-            DemoUnitModel witch = simulation.AddUnit("standby", DemoTeam.Player, DemoUnitRole.Witch,
-                BasicStats(), Vector3.zero, DemoUnitDeploymentState.Standby);
-            DemoUnitModel unknownEnemy = simulation.AddUnit("unknown", DemoTeam.Enemy, DemoUnitRole.Scout,
-                BasicStats(), Vector3.right * 20f);
-            DemoUnitModel missionObjective = simulation.AddUnit("objective", DemoTeam.Enemy, DemoUnitRole.Fortress,
-                BasicStats(), Vector3.right * 30f);
-            simulation.GrantPersistentPlayerIntel(missionObjective.Id);
+            Demo1Simulation simulation = Scenario(out DemoUnitModel player, out DemoUnitModel enemy, 10f, 20f, 2f);
+            player.Stats.CanRemoteStrike = true;
+            player.Stats.Attack = 20f;
+            simulation.SetAutoAttack(new[] { player.Id }, false);
+            Assert.That(simulation.ScheduleRemoteStrike(player.Id, enemy.Position).Success, Is.True);
 
-            Assert.That(simulation.IsUnitVisibleOnStrategicMap(witch.Id), Is.False);
-            Assert.That(simulation.IsUnitVisibleOnStrategicMap(unknownEnemy.Id), Is.False);
-            Assert.That(simulation.IsUnitVisibleOnStrategicMap(missionObjective.Id), Is.False,
-                "Pre-mission intel must not render an enemy marker while the entire roster is still at base.");
+            simulation.Advance(simulation.Balance.RemoteStrikeDelay + 0.1f);
 
-            Assert.That(simulation.RequestSortie(new[] { witch.Id }).Success, Is.True);
-
-            Assert.That(simulation.IsUnitVisibleOnStrategicMap(witch.Id), Is.True);
-            Assert.That(simulation.IsUnitVisibleOnStrategicMap(unknownEnemy.Id), Is.False);
-            Assert.That(simulation.IsUnitVisibleOnStrategicMap(missionObjective.Id), Is.True);
+            Assert.That(simulation.RemoteStrikes.Single().Resolved, Is.True);
+            Assert.That(player.LockedTargetId, Is.EqualTo(-1));
+            Assert.That(enemy.Health, Is.LessThan(enemy.Stats.MaxHealth));
         }
 
         [Test]
-        public void SortieReturnAndService_RestoresWitchForLaterSortie()
+        public void ReturnToBase_ClearsTargetAndStartsService()
         {
-            Demo1Balance balance = new Demo1Balance
-            {
-                BaseArrivalRadius = 2f,
-                BaseLaunchSpread = 0f,
-                BaseTurnaroundDuration = 2f
-            };
+            Demo1Balance balance = new Demo1Balance { BaseArrivalRadius = 0.2f, BaseTurnaroundDuration = 1f };
             Demo1Simulation simulation = new Demo1Simulation(balance);
             simulation.ConfigureBase(Vector3.zero);
-            DemoUnitModel witch = simulation.AddUnit("witch", DemoTeam.Player, DemoUnitRole.Witch,
-                BasicStats(), Vector3.zero, DemoUnitDeploymentState.Standby);
+            DemoUnitModel player = simulation.AddUnit("player", DemoTeam.Player, DemoUnitRole.Witch, Stats(), new Vector3(1f, 0f, 0f));
+            DemoUnitModel enemy = simulation.AddUnit("enemy", DemoTeam.Enemy, DemoUnitRole.Guard, Stats(), new Vector3(2f, 0f, 0f));
+            simulation.GrantPersistentPlayerIntel(enemy.Id);
+            simulation.RequestAttack(new[] { player.Id }, enemy.Id);
 
-            Assert.That(simulation.RequestSortie(new[] { witch.Id }).Success, Is.True);
-            witch.Health = 10f;
-            witch.Magic = 5f;
-            witch.Shield = 3f;
-            Assert.That(simulation.RequestReturnToBase(new[] { witch.Id }).Success, Is.True);
-            simulation.Advance(0.1f);
-            Assert.That(witch.DeploymentState, Is.EqualTo(DemoUnitDeploymentState.Servicing));
+            Assert.That(simulation.RequestReturnToBase(new[] { player.Id }).Success, Is.True);
+            simulation.Advance(0.2f);
 
-            float frozen = witch.TurnaroundRemaining;
-            Assert.That(frozen, Is.GreaterThan(0f), "Without Advance (global pause), service time must remain frozen.");
-            Assert.That(witch.TurnaroundRemaining, Is.EqualTo(frozen));
-            simulation.Advance(2.1f);
-
-            Assert.That(witch.DeploymentState, Is.EqualTo(DemoUnitDeploymentState.Standby));
-            Assert.That(witch.Health, Is.EqualTo(witch.Stats.MaxHealth));
-            Assert.That(witch.Magic, Is.EqualTo(witch.Stats.MaxMagic));
-            Assert.That(witch.Shield, Is.EqualTo(witch.Stats.MaxShield));
-            Assert.That(simulation.RequestSortie(new[] { witch.Id }).Success, Is.True);
+            Assert.That(player.LockedTargetId, Is.EqualTo(-1));
+            Assert.That(player.DeploymentState, Is.EqualTo(DemoUnitDeploymentState.Servicing));
         }
 
         [Test]
-        public void ReturnCommand_RequiresCombatRetreatFirst()
+        public void ScriptableConfigs_SerializeNewRangeFieldsAndNightVision()
         {
-            Demo1Simulation simulation = new Demo1Simulation();
-            DemoUnitModel witch = simulation.AddUnit("witch", DemoTeam.Player, DemoUnitRole.Witch,
-                BasicStats(0f), Vector3.zero);
-            DemoUnitModel enemy = simulation.AddUnit("enemy", DemoTeam.Enemy, DemoUnitRole.Guard,
-                BasicStats(0f), Vector3.right);
-            Assert.That(simulation.StartCombat(enemy.Id, witch.Id).Success, Is.True);
+            DemoUnitConfig sakamoto = Resources.Load<DemoUnitConfig>("Configs/Units/Sakamoto");
+            DemoUnitConfig miyafuji = Resources.Load<DemoUnitConfig>("Configs/Units/Miyafuji");
+            DemoUnitConfig sanya = Resources.Load<DemoUnitConfig>("Configs/Units/Sanya");
 
-            DemoCommandResult result = simulation.RequestReturnToBase(new[] { witch.Id });
-
-            Assert.That(result.Success, Is.False);
-            Assert.That(result.Message, Does.Contain("retreat"));
-            Assert.That(witch.DeploymentState, Is.EqualTo(DemoUnitDeploymentState.Active));
+            Assert.That(sakamoto.Stats.AttackRange, Is.EqualTo(8f));
+            Assert.That(sakamoto.Stats.SupportRadius, Is.EqualTo(12f));
+            Assert.That(miyafuji.Stats.SupportRadius, Is.EqualTo(12f));
+            Assert.That(sanya.Stats.WitchVisionType, Is.EqualTo(DemoWitchVisionType.Night));
+            Assert.That(sanya.Stats.VisionRadius, Is.EqualTo(48f));
         }
     }
 }

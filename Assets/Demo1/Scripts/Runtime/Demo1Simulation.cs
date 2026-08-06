@@ -21,19 +21,6 @@ namespace SWRTS.Demo1
         Fortress
     }
 
-    public enum DemoBattleLine
-    {
-        Vanguard,
-        Main,
-        Support
-    }
-
-    public enum DemoAttackProfile
-    {
-        Standard,
-        ScreenPiercing
-    }
-
     public enum DemoWitchVisionType
     {
         None,
@@ -62,10 +49,8 @@ namespace SWRTS.Demo1
     {
         Idle,
         Moving,
-        Reinforcing,
-        Fighting,
-        Retreating,
-        Protected,
+        Pursuing,
+        Attacking,
         Destroyed
     }
 
@@ -117,15 +102,6 @@ namespace SWRTS.Demo1
         public float CriticalMultiplier = 1.55f;
         public float CoreMultiplier = 2.4f;
         public float ShieldMagicCostPerDamage = 0.55f;
-        public float ReinforcementRadius = 13f;
-        public float ForcedEngagementRadius = 6f;
-        public float ScreenRequiredPerProtectedUnit = 1f;
-        public float BattleLineChangeDuration = 2f;
-        public float VanguardAttackMultiplier = 0.9f;
-        public float VanguardDamageTakenMultiplier = 0.85f;
-        public float VanguardScreenMultiplier = 1.25f;
-        public float MainAttackMultiplier = 1.15f;
-        public float SupportAttackMultiplier = 0.8f;
         public float SupportEffectMultiplier = 1.5f;
         public int ArtillerySalvoEveryAttacks = 3;
         public float ArtillerySalvoDamageMultiplier = 1.45f;
@@ -134,7 +110,6 @@ namespace SWRTS.Demo1
         public float SupportPulseInterval = 4f;
         public float SupportPulseShield = 6f;
         public float SupportPulseMagic = 4f;
-        public float GuardInterceptionChance = 0.65f;
         public float FortressBarrageHealthThreshold = 0.5f;
         public float FortressBarrageDamageMultiplier = 1.15f;
         public float FortressBarrageIntervalMultiplier = 0.65f;
@@ -151,9 +126,6 @@ namespace SWRTS.Demo1
         public float EnemyAiScoutRetreatHealthRatio = 0.3f;
         public float EnemyAiGuardLeashRadius = 18f;
         public float EnemyAiArrivalRadius = 1.25f;
-        public float RetreatBaseDuration = 4.5f;
-        public float DisengageProtectionDuration = 5f;
-        public float RetreatSafeDistance = 9f;
         public float DestinationRadius = 1.8f;
         public float RemoteStrikeDelay = 3f;
         public float RemoteStrikeRadius = 5f;
@@ -191,7 +163,7 @@ namespace SWRTS.Demo1
         public float Defense = 7f;
         public float MaxMagic = 80f;
         public float MaxShield = 45f;
-        public float GlobalShieldBonus = 0f;
+        public float GlobalShieldBonus;
         public float CoreDiscovery = 0.18f;
         public float CoreConcealment = 0.5f;
         public float AttackInterval = 1.6f;
@@ -202,11 +174,9 @@ namespace SWRTS.Demo1
         public float VisionAngle = 100f;
         public DemoWitchVisionType WitchVisionType = DemoWitchVisionType.None;
         public float EngagementRadius = 8f;
+        public float AttackRange = 8f;
+        public float SupportRadius;
         public bool CanRemoteStrike;
-        public DemoBattleLine PreferredBattleLine = DemoBattleLine.Vanguard;
-        public DemoAttackProfile AttackProfile = DemoAttackProfile.Standard;
-        public float ScreenPower = 1f;
-        public float ScreenPenetration;
         public DemoUnitTrait Traits = DemoUnitTrait.None;
 
         public bool HasTrait(DemoUnitTrait trait)
@@ -268,37 +238,13 @@ namespace SWRTS.Demo1
         public string Message { get; }
         public Vector3 Position { get; }
         public bool Important { get; }
-        public int CombatId { get; }
 
-        public DemoBattleEvent(float time, string message, Vector3 position, bool important, int combatId = -1)
+        public DemoBattleEvent(float time, string message, Vector3 position, bool important)
         {
             Time = time;
             Message = message;
             Position = position;
             Important = important;
-            CombatId = combatId;
-        }
-    }
-
-    public sealed class DemoCombatParticipantState
-    {
-        public int UnitId { get; }
-        public DemoBattleLine Line;
-        public DemoBattleLine TargetLine;
-        public float RepositionRemaining;
-        public int LastTargetId = -1;
-        public int AttacksPerformed;
-        public float RoleAbilityRemaining;
-        public float MarkedUntil;
-        public bool FortressBarrageAnnounced;
-
-        public bool IsRepositioning => RepositionRemaining > 0f;
-
-        public DemoCombatParticipantState(int unitId, DemoBattleLine line)
-        {
-            UnitId = unitId;
-            Line = line;
-            TargetLine = line;
         }
     }
 
@@ -313,8 +259,6 @@ namespace SWRTS.Demo1
         public Vector3 Facing = Vector3.right;
         public Vector3 Destination;
         public bool HasDestination;
-        public int CombatId = -1;
-        public int PendingReinforcementBattleId = -1;
         public DemoUnitActivity Activity = DemoUnitActivity.Idle;
         public DemoUnitDeploymentState DeploymentState;
         public float TurnaroundRemaining;
@@ -323,9 +267,16 @@ namespace SWRTS.Demo1
         public float Shield;
         public float AttackCooldown;
         public float RemoteStrikeCooldown;
-        public float RetreatRemaining;
-        public float RetreatDuration;
-        public float ProtectedUntil;
+        public bool AutoAttackEnabled = true;
+        public int LockedTargetId = -1;
+        public int OrderedTargetId = -1;
+        public bool HasExplicitAttackOrder;
+        public Vector3 TargetLastKnownPosition;
+        public bool HasTargetLastKnownPosition;
+        public int AttacksPerformed;
+        public float RoleAbilityRemaining;
+        public float MarkedUntil;
+        public bool FortressBarrageAnnounced;
         public bool IsRevealedToPlayer;
         public bool IsCurrentlyObservedByPlayer;
         public bool HasPersistentPlayerIntel;
@@ -355,10 +306,9 @@ namespace SWRTS.Demo1
         public float HealthRatio => Stats.MaxHealth <= 0f ? 0f : Health / Stats.MaxHealth;
         public float MagicRatio => Stats.MaxMagic <= 0f ? 0f : Magic / Stats.MaxMagic;
         public float ShieldRatio => Stats.MaxShield <= 0f ? 0f : Shield / Stats.MaxShield;
-        public float RetreatProgress => RetreatDuration <= 0f ? 0f : 1f - Mathf.Clamp01(RetreatRemaining / RetreatDuration);
         public bool HasPlayerIntel => Team == DemoTeam.Player || IsRevealedToPlayer || PlayerIntelLevel != DemoIntelLevel.Unknown;
         public bool CanBeDirectlyTargetedByPlayer => Team == DemoTeam.Player || HasPersistentPlayerIntel ||
-                                                     (IsCurrentlyObservedByPlayer && PlayerIntelLevel >= DemoIntelLevel.Identified) || CombatId >= 0 ||
+                                                     (IsCurrentlyObservedByPlayer && PlayerIntelLevel >= DemoIntelLevel.Identified) ||
                                                      (IsRevealedToPlayer && PlayerIntelLevel == DemoIntelLevel.Unknown);
         public Vector3 PlayerVisiblePosition => Team == DemoTeam.Player || IsCurrentlyObservedByPlayer || HasPersistentPlayerIntel
             ? Position
@@ -373,13 +323,15 @@ namespace SWRTS.Demo1
             Role = role;
             Stats = stats.Clone();
             Position = position;
+            Destination = position;
             LastKnownPosition = position;
+            TargetLastKnownPosition = position;
             EnemyAiHomePosition = position;
             EnemyAiLastKnownPosition = position;
-            Destination = position;
             Health = Stats.MaxHealth;
             Magic = Stats.MaxMagic;
             Shield = Stats.MaxShield;
+            RoleAbilityRemaining = Mathf.Max(0.1f, 4f);
             IsRevealedToPlayer = team == DemoTeam.Player;
             IsCurrentlyObservedByPlayer = team == DemoTeam.Player;
             PlayerIntelLevel = team == DemoTeam.Player ? DemoIntelLevel.Assessed : DemoIntelLevel.Unknown;
@@ -390,31 +342,6 @@ namespace SWRTS.Demo1
         {
             _enemyAiPatrolPoints.Clear();
             _enemyAiPatrolPoints.AddRange(patrolPoints);
-        }
-    }
-
-    public sealed class DemoCombatModel
-    {
-        public int Id { get; }
-        public Vector3 Center { get; }
-        public float ReinforcementRadius { get; }
-        public float ForcedRadius { get; }
-        public HashSet<int> Participants { get; } = new HashSet<int>();
-        public Dictionary<int, DemoCombatParticipantState> Assignments { get; } = new Dictionary<int, DemoCombatParticipantState>();
-        public bool IsFinished;
-
-        public DemoCombatModel(int id, Vector3 center, float reinforcementRadius, float forcedRadius)
-        {
-            Id = id;
-            Center = center;
-            ReinforcementRadius = reinforcementRadius;
-            ForcedRadius = forcedRadius;
-        }
-
-        public DemoCombatParticipantState GetAssignment(int unitId)
-        {
-            DemoCombatParticipantState state;
-            return Assignments.TryGetValue(unitId, out state) ? state : null;
         }
     }
 
@@ -478,7 +405,9 @@ namespace SWRTS.Demo1
             {
                 target.Activity = DemoUnitActivity.Destroyed;
                 target.HasDestination = false;
-                target.PendingReinforcementBattleId = -1;
+                target.LockedTargetId = -1;
+                target.OrderedTargetId = -1;
+                target.HasExplicitAttackOrder = false;
             }
 
             return new DemoDamageResult(raw, shieldSpent, healthDamage, critical, coreHit, !target.IsAlive);
@@ -488,16 +417,13 @@ namespace SWRTS.Demo1
     public sealed class Demo1Simulation
     {
         private readonly Dictionary<int, DemoUnitModel> _units = new Dictionary<int, DemoUnitModel>();
-        private readonly List<DemoCombatModel> _combats = new List<DemoCombatModel>();
         private readonly List<DemoRemoteStrikeModel> _remoteStrikes = new List<DemoRemoteStrikeModel>();
         private readonly System.Random _random;
         private int _nextUnitId = 1;
-        private int _nextCombatId = 1;
         private int _nextStrikeId = 1;
 
         public Demo1Balance Balance { get; }
         public IReadOnlyCollection<DemoUnitModel> Units => _units.Values;
-        public IReadOnlyList<DemoCombatModel> Combats => _combats;
         public IReadOnlyList<DemoRemoteStrikeModel> RemoteStrikes => _remoteStrikes;
         public float SimulationTime { get; private set; }
         public DemoOutcome Outcome { get; private set; } = DemoOutcome.Running;
@@ -521,8 +447,15 @@ namespace SWRTS.Demo1
         {
             DemoUnitModel unit = new DemoUnitModel(_nextUnitId++, name, team, role, stats, ClampToMap(position));
             unit.DeploymentState = team == DemoTeam.Player ? deploymentState : DemoUnitDeploymentState.Active;
+            unit.RoleAbilityRemaining = Mathf.Max(0.1f, Balance.SupportPulseInterval);
             _units.Add(unit.Id, unit);
             return unit;
+        }
+
+        public DemoUnitModel GetUnit(int id)
+        {
+            DemoUnitModel unit;
+            return _units.TryGetValue(id, out unit) ? unit : null;
         }
 
         public void ConfigureBase(Vector3 basePosition)
@@ -554,9 +487,7 @@ namespace SWRTS.Demo1
                 unit.Position = ClampToMap(BasePosition + offset);
                 unit.Destination = unit.Position;
                 unit.HasDestination = false;
-                unit.CombatId = -1;
-                unit.PendingReinforcementBattleId = -1;
-                unit.ProtectedUntil = 0f;
+                ClearTarget(unit);
                 unit.TurnaroundRemaining = 0f;
                 unit.DeploymentState = DemoUnitDeploymentState.Active;
                 unit.Activity = DemoUnitActivity.Idle;
@@ -568,100 +499,58 @@ namespace SWRTS.Demo1
 
         public DemoCommandResult RequestReturnToBase(IEnumerable<int> unitIds)
         {
-            int accepted = 0;
-            bool fighting = false;
-            foreach (DemoUnitModel unit in (unitIds ?? Enumerable.Empty<int>()).Select(GetUnit).Where(unit => unit != null).Distinct())
-            {
-                if (unit.Team != DemoTeam.Player || !unit.IsAlive || unit.IsFixed || !unit.IsOperational)
-                    continue;
-                if (unit.CombatId >= 0 || unit.Activity == DemoUnitActivity.Retreating)
-                {
-                    fighting = true;
-                    continue;
-                }
+            List<DemoUnitModel> candidates = (unitIds ?? Enumerable.Empty<int>())
+                .Select(GetUnit)
+                .Where(unit => unit != null && unit.Team == DemoTeam.Player && unit.IsAlive && !unit.IsFixed &&
+                               unit.DeploymentState == DemoUnitDeploymentState.Active)
+                .Distinct()
+                .ToList();
+            if (candidates.Count == 0)
+                return DemoCommandResult.Fail("No selected witches can return to base.");
 
+            foreach (DemoUnitModel unit in candidates)
+            {
+                ClearTarget(unit);
                 unit.DeploymentState = DemoUnitDeploymentState.Returning;
-                unit.Destination = BasePosition;
-                unit.HasDestination = true;
-                unit.PendingReinforcementBattleId = -1;
-                unit.Activity = DemoUnitActivity.Moving;
-                accepted++;
+                SetMovement(unit, BasePosition, DemoUnitActivity.Moving);
             }
-
-            if (accepted > 0)
-            {
-                Raise($"{accepted} witches returning to base.", BasePosition, true);
-                return DemoCommandResult.Ok($"{accepted} witches returning to base.");
-            }
-            return DemoCommandResult.Fail(fighting
-                ? "Fighting witches must retreat before returning to base."
-                : "No selected witches can return to base.");
-        }
-
-        public DemoUnitModel GetUnit(int id)
-        {
-            DemoUnitModel unit;
-            return _units.TryGetValue(id, out unit) ? unit : null;
-        }
-
-        public bool IsUnitVisibleOnStrategicMap(int unitId)
-        {
-            DemoUnitModel unit = GetUnit(unitId);
-            if (unit == null || !unit.IsAlive || !unit.IsOperational)
-                return false;
-
-            bool hasDeployedWitch = _units.Values.Any(candidate =>
-                candidate.Team == DemoTeam.Player && candidate.IsAlive && candidate.IsOperational);
-            if (!hasDeployedWitch)
-                return false;
-
-            return unit.Team == DemoTeam.Player || unit.HasPlayerIntel;
+            Raise($"{candidates.Count} witches returning to base.", BasePosition, true);
+            return DemoCommandResult.Ok($"{candidates.Count} witches returning to base.");
         }
 
         public DemoCommandResult ConfigureScoutAi(int unitId, IEnumerable<Vector3> patrolPoints)
         {
             DemoUnitModel unit = GetUnit(unitId);
             if (unit == null || unit.Team != DemoTeam.Enemy || unit.IsFixed)
-                return DemoCommandResult.Fail("侦察 AI 只能配置给可移动的敌方单位");
+                return DemoCommandResult.Fail("Scout AI can only be assigned to mobile enemies.");
 
-            List<Vector3> points = (patrolPoints ?? Enumerable.Empty<Vector3>())
-                .Select(ClampToMap)
-                .ToList();
+            List<Vector3> points = (patrolPoints ?? Enumerable.Empty<Vector3>()).Select(ClampToMap).ToList();
             if (points.Count == 0)
                 points.Add(unit.Position);
-
             unit.EnemyAiProfile = DemoEnemyAiProfile.Scout;
             unit.EnemyAiState = DemoEnemyAiState.Patrol;
             unit.EnemyAiHomePosition = unit.Position;
-            unit.EnemyAiTargetId = -1;
-            unit.EnemyAiHasLastKnownPosition = false;
             unit.EnemyAiDecisionRemaining = 0f;
             unit.EnemyAiPatrolIndex = 0;
             unit.SetEnemyAiPatrolPoints(points);
-            StopEnemyAiMovement(unit);
-            return DemoCommandResult.Ok($"{unit.DisplayName} 已启用独立侦察 AI");
+            ClearTarget(unit);
+            StopMovement(unit);
+            return DemoCommandResult.Ok($"{unit.DisplayName} uses independent scout AI.");
         }
 
         public DemoCommandResult ConfigureCombatAi(int unitId, Vector3 homePosition)
         {
             DemoUnitModel unit = GetUnit(unitId);
             if (unit == null || unit.Team != DemoTeam.Enemy || unit.IsFixed)
-                return DemoCommandResult.Fail("战斗 AI 只能配置给可移动的敌方单位");
-
+                return DemoCommandResult.Fail("Combat AI can only be assigned to mobile enemies.");
             unit.EnemyAiProfile = DemoEnemyAiProfile.Combat;
             unit.EnemyAiState = DemoEnemyAiState.Guard;
             unit.EnemyAiHomePosition = ClampToMap(homePosition);
-            unit.EnemyAiTargetId = -1;
-            unit.EnemyAiHasLastKnownPosition = false;
             unit.EnemyAiDecisionRemaining = 0f;
             unit.SetEnemyAiPatrolPoints(Enumerable.Empty<Vector3>());
-            StopEnemyAiMovement(unit);
-            return DemoCommandResult.Ok($"{unit.DisplayName} 已启用独立战斗 AI");
-        }
-
-        public DemoCombatModel GetCombat(int id)
-        {
-            return _combats.FirstOrDefault(combat => combat.Id == id);
+            ClearTarget(unit);
+            StopMovement(unit);
+            return DemoCommandResult.Ok($"{unit.DisplayName} uses independent combat AI.");
         }
 
         public void GrantPersistentPlayerIntel(int unitId, DemoIntelLevel level = DemoIntelLevel.Identified)
@@ -676,58 +565,22 @@ namespace SWRTS.Demo1
             unit.IsRevealedToPlayer = true;
         }
 
-        public float GetScreeningEfficiency(int combatId, DemoTeam team)
+        public bool IsUnitVisibleOnStrategicMap(int unitId)
         {
-            DemoCombatModel combat = GetCombat(combatId);
-            if (combat == null || combat.IsFinished)
-                return 0f;
-
-            List<DemoUnitModel> protectedUnits = combat.Participants
-                .Select(GetUnit)
-                .Where(unit => IsParticipantOnLine(combat, unit, team, DemoBattleLine.Main) ||
-                               IsParticipantOnLine(combat, unit, team, DemoBattleLine.Support))
-                .ToList();
-            if (protectedUnits.Count == 0)
-                return 1f;
-
-            float screen = combat.Participants
-                .Select(GetUnit)
-                .Where(unit => IsActiveParticipant(combat, unit, team) &&
-                               combat.GetAssignment(unit.Id).Line == DemoBattleLine.Vanguard)
-                .Sum(unit => Mathf.Max(0f, unit.Stats.ScreenPower) * Balance.VanguardScreenMultiplier);
-            float required = protectedUnits.Count * Mathf.Max(0.01f, Balance.ScreenRequiredPerProtectedUnit);
-            return Mathf.Clamp01(screen / required);
-        }
-
-        public float GetBattleLineAttackMultiplier(DemoBattleLine line)
-        {
-            switch (line)
-            {
-                case DemoBattleLine.Vanguard: return Balance.VanguardAttackMultiplier;
-                case DemoBattleLine.Main: return Balance.MainAttackMultiplier;
-                case DemoBattleLine.Support: return Balance.SupportAttackMultiplier;
-                default: return 1f;
-            }
-        }
-
-        public float GetBattleLineDamageTakenMultiplier(DemoBattleLine line)
-        {
-            return line == DemoBattleLine.Vanguard ? Balance.VanguardDamageTakenMultiplier : 1f;
-        }
-
-        public float GetMarkRemaining(int combatId, int unitId)
-        {
-            DemoCombatParticipantState state = GetCombat(combatId)?.GetAssignment(unitId);
-            return state == null ? 0f : Mathf.Max(0f, state.MarkedUntil - SimulationTime);
+            DemoUnitModel unit = GetUnit(unitId);
+            if (unit == null || !unit.IsAlive || !unit.IsOperational)
+                return false;
+            bool hasDeployedWitch = _units.Values.Any(candidate =>
+                candidate.Team == DemoTeam.Player && candidate.IsAlive && candidate.IsOperational);
+            if (!hasDeployedWitch)
+                return false;
+            return unit.Team == DemoTeam.Player || unit.HasPlayerIntel;
         }
 
         public float GetEffectiveCoreDiscovery(int unitId)
         {
             DemoUnitModel unit = GetUnit(unitId);
-            if (unit == null)
-                return 0f;
-            DemoCombatModel combat = unit.CombatId >= 0 ? GetCombat(unit.CombatId) : null;
-            return unit.Stats.CoreDiscovery * GetCoreDiscoveryMultiplier(combat, unit);
+            return unit == null ? 0f : unit.Stats.CoreDiscovery * GetCoreDiscoveryMultiplier(unit);
         }
 
         public float GetEffectiveCriticalChance(int unitId)
@@ -752,66 +605,88 @@ namespace SWRTS.Demo1
             return Mathf.Max(0.2f, unit.Stats.AttackInterval * multiplier);
         }
 
-        public float GetEffectiveShieldBonus(int combatId, int targetUnitId)
+        public float GetEffectiveShieldBonus(int targetUnitId)
         {
-            DemoCombatModel combat = GetCombat(combatId);
             DemoUnitModel target = GetUnit(targetUnitId);
-            if (combat == null || combat.IsFinished || target == null || target.CombatId != combat.Id)
+            if (!CanReceiveAura(target))
                 return 0f;
-
-            float supportBonus = combat.Participants
-                .Select(GetUnit)
-                .Where(unit => ProvidesShieldSupport(combat, unit, target.Team))
-                .Sum(unit => unit.Stats.GlobalShieldBonus * Balance.SupportEffectMultiplier);
-            float traitBonus = combat.Participants
-                .Select(GetUnit)
-                .Where(unit => unit != null && unit.Stats.HasTrait(DemoUnitTrait.MiyafujiShieldAura) &&
-                               IsActiveParticipant(combat, unit, target.Team))
-                .Sum(unit => Balance.MiyafujiShieldEfficiencyBonus);
-            return Mathf.Max(0f, supportBonus + traitBonus);
+            float bonus = 0f;
+            foreach (DemoUnitModel provider in _units.Values.Where(unit => CanProvideAura(unit, target)))
+            {
+                if (provider.Role == DemoUnitRole.Support)
+                    bonus += provider.Stats.GlobalShieldBonus * Balance.SupportEffectMultiplier;
+                if (provider.Stats.HasTrait(DemoUnitTrait.MiyafujiShieldAura))
+                    bonus += Balance.MiyafujiShieldEfficiencyBonus;
+            }
+            return Mathf.Max(0f, bonus);
         }
 
-        public float GetCombatStrength(int combatId, DemoTeam team)
-        {
-            DemoCombatModel combat = GetCombat(combatId);
-            if (combat == null)
-                return 0f;
-            return combat.Participants.Select(GetUnit)
-                .Where(unit => unit != null && unit.IsAlive && unit.Team == team)
-                .Sum(unit => unit.Health + unit.Shield + unit.Magic * 0.25f);
-        }
-
-        public DemoCommandResult RequestBattleLineChange(int unitId, DemoBattleLine targetLine)
+        public float GetMarkRemaining(int unitId)
         {
             DemoUnitModel unit = GetUnit(unitId);
-            if (unit == null || !unit.IsAlive || unit.Team != DemoTeam.Player)
-                return DemoCommandResult.Fail("只能调整己方存活单位的阵位");
-            if (unit.IsFixed)
-                return DemoCommandResult.Fail("固定目标不能调整阵位");
-            if (unit.CombatId < 0)
-                return DemoCommandResult.Fail("单位尚未加入战斗");
-            if (unit.Activity == DemoUnitActivity.Retreating)
-                return DemoCommandResult.Fail("撤退中的单位不能调整阵位");
-            if (targetLine != DemoBattleLine.Vanguard && targetLine != DemoBattleLine.Main && targetLine != DemoBattleLine.Support)
-                return DemoCommandResult.Fail("目标阵线无效");
-            DemoCombatModel combat = GetCombat(unit.CombatId);
-            DemoCombatParticipantState state = combat?.GetAssignment(unitId);
-            if (combat == null || combat.IsFinished || state == null)
-                return DemoCommandResult.Fail("目标战斗已经结束");
-            if (state.Line == targetLine && !state.IsRepositioning)
-                return DemoCommandResult.Fail("单位已经位于该阵线");
-            state.Line = targetLine;
-            state.TargetLine = targetLine;
-            state.RepositionRemaining = Balance.BattleLineChangeDuration;
-            Raise($"{unit.DisplayName} 正在转移至{BattleLineName(targetLine)}", combat.Center, true, combat.Id);
-            return DemoCommandResult.Ok($"换位命令已下达，{state.RepositionRemaining:0.0}s 后完成");
+            return unit == null ? 0f : Mathf.Max(0f, unit.MarkedUntil - SimulationTime);
+        }
+
+        public DemoCommandResult SetAutoAttack(IEnumerable<int> unitIds, bool enabled)
+        {
+            List<DemoUnitModel> candidates = (unitIds ?? Enumerable.Empty<int>())
+                .Select(GetUnit)
+                .Where(unit => unit != null && unit.Team == DemoTeam.Player && unit.IsAlive && !unit.IsFixed)
+                .Distinct()
+                .ToList();
+            if (candidates.Count == 0)
+                return DemoCommandResult.Fail("No selected witch can change auto-attack stance.");
+            foreach (DemoUnitModel unit in candidates)
+            {
+                unit.AutoAttackEnabled = enabled;
+                if (!enabled)
+                {
+                    unit.HasExplicitAttackOrder = false;
+                    ClearTarget(unit);
+                }
+            }
+            return DemoCommandResult.Ok($"Auto attack {(enabled ? "enabled" : "disabled")} for {candidates.Count} witches.");
+        }
+
+        public DemoCommandResult RequestAttack(IEnumerable<int> unitIds, int targetId)
+        {
+            DemoUnitModel target = GetUnit(targetId);
+            if (target == null || !target.IsAlive || !target.IsOperational)
+                return DemoCommandResult.Fail("Attack target is invalid.");
+
+            List<DemoUnitModel> candidates = (unitIds ?? Enumerable.Empty<int>())
+                .Select(GetUnit)
+                .Where(unit => unit != null && unit.IsAlive && unit.IsOperational && !unit.IsFixed && unit.Team != target.Team)
+                .Distinct()
+                .ToList();
+            if (candidates.Count == 0)
+                return DemoCommandResult.Fail("No selected unit can attack this target.");
+            if (candidates.Any(unit => unit.Team == DemoTeam.Player) && !target.CanBeDirectlyTargetedByPlayer)
+                return DemoCommandResult.Fail(target.HasPlayerIntel ? "Only the target's last known position is available." : "Target intelligence is unavailable.");
+
+            foreach (DemoUnitModel unit in candidates)
+            {
+                unit.LockedTargetId = target.Id;
+                unit.OrderedTargetId = target.Id;
+                unit.HasExplicitAttackOrder = true;
+                unit.TargetLastKnownPosition = target.Team == DemoTeam.Enemy ? target.PlayerVisiblePosition : target.Position;
+                unit.HasTargetLastKnownPosition = true;
+                unit.HasDestination = false;
+                unit.Activity = DemoUnitActivity.Pursuing;
+            }
+            Raise($"{candidates.Count} units locked {target.DisplayName}.", target.PlayerVisiblePosition, true);
+            return DemoCommandResult.Ok($"Attack order assigned to {candidates.Count} units.");
         }
 
         public DemoCommandResult IssueMove(IEnumerable<int> unitIds, Vector3 destination)
         {
-            List<DemoUnitModel> candidates = unitIds.Select(GetUnit).Where(CanMove).ToList();
+            List<DemoUnitModel> candidates = (unitIds ?? Enumerable.Empty<int>())
+                .Select(GetUnit)
+                .Where(CanMove)
+                .Distinct()
+                .ToList();
             if (candidates.Count == 0)
-                return DemoCommandResult.Fail("没有可执行移动命令的单位（参战单位必须先撤退）");
+                return DemoCommandResult.Fail("No selected unit can move.");
 
             float spacing = Mathf.Min(1.2f, Balance.DestinationRadius * 0.65f);
             for (int i = 0; i < candidates.Count; i++)
@@ -819,156 +694,55 @@ namespace SWRTS.Demo1
                 float angle = candidates.Count == 1 ? 0f : i * Mathf.PI * 2f / candidates.Count;
                 Vector3 offset = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle)) * spacing;
                 DemoUnitModel unit = candidates[i];
-                unit.Destination = ClampToMap(destination + offset);
-                Vector3 facing = unit.Destination - unit.Position;
-                facing.y = 0f;
-                if (facing.sqrMagnitude > 0.001f)
-                    unit.Facing = facing.normalized;
-                unit.HasDestination = true;
-                unit.PendingReinforcementBattleId = -1;
-                unit.Activity = DemoUnitActivity.Moving;
+                ClearTarget(unit);
+                SetMovement(unit, destination + offset, DemoUnitActivity.Moving);
             }
-
-            Raise($"已向 {candidates.Count} 名魔女下达独立移动命令", destination, false);
-            return DemoCommandResult.Ok("移动命令已下达");
-        }
-
-        public DemoCommandResult StartCombat(int attackerId, int targetId)
-        {
-            DemoUnitModel attacker = GetUnit(attackerId);
-            DemoUnitModel target = GetUnit(targetId);
-            if (attacker == null || target == null || !attacker.IsAlive || !target.IsAlive)
-                return DemoCommandResult.Fail("交战目标无效");
-            if (!attacker.IsOperational || !target.IsOperational)
-                return DemoCommandResult.Fail("Units at base cannot enter combat.");
-            if (attacker.Team == target.Team)
-                return DemoCommandResult.Fail("不能攻击友军");
-            if (attacker.IsFixed)
-                return DemoCommandResult.Fail("固定目标不能主动移动接战");
-            if (attacker.CombatId >= 0)
-                return DemoCommandResult.Fail("单位已在战斗中");
-            if (SimulationTime < attacker.ProtectedUntil || SimulationTime < target.ProtectedUntil)
-                return DemoCommandResult.Fail("目标或发起者仍处于脱战保护");
-            if (attacker.Team == DemoTeam.Player && !target.CanBeDirectlyTargetedByPlayer)
-                return DemoCommandResult.Fail(target.HasPlayerIntel ? "当前只有目标的最后已知位置" : "尚未获得目标情报");
-
-            if (target.CombatId >= 0)
-                return RequestReinforcement(new[] { attackerId }, target.CombatId);
-
-            float distance = HorizontalDistance(attacker.Position, target.Position);
-            if (distance > attacker.Stats.EngagementRadius)
-                return DemoCommandResult.Fail($"目标超出交战半径（{distance:0.0}/{attacker.Stats.EngagementRadius:0.0}）");
-
-            Vector3 center = target.IsFixed ? target.Position : (attacker.Position + target.Position) * 0.5f;
-            Vector3 attackerFacing = target.Position - attacker.Position;
-            attackerFacing.y = 0f;
-            if (attackerFacing.sqrMagnitude > 0.001f)
-                attacker.Facing = attackerFacing.normalized;
-            Vector3 targetFacing = attacker.Position - target.Position;
-            targetFacing.y = 0f;
-            if (targetFacing.sqrMagnitude > 0.001f)
-                target.Facing = targetFacing.normalized;
-            DemoCombatModel combat = new DemoCombatModel(_nextCombatId++, center, Balance.ReinforcementRadius, Balance.ForcedEngagementRadius);
-            _combats.Add(combat);
-            AddParticipant(combat, attacker);
-            AddParticipant(combat, target);
-            Raise($"战斗 #{combat.Id} 爆发：{attacker.DisplayName} 对 {target.DisplayName}", center, true, combat.Id);
-            return DemoCommandResult.Ok($"战斗 #{combat.Id} 已创建");
-        }
-
-        public DemoCommandResult RequestReinforcement(IEnumerable<int> unitIds, int combatId)
-        {
-            DemoCombatModel combat = GetCombat(combatId);
-            if (combat == null || combat.IsFinished)
-                return DemoCommandResult.Fail("目标战斗已经结束");
-
-            int accepted = 0;
-            foreach (int unitId in unitIds)
-            {
-                DemoUnitModel unit = GetUnit(unitId);
-                if (!CanMove(unit) || unit.CombatId >= 0)
-                    continue;
-
-                unit.PendingReinforcementBattleId = combat.Id;
-                if (HorizontalDistance(unit.Position, combat.Center) <= combat.ReinforcementRadius)
-                {
-                    AddParticipant(combat, unit);
-                    Raise($"{unit.DisplayName} 加入战斗 #{combat.Id}", combat.Center, false, combat.Id);
-                }
-                else
-                {
-                    unit.Destination = combat.Center;
-                    unit.HasDestination = true;
-                    unit.Activity = DemoUnitActivity.Reinforcing;
-                }
-                accepted++;
-            }
-
-            return accepted > 0
-                ? DemoCommandResult.Ok($"{accepted} 个单位正在增援战斗 #{combat.Id}")
-                : DemoCommandResult.Fail("选中单位当前无法增援");
-        }
-
-        public DemoCommandResult RequestRetreat(IEnumerable<int> unitIds)
-        {
-            int accepted = 0;
-            foreach (int id in unitIds)
-            {
-                DemoUnitModel unit = GetUnit(id);
-                if (unit == null || !unit.IsAlive || unit.CombatId < 0 || unit.IsFixed || unit.Activity == DemoUnitActivity.Retreating)
-                    continue;
-
-                unit.Activity = DemoUnitActivity.Retreating;
-                unit.RetreatDuration = Mathf.Clamp(Balance.RetreatBaseDuration / Mathf.Max(0.25f, unit.Stats.Mobility), 1.2f, 8f);
-                unit.RetreatRemaining = unit.RetreatDuration;
-                accepted++;
-                Raise($"{unit.DisplayName} 开始撤退", unit.Position, true, unit.CombatId);
-            }
-
-            return accepted > 0
-                ? DemoCommandResult.Ok($"{accepted} 个单位开始撤退")
-                : DemoCommandResult.Fail("没有可撤退的参战单位");
+            Raise($"Independent move order assigned to {candidates.Count} units.", destination, false);
+            return DemoCommandResult.Ok("Move order assigned.");
         }
 
         public DemoCommandResult ScheduleRemoteStrike(int attackerId, Vector3 target)
         {
             DemoUnitModel attacker = GetUnit(attackerId);
             if (attacker == null || !attacker.IsAlive || !attacker.IsOperational || !attacker.Stats.CanRemoteStrike)
-                return DemoCommandResult.Fail("所选单位不具备远程打击能力");
+                return DemoCommandResult.Fail("Selected unit cannot perform a remote strike.");
             if (attacker.RemoteStrikeCooldown > 0f)
-                return DemoCommandResult.Fail($"远程打击冷却中（{attacker.RemoteStrikeCooldown:0.0}s）");
+                return DemoCommandResult.Fail($"Remote strike cooling down ({attacker.RemoteStrikeCooldown:0.0}s).");
             if (HorizontalDistance(attacker.Position, target) > Balance.RemoteStrikeRange)
-                return DemoCommandResult.Fail("目标区域超出远程打击距离");
+                return DemoCommandResult.Fail("Target area is outside remote strike range.");
 
             DemoRemoteStrikeModel strike = new DemoRemoteStrikeModel(
                 _nextStrikeId++, attacker.Id, ClampToMap(target), Balance.RemoteStrikeRadius, Balance.RemoteStrikeDelay);
             _remoteStrikes.Add(strike);
             attacker.RemoteStrikeCooldown = Balance.RemoteStrikeCooldown;
-            Raise($"{attacker.DisplayName} 发起远程打击，{strike.Remaining:0.0}s 后命中", strike.Target, true);
-            return DemoCommandResult.Ok("远程打击已进入倒计时");
+            Raise($"{attacker.DisplayName} launched a remote strike; impact in {strike.Remaining:0.0}s.", strike.Target, true);
+            return DemoCommandResult.Ok("Remote strike scheduled.");
         }
 
         public void Advance(float deltaTime)
         {
             if (deltaTime <= 0f || Outcome != DemoOutcome.Running)
                 return;
-
             float remaining = deltaTime;
             while (remaining > 0f && Outcome == DemoOutcome.Running)
             {
                 float dt = Mathf.Min(remaining, 0.1f);
                 SimulationTime += dt;
-                TickUnits(dt);
+                TickUnitResources(dt);
                 TickVisibility(dt);
                 TickEnemyAi(dt);
-                TickCombats(dt);
+                TickAutomaticTargeting();
+                TickTargetNavigation();
+                TickMovement(dt);
+                TickIndividualCombat(dt);
+                TickSupportPulses(dt);
                 TickRemoteStrikes(dt);
                 EvaluateOutcome();
                 remaining -= dt;
             }
         }
 
-        private void TickUnits(float dt)
+        private void TickUnitResources(float dt)
         {
             foreach (DemoUnitModel unit in _units.Values)
             {
@@ -978,7 +752,6 @@ namespace SWRTS.Demo1
                         unit.DeploymentState = DemoUnitDeploymentState.Lost;
                     continue;
                 }
-
                 if (unit.Team == DemoTeam.Player && unit.DeploymentState == DemoUnitDeploymentState.Servicing)
                 {
                     unit.TurnaroundRemaining = Mathf.Max(0f, unit.TurnaroundRemaining - dt);
@@ -989,39 +762,35 @@ namespace SWRTS.Demo1
                         unit.Shield = unit.Stats.MaxShield;
                         unit.AttackCooldown = 0f;
                         unit.RemoteStrikeCooldown = 0f;
-                        unit.ProtectedUntil = 0f;
                         unit.DeploymentState = DemoUnitDeploymentState.Standby;
                         unit.Activity = DemoUnitActivity.Idle;
                         Raise($"{unit.DisplayName} is ready for another sortie.", BasePosition, true);
                     }
                     continue;
                 }
-
                 if (unit.Team == DemoTeam.Player && unit.DeploymentState == DemoUnitDeploymentState.Standby)
                     continue;
 
                 unit.AttackCooldown = Mathf.Max(0f, unit.AttackCooldown - dt);
                 unit.RemoteStrikeCooldown = Mathf.Max(0f, unit.RemoteStrikeCooldown - dt);
-
-                if (unit.CombatId < 0)
+                if (unit.LockedTargetId < 0)
                 {
                     unit.Magic = Mathf.Min(unit.Stats.MaxMagic, unit.Magic + unit.Stats.MagicRecovery * dt);
                     if (unit.Magic > unit.Stats.MaxMagic * 0.25f)
                         unit.Shield = Mathf.Min(unit.Stats.MaxShield, unit.Shield + unit.Stats.MagicRecovery * 0.45f * dt);
                 }
+            }
+        }
 
-                if (unit.Activity == DemoUnitActivity.Protected && SimulationTime >= unit.ProtectedUntil)
-                    unit.Activity = DemoUnitActivity.Idle;
-
-                if (!unit.HasDestination || (unit.Activity != DemoUnitActivity.Moving && unit.Activity != DemoUnitActivity.Reinforcing))
-                    continue;
-
+        private void TickMovement(float dt)
+        {
+            foreach (DemoUnitModel unit in _units.Values.Where(unit => unit.IsAlive && unit.IsOperational && unit.HasDestination && !unit.IsFixed))
+            {
                 Vector3 movement = unit.Destination - unit.Position;
                 movement.y = 0f;
                 if (movement.sqrMagnitude > 0.001f)
                     unit.Facing = movement.normalized;
-                unit.Position = Vector3.MoveTowards(unit.Position, unit.Destination, unit.Stats.MoveSpeed * dt);
-                unit.Position = ClampToMap(unit.Position);
+                unit.Position = ClampToMap(Vector3.MoveTowards(unit.Position, unit.Destination, unit.Stats.MoveSpeed * dt));
 
                 if (unit.DeploymentState == DemoUnitDeploymentState.Returning &&
                     HorizontalDistance(unit.Position, BasePosition) <= Balance.BaseArrivalRadius)
@@ -1036,28 +805,12 @@ namespace SWRTS.Demo1
                     continue;
                 }
 
-                if (unit.Activity == DemoUnitActivity.Reinforcing)
-                {
-                    DemoCombatModel combat = GetCombat(unit.PendingReinforcementBattleId);
-                    if (combat == null || combat.IsFinished)
-                    {
-                        unit.PendingReinforcementBattleId = -1;
-                        unit.HasDestination = false;
-                        unit.Activity = DemoUnitActivity.Idle;
-                    }
-                    else if (HorizontalDistance(unit.Position, combat.Center) <= combat.ReinforcementRadius)
-                    {
-                        AddParticipant(combat, unit);
-                        Raise($"{unit.DisplayName} 抵达并加入战斗 #{combat.Id}", combat.Center, false, combat.Id);
-                    }
-                    continue;
-                }
-
                 if (HorizontalDistance(unit.Position, unit.Destination) <= Balance.DestinationRadius * 0.2f)
                 {
                     unit.Position = unit.Destination;
                     unit.HasDestination = false;
-                    unit.Activity = SimulationTime < unit.ProtectedUntil ? DemoUnitActivity.Protected : DemoUnitActivity.Idle;
+                    if (unit.Activity == DemoUnitActivity.Moving)
+                        unit.Activity = DemoUnitActivity.Idle;
                 }
             }
         }
@@ -1071,11 +824,8 @@ namespace SWRTS.Demo1
             foreach (DemoUnitModel enemy in _units.Values.Where(unit => unit.IsAlive && unit.Team == DemoTeam.Enemy))
             {
                 enemy.IsCurrentlyObservedByPlayer = false;
-                bool observedInCombat = enemy.CombatId >= 0 && GetCombat(enemy.CombatId)?.Participants
-                    .Select(GetUnit).Any(unit => unit != null && unit.IsAlive && unit.Team == DemoTeam.Player) == true;
-                DemoUnitModel observer = observedInCombat ? observers.FirstOrDefault() :
-                    observers.FirstOrDefault(unit => IsInsideWitchVision(unit, enemy.Position));
-                if (observedInCombat || observer != null)
+                DemoUnitModel observer = observers.FirstOrDefault(unit => IsInsideWitchVision(unit, enemy.Position));
+                if (observer != null)
                     ObserveEnemy(enemy, dt);
                 else
                     DecayEnemyIntel(enemy, dt);
@@ -1104,7 +854,6 @@ namespace SWRTS.Demo1
             enemy.IsRevealedToPlayer = true;
             enemy.LastKnownPosition = enemy.Position;
             enemy.LastObservedAt = SimulationTime;
-
             if (enemy.PlayerIntelLevel < DemoIntelLevel.Identified)
             {
                 enemy.PlayerIntelLevel = DemoIntelLevel.Contact;
@@ -1118,11 +867,10 @@ namespace SWRTS.Demo1
                 if (enemy.AssessmentProgress >= 1f)
                     enemy.PlayerIntelLevel = DemoIntelLevel.Assessed;
             }
-
             if (previous == DemoIntelLevel.Unknown && enemy.PlayerIntelLevel >= DemoIntelLevel.Contact)
-                Raise("发现不明接触", enemy.Position, true);
+                Raise("Unidentified contact detected.", enemy.Position, true);
             if (previous < DemoIntelLevel.Identified && enemy.PlayerIntelLevel >= DemoIntelLevel.Identified)
-                Raise($"确认敌情：{enemy.DisplayName}", enemy.Position, true);
+                Raise($"Enemy identified: {enemy.DisplayName}.", enemy.Position, true);
         }
 
         private void DecayEnemyIntel(DemoUnitModel enemy, float dt)
@@ -1135,32 +883,23 @@ namespace SWRTS.Demo1
                 enemy.IsRevealedToPlayer = true;
                 return;
             }
-            if (float.IsNegativeInfinity(enemy.LastObservedAt))
-            {
-                enemy.PlayerIntelLevel = DemoIntelLevel.Unknown;
-                enemy.IsRevealedToPlayer = false;
-                return;
-            }
-
             DemoIntelLevel previous = enemy.PlayerIntelLevel;
-            float age = SimulationTime - enemy.LastObservedAt;
-            if (age > Balance.ContactIntelMemoryDuration)
+            float elapsed = SimulationTime - enemy.LastObservedAt;
+            if (elapsed >= Balance.ContactIntelMemoryDuration)
             {
                 enemy.PlayerIntelLevel = DemoIntelLevel.Unknown;
                 enemy.IsRevealedToPlayer = false;
-                enemy.IdentificationProgress = 0f;
-                enemy.AssessmentProgress = 0f;
             }
-            else if (age > Balance.IdentifiedIntelMemoryDuration)
+            else if (elapsed >= Balance.IdentifiedIntelMemoryDuration)
                 enemy.PlayerIntelLevel = DemoIntelLevel.Contact;
-            else if (age > Balance.AssessedIntelMemoryDuration)
+            else if (elapsed >= Balance.AssessedIntelMemoryDuration && enemy.PlayerIntelLevel == DemoIntelLevel.Assessed)
                 enemy.PlayerIntelLevel = DemoIntelLevel.Identified;
+            enemy.IdentificationProgress = Mathf.Max(0f, enemy.IdentificationProgress - dt * 0.15f);
             enemy.AssessmentProgress = Mathf.Max(0f, enemy.AssessmentProgress - dt * 0.25f);
-
             if (previous >= DemoIntelLevel.Identified && enemy.PlayerIntelLevel == DemoIntelLevel.Contact)
-                Raise($"失去确认：{enemy.DisplayName}", enemy.LastKnownPosition, false);
+                Raise($"Lost identification: {enemy.DisplayName}.", enemy.LastKnownPosition, false);
             if (previous != DemoIntelLevel.Unknown && enemy.PlayerIntelLevel == DemoIntelLevel.Unknown)
-                Raise($"目标失联：{enemy.DisplayName}", enemy.LastKnownPosition, false);
+                Raise($"Contact lost: {enemy.DisplayName}.", enemy.LastKnownPosition, false);
         }
 
         private void TickEnemyAi(float dt)
@@ -1170,28 +909,12 @@ namespace SWRTS.Demo1
                          .ToList())
             {
                 enemy.EnemyAiDecisionRemaining -= dt;
-
-                if (enemy.CombatId >= 0)
-                {
-                    if (enemy.EnemyAiProfile == DemoEnemyAiProfile.Scout &&
-                        enemy.HealthRatio <= Balance.EnemyAiScoutRetreatHealthRatio &&
-                        enemy.Activity != DemoUnitActivity.Retreating)
-                    {
-                        RequestRetreat(new[] { enemy.Id });
-                    }
-                    enemy.EnemyAiState = enemy.Activity == DemoUnitActivity.Retreating
-                        ? DemoEnemyAiState.Retreating
-                        : DemoEnemyAiState.Fighting;
-                    continue;
-                }
-
                 if (enemy.EnemyAiDecisionRemaining > 0f)
                     continue;
                 enemy.EnemyAiDecisionRemaining = Mathf.Max(0.05f, Balance.EnemyAiDecisionInterval);
-
                 if (enemy.EnemyAiProfile == DemoEnemyAiProfile.Scout)
                     TickScoutAiDecision(enemy);
-                else if (enemy.EnemyAiProfile == DemoEnemyAiProfile.Combat)
+                else
                     TickCombatAiDecision(enemy);
             }
         }
@@ -1200,59 +923,51 @@ namespace SWRTS.Demo1
         {
             if (scout.HealthRatio <= Balance.EnemyAiScoutRetreatHealthRatio)
             {
-                scout.EnemyAiTargetId = -1;
-                scout.EnemyAiHasLastKnownPosition = false;
+                ClearTarget(scout);
+                scout.EnemyAiState = DemoEnemyAiState.Retreating;
                 TickScoutPatrol(scout);
                 return;
             }
-
             DemoUnitModel target = FindNearestVisiblePlayer(scout, false);
             if (target != null)
             {
-                scout.EnemyAiTargetId = target.Id;
-                scout.EnemyAiLastKnownPosition = target.Position;
-                scout.EnemyAiHasLastKnownPosition = true;
-                if (TryEnemyAiStartCombat(scout, target))
-                    return;
-
-                scout.EnemyAiState = DemoEnemyAiState.Pursue;
-                SetEnemyAiDestination(scout, target.Position);
+                AssignEnemyTarget(scout, target);
+                scout.EnemyAiState = HorizontalDistance(scout.Position, target.Position) <= scout.Stats.AttackRange
+                    ? DemoEnemyAiState.Fighting
+                    : DemoEnemyAiState.Pursue;
                 return;
             }
-
-            scout.EnemyAiTargetId = -1;
-            if (scout.EnemyAiHasLastKnownPosition)
+            ClearTarget(scout);
+            if (scout.EnemyAiHasLastKnownPosition &&
+                HorizontalDistance(scout.Position, scout.EnemyAiLastKnownPosition) > Balance.EnemyAiArrivalRadius)
             {
-                if (HorizontalDistance(scout.Position, scout.EnemyAiLastKnownPosition) > Balance.EnemyAiArrivalRadius)
-                {
-                    scout.EnemyAiState = DemoEnemyAiState.Investigate;
-                    SetEnemyAiDestination(scout, scout.EnemyAiLastKnownPosition);
-                    return;
-                }
-                scout.EnemyAiHasLastKnownPosition = false;
+                scout.EnemyAiState = DemoEnemyAiState.Investigate;
+                SetMovement(scout, scout.EnemyAiLastKnownPosition, DemoUnitActivity.Moving);
+                return;
             }
-
+            scout.EnemyAiHasLastKnownPosition = false;
             TickScoutPatrol(scout);
         }
 
         private void TickScoutPatrol(DemoUnitModel scout)
         {
-            scout.EnemyAiState = DemoEnemyAiState.Patrol;
+            scout.EnemyAiState = scout.HealthRatio <= Balance.EnemyAiScoutRetreatHealthRatio
+                ? DemoEnemyAiState.Retreating
+                : DemoEnemyAiState.Patrol;
             if (scout.EnemyAiPatrolPoints.Count == 0)
             {
-                StopEnemyAiMovement(scout);
+                StopMovement(scout);
                 return;
             }
-
             int index = Mathf.Clamp(scout.EnemyAiPatrolIndex, 0, scout.EnemyAiPatrolPoints.Count - 1);
-            Vector3 patrolPoint = scout.EnemyAiPatrolPoints[index];
-            if (HorizontalDistance(scout.Position, patrolPoint) <= Balance.EnemyAiArrivalRadius)
+            Vector3 point = scout.EnemyAiPatrolPoints[index];
+            if (HorizontalDistance(scout.Position, point) <= Balance.EnemyAiArrivalRadius)
             {
                 index = (index + 1) % scout.EnemyAiPatrolPoints.Count;
                 scout.EnemyAiPatrolIndex = index;
-                patrolPoint = scout.EnemyAiPatrolPoints[index];
+                point = scout.EnemyAiPatrolPoints[index];
             }
-            SetEnemyAiDestination(scout, patrolPoint);
+            SetMovement(scout, point, DemoUnitActivity.Moving);
         }
 
         private void TickCombatAiDecision(DemoUnitModel enemy)
@@ -1260,25 +975,22 @@ namespace SWRTS.Demo1
             DemoUnitModel target = FindNearestVisiblePlayer(enemy, true);
             if (target != null)
             {
-                enemy.EnemyAiTargetId = target.Id;
-                if (TryEnemyAiStartCombat(enemy, target))
-                    return;
-
-                enemy.EnemyAiState = DemoEnemyAiState.Pursue;
-                SetEnemyAiDestination(enemy, target.Position);
+                AssignEnemyTarget(enemy, target);
+                enemy.EnemyAiState = HorizontalDistance(enemy.Position, target.Position) <= enemy.Stats.AttackRange
+                    ? DemoEnemyAiState.Fighting
+                    : DemoEnemyAiState.Pursue;
                 return;
             }
-
-            enemy.EnemyAiTargetId = -1;
+            ClearTarget(enemy);
             if (HorizontalDistance(enemy.Position, enemy.EnemyAiHomePosition) > Balance.EnemyAiArrivalRadius)
             {
                 enemy.EnemyAiState = DemoEnemyAiState.ReturnHome;
-                SetEnemyAiDestination(enemy, enemy.EnemyAiHomePosition);
+                SetMovement(enemy, enemy.EnemyAiHomePosition, DemoUnitActivity.Moving);
             }
             else
             {
                 enemy.EnemyAiState = DemoEnemyAiState.Guard;
-                StopEnemyAiMovement(enemy);
+                StopMovement(enemy);
             }
         }
 
@@ -1286,8 +998,7 @@ namespace SWRTS.Demo1
         {
             float visionRadius = Mathf.Max(0f, observer.Stats.VisionRadius);
             return _units.Values
-                .Where(unit => unit.IsAlive && unit.IsOperational && unit.Team == DemoTeam.Player && unit.CombatId < 0 &&
-                               SimulationTime >= unit.ProtectedUntil &&
+                .Where(unit => unit.IsAlive && unit.IsOperational && unit.Team == DemoTeam.Player &&
                                HorizontalDistance(observer.Position, unit.Position) <= visionRadius &&
                                (!enforceHomeLeash || HorizontalDistance(observer.EnemyAiHomePosition, unit.Position) <= Balance.EnemyAiGuardLeashRadius))
                 .OrderBy(unit => HorizontalDistance(observer.Position, unit.Position))
@@ -1295,321 +1006,162 @@ namespace SWRTS.Demo1
                 .FirstOrDefault();
         }
 
-        private bool TryEnemyAiStartCombat(DemoUnitModel enemy, DemoUnitModel target)
+        private void TickAutomaticTargeting()
         {
-            if (target.CombatId >= 0 || HorizontalDistance(enemy.Position, target.Position) > enemy.Stats.EngagementRadius)
-                return false;
-            DemoCommandResult result = StartCombat(enemy.Id, target.Id);
-            if (!result.Success)
-                return false;
-
-            enemy.EnemyAiState = DemoEnemyAiState.Fighting;
-            return true;
-        }
-
-        private void SetEnemyAiDestination(DemoUnitModel unit, Vector3 destination)
-        {
-            if (!CanMove(unit))
-                return;
-            unit.Destination = ClampToMap(destination);
-            Vector3 facing = unit.Destination - unit.Position;
-            facing.y = 0f;
-            if (facing.sqrMagnitude > 0.001f)
-                unit.Facing = facing.normalized;
-            unit.HasDestination = true;
-            unit.PendingReinforcementBattleId = -1;
-            unit.Activity = DemoUnitActivity.Moving;
-        }
-
-        private void StopEnemyAiMovement(DemoUnitModel unit)
-        {
-            if (unit.CombatId >= 0 || unit.Activity == DemoUnitActivity.Retreating)
-                return;
-            unit.Destination = unit.Position;
-            unit.HasDestination = false;
-            unit.PendingReinforcementBattleId = -1;
-            unit.Activity = SimulationTime < unit.ProtectedUntil ? DemoUnitActivity.Protected : DemoUnitActivity.Idle;
-        }
-
-        private void TickCombats(float dt)
-        {
-            foreach (DemoCombatModel combat in _combats.Where(item => !item.IsFinished).ToList())
+            foreach (DemoUnitModel unit in _units.Values.Where(unit => unit.IsAlive && unit.IsOperational))
             {
-                ForceNearbyUnitsIntoCombat(combat);
-                TickRetreats(combat, dt);
-                TickBattleLines(combat, dt);
-                TickRoleMechanics(combat, dt);
-
-                List<DemoUnitModel> attackers = combat.Participants
-                    .Select(GetUnit)
-                    .Where(unit => CanAttackFromBattleLine(combat, unit))
-                    .ToList();
-
-                foreach (DemoUnitModel attacker in attackers)
+                if (unit.Team == DemoTeam.Player)
                 {
-                    if (attacker.AttackCooldown > 0f)
+                    if (!unit.AutoAttackEnabled || unit.HasExplicitAttackOrder || unit.LockedTargetId >= 0 ||
+                        unit.HasDestination || unit.DeploymentState != DemoUnitDeploymentState.Active)
                         continue;
-                    DemoUnitModel target = SelectBattleTarget(combat, attacker);
-                    if (target == null)
-                        continue;
-                    Vector3 facing = target.Position - attacker.Position;
-                    facing.y = 0f;
-                    if (facing.sqrMagnitude > 0.001f)
-                        attacker.Facing = facing.normalized;
-
-                    float shieldBonus = GetEffectiveShieldBonus(combat.Id, target.Id);
-                    DemoCombatParticipantState attackerState = combat.GetAssignment(attacker.Id);
-                    DemoCombatParticipantState targetState = combat.GetAssignment(target.Id);
-                    float attackMultiplier = GetBattleLineAttackMultiplier(attackerState.Line);
-                    if (targetState != null && targetState.MarkedUntil > SimulationTime)
-                        attackMultiplier *= Balance.ScoutMarkDamageMultiplier;
-                    int nextAttack = attackerState.AttacksPerformed + 1;
-                    bool artillerySalvo = attacker.Role == DemoUnitRole.Artillery &&
-                                           !attacker.Stats.HasTrait(DemoUnitTrait.LynetteSharpshooter) &&
-                                           nextAttack % Mathf.Max(1, Balance.ArtillerySalvoEveryAttacks) == 0;
-                    if (artillerySalvo)
-                        attackMultiplier *= Balance.ArtillerySalvoDamageMultiplier;
-                    bool fortressBarrage = attacker.Role == DemoUnitRole.Fortress &&
-                                           attacker.HealthRatio <= Balance.FortressBarrageHealthThreshold;
-                    if (fortressBarrage)
-                        attackMultiplier *= Balance.FortressBarrageDamageMultiplier;
-
-                    float damageTakenMultiplier = GetBattleLineDamageTakenMultiplier(targetState.Line);
-                    float coreDiscoveryMultiplier = GetCoreDiscoveryMultiplier(combat, attacker);
-                    float criticalChanceBonus = attacker.Stats.HasTrait(DemoUnitTrait.LynetteSharpshooter)
-                        ? Balance.LynetteCriticalChanceBonus
-                        : 0f;
-                    DemoDamageResult result = DemoDamageResolver.Resolve(
-                        attacker, target, Balance, _random, shieldBonus, attackMultiplier, damageTakenMultiplier,
-                        coreDiscoveryMultiplier, criticalChanceBonus);
-                    attackerState.LastTargetId = target.Id;
-                    attackerState.AttacksPerformed = nextAttack;
-                    if (attacker.Role == DemoUnitRole.Scout && targetState != null && target.IsAlive)
-                        targetState.MarkedUntil = Mathf.Max(targetState.MarkedUntil, SimulationTime + Balance.ScoutMarkDuration);
-                    float intervalMultiplier = fortressBarrage ? Balance.FortressBarrageIntervalMultiplier : 1f;
-                    attacker.AttackCooldown = Mathf.Max(0.2f, GetEffectiveAttackInterval(attacker.Id) * intervalMultiplier);
-                    ReportDamage(attacker, target, result, combat.Center, false);
-                    if (artillerySalvo)
-                        Raise($"{attacker.DisplayName} 完成校射齐射", combat.Center, false, combat.Id);
+                    DemoUnitModel target = _units.Values
+                        .Where(candidate => candidate.IsAlive && candidate.IsOperational && candidate.Team == DemoTeam.Enemy &&
+                                            candidate.IsCurrentlyObservedByPlayer && candidate.PlayerIntelLevel >= DemoIntelLevel.Identified &&
+                                            HorizontalDistance(unit.Position, candidate.Position) <= unit.Stats.EngagementRadius)
+                        .OrderBy(candidate => HorizontalDistance(unit.Position, candidate.Position))
+                        .ThenBy(candidate => candidate.Id)
+                        .FirstOrDefault();
+                    if (target != null)
+                        AssignAutomaticTarget(unit, target);
                 }
-
-                foreach (int id in combat.Participants.ToList())
+                else if (unit.IsFixed && unit.LockedTargetId < 0)
                 {
-                    DemoUnitModel unit = GetUnit(id);
-                    if (unit == null || unit.IsAlive)
-                        continue;
-                    combat.Participants.Remove(id);
-                    unit.CombatId = -1;
-                }
-
-                bool hasPlayer = combat.Participants.Select(GetUnit).Any(unit => unit != null && unit.IsAlive && unit.Team == DemoTeam.Player);
-                bool hasEnemy = combat.Participants.Select(GetUnit).Any(unit => unit != null && unit.IsAlive && unit.Team == DemoTeam.Enemy);
-                if (!hasPlayer || !hasEnemy)
-                    EndCombat(combat);
-            }
-        }
-
-        private void ForceNearbyUnitsIntoCombat(DemoCombatModel combat)
-        {
-            foreach (DemoUnitModel unit in _units.Values.Where(unit => unit.IsAlive && unit.IsOperational && unit.CombatId < 0 && !unit.IsFixed).ToList())
-            {
-                if (SimulationTime < unit.ProtectedUntil || HorizontalDistance(unit.Position, combat.Center) > combat.ForcedRadius)
-                    continue;
-                AddParticipant(combat, unit);
-                Raise($"{unit.DisplayName} 进入强制交战区", combat.Center, true, combat.Id);
-            }
-        }
-
-        private void TickBattleLines(DemoCombatModel combat, float dt)
-        {
-            foreach (int id in combat.Participants.ToList())
-            {
-                DemoCombatParticipantState state = combat.GetAssignment(id);
-                if (state == null || !state.IsRepositioning)
-                    continue;
-                state.RepositionRemaining = Mathf.Max(0f, state.RepositionRemaining - dt);
-                if (state.RepositionRemaining <= 0f)
-                {
-                    DemoUnitModel unit = GetUnit(id);
-                    if (unit != null && unit.IsAlive)
-                        Raise($"{unit.DisplayName} 已进入{BattleLineName(state.Line)}", combat.Center, false, combat.Id);
+                    DemoUnitModel target = _units.Values
+                        .Where(candidate => candidate.IsAlive && candidate.IsOperational && candidate.Team == DemoTeam.Player &&
+                                            HorizontalDistance(unit.Position, candidate.Position) <= unit.Stats.EngagementRadius)
+                        .OrderBy(candidate => HorizontalDistance(unit.Position, candidate.Position))
+                        .ThenBy(candidate => candidate.Id)
+                        .FirstOrDefault();
+                    if (target != null)
+                        AssignEnemyTarget(unit, target);
                 }
             }
         }
 
-        private void TickRoleMechanics(DemoCombatModel combat, float dt)
+        private void TickTargetNavigation()
         {
-            foreach (int id in combat.Participants.ToList())
+            foreach (DemoUnitModel unit in _units.Values.Where(unit => unit.IsAlive && unit.IsOperational && unit.LockedTargetId >= 0).ToList())
             {
-                DemoUnitModel unit = GetUnit(id);
-                DemoCombatParticipantState state = combat.GetAssignment(id);
-                if (unit == null || state == null || !unit.IsAlive)
-                    continue;
-
-                if (unit.Role == DemoUnitRole.Fortress &&
-                    unit.HealthRatio <= Balance.FortressBarrageHealthThreshold &&
-                    !state.FortressBarrageAnnounced)
+                DemoUnitModel target = GetUnit(unit.LockedTargetId);
+                if (target == null || !target.IsAlive || !target.IsOperational || target.Team == unit.Team)
                 {
-                    state.FortressBarrageAnnounced = true;
-                    Raise($"{unit.DisplayName} 进入应急齐射阶段", combat.Center, true, combat.Id);
+                    ClearTarget(unit);
+                    continue;
                 }
 
-                if (unit.Role != DemoUnitRole.Support ||
-                    state.Line != DemoBattleLine.Support ||
-                    !IsActiveParticipant(combat, unit, unit.Team))
+                bool targetVisible = IsTargetVisibleToAttacker(unit, target);
+                if (unit.Team == DemoTeam.Player && !unit.HasExplicitAttackOrder &&
+                    (!targetVisible || HorizontalDistance(unit.Position, target.Position) > unit.Stats.EngagementRadius))
+                {
+                    ClearTarget(unit);
+                    continue;
+                }
+
+                if (targetVisible)
+                {
+                    unit.TargetLastKnownPosition = target.Position;
+                    unit.HasTargetLastKnownPosition = true;
+                    float distance = HorizontalDistance(unit.Position, target.Position);
+                    if (distance <= Mathf.Max(0.1f, unit.Stats.AttackRange))
+                    {
+                        StopMovement(unit);
+                        unit.Activity = DemoUnitActivity.Attacking;
+                    }
+                    else if (!unit.IsFixed)
+                        SetMovement(unit, target.Position, DemoUnitActivity.Pursuing);
+                    continue;
+                }
+
+                if (unit.HasExplicitAttackOrder && unit.HasTargetLastKnownPosition && !unit.IsFixed)
+                {
+                    if (HorizontalDistance(unit.Position, unit.TargetLastKnownPosition) <= Balance.EnemyAiArrivalRadius)
+                        ClearTarget(unit);
+                    else
+                        SetMovement(unit, unit.TargetLastKnownPosition, DemoUnitActivity.Pursuing);
+                }
+                else
+                    ClearTarget(unit);
+            }
+        }
+
+        private void TickIndividualCombat(float dt)
+        {
+            foreach (DemoUnitModel attacker in _units.Values
+                         .Where(unit => unit.IsAlive && unit.IsOperational && unit.Activity == DemoUnitActivity.Attacking && unit.LockedTargetId >= 0)
+                         .OrderBy(unit => unit.Id)
+                         .ToList())
+            {
+                DemoUnitModel target = GetUnit(attacker.LockedTargetId);
+                if (target == null || !target.IsAlive || !IsTargetVisibleToAttacker(attacker, target) ||
+                    HorizontalDistance(attacker.Position, target.Position) > Mathf.Max(0.1f, attacker.Stats.AttackRange))
+                    continue;
+                if (attacker.AttackCooldown > 0f)
                     continue;
 
-                state.RoleAbilityRemaining -= dt;
-                if (state.RoleAbilityRemaining > 0f)
-                    continue;
-                state.RoleAbilityRemaining = Mathf.Max(0.1f, Balance.SupportPulseInterval);
+                Vector3 facing = target.Position - attacker.Position;
+                facing.y = 0f;
+                if (facing.sqrMagnitude > 0.001f)
+                    attacker.Facing = facing.normalized;
+                float attackMultiplier = target.MarkedUntil > SimulationTime ? Balance.ScoutMarkDamageMultiplier : 1f;
+                int nextAttack = attacker.AttacksPerformed + 1;
+                bool artillerySalvo = attacker.Role == DemoUnitRole.Artillery &&
+                                       !attacker.Stats.HasTrait(DemoUnitTrait.LynetteSharpshooter) &&
+                                       nextAttack % Mathf.Max(1, Balance.ArtillerySalvoEveryAttacks) == 0;
+                if (artillerySalvo)
+                    attackMultiplier *= Balance.ArtillerySalvoDamageMultiplier;
+                bool fortressBarrage = attacker.Role == DemoUnitRole.Fortress &&
+                                       attacker.HealthRatio <= Balance.FortressBarrageHealthThreshold;
+                if (fortressBarrage)
+                {
+                    attackMultiplier *= Balance.FortressBarrageDamageMultiplier;
+                    if (!attacker.FortressBarrageAnnounced)
+                    {
+                        attacker.FortressBarrageAnnounced = true;
+                        Raise($"{attacker.DisplayName} entered emergency barrage mode.", attacker.Position, true);
+                    }
+                }
 
-                bool restoredAny = false;
-                float shieldRestore = Balance.SupportPulseShield * Balance.SupportEffectMultiplier;
-                float magicRestore = Balance.SupportPulseMagic * Balance.SupportEffectMultiplier;
-                foreach (DemoUnitModel ally in combat.Participants.Select(GetUnit)
-                             .Where(ally => ally != null && ally.IsAlive && ally.Team == unit.Team &&
-                                            ally.Activity == DemoUnitActivity.Fighting))
+                float criticalBonus = attacker.Stats.HasTrait(DemoUnitTrait.LynetteSharpshooter)
+                    ? Balance.LynetteCriticalChanceBonus
+                    : 0f;
+                DemoDamageResult result = DemoDamageResolver.Resolve(
+                    attacker, target, Balance, _random, GetEffectiveShieldBonus(target.Id), attackMultiplier, 1f,
+                    GetCoreDiscoveryMultiplier(attacker), criticalBonus);
+                attacker.AttacksPerformed = nextAttack;
+                if (attacker.Role == DemoUnitRole.Scout && target.IsAlive)
+                    target.MarkedUntil = Mathf.Max(target.MarkedUntil, SimulationTime + Balance.ScoutMarkDuration);
+                float intervalMultiplier = fortressBarrage ? Balance.FortressBarrageIntervalMultiplier : 1f;
+                attacker.AttackCooldown = Mathf.Max(0.2f, GetEffectiveAttackInterval(attacker.Id) * intervalMultiplier);
+                ReportDamage(attacker, target, result, target.Position, false);
+                if (artillerySalvo)
+                    Raise($"{attacker.DisplayName} completed a calibrated salvo.", attacker.Position, false);
+                if (result.Destroyed)
+                    ClearDestroyedTarget(target.Id);
+            }
+        }
+
+        private void TickSupportPulses(float dt)
+        {
+            foreach (DemoUnitModel support in _units.Values.Where(unit => CanProvideAura(unit, unit) && unit.Role == DemoUnitRole.Support))
+            {
+                support.RoleAbilityRemaining -= dt;
+                if (support.RoleAbilityRemaining > 0f)
+                    continue;
+                support.RoleAbilityRemaining = Mathf.Max(0.1f, Balance.SupportPulseInterval);
+                float radius = Mathf.Max(0f, support.Stats.SupportRadius);
+                bool restored = false;
+                foreach (DemoUnitModel ally in _units.Values.Where(unit => CanReceiveAura(unit) && unit.Team == support.Team &&
+                                                                           HorizontalDistance(unit.Position, support.Position) <= radius))
                 {
                     float oldShield = ally.Shield;
                     float oldMagic = ally.Magic;
-                    ally.Shield = Mathf.Min(ally.Stats.MaxShield, ally.Shield + shieldRestore);
-                    ally.Magic = Mathf.Min(ally.Stats.MaxMagic, ally.Magic + magicRestore);
-                    restoredAny |= ally.Shield > oldShield || ally.Magic > oldMagic;
+                    ally.Shield = Mathf.Min(ally.Stats.MaxShield, ally.Shield + Balance.SupportPulseShield * Balance.SupportEffectMultiplier);
+                    ally.Magic = Mathf.Min(ally.Stats.MaxMagic, ally.Magic + Balance.SupportPulseMagic * Balance.SupportEffectMultiplier);
+                    restored |= ally.Shield > oldShield || ally.Magic > oldMagic;
                 }
-                if (restoredAny)
-                    Raise($"{unit.DisplayName} 发动护盾支援脉冲", combat.Center, false, combat.Id);
-            }
-        }
-
-        private bool CanAttackFromBattleLine(DemoCombatModel combat, DemoUnitModel unit)
-        {
-            if (unit == null || !unit.IsAlive || unit.Activity != DemoUnitActivity.Fighting)
-                return false;
-            DemoCombatParticipantState state = combat.GetAssignment(unit.Id);
-            return state != null && !state.IsRepositioning;
-        }
-
-        private bool IsActiveParticipant(DemoCombatModel combat, DemoUnitModel unit, DemoTeam team)
-        {
-            if (unit == null || !unit.IsAlive || unit.Team != team || unit.Activity != DemoUnitActivity.Fighting)
-                return false;
-            DemoCombatParticipantState state = combat.GetAssignment(unit.Id);
-            return state != null && !state.IsRepositioning;
-        }
-
-        private bool ProvidesShieldSupport(DemoCombatModel combat, DemoUnitModel unit, DemoTeam team)
-        {
-            if (!IsActiveParticipant(combat, unit, team) || unit.Role != DemoUnitRole.Support)
-                return false;
-            return combat.GetAssignment(unit.Id).Line == DemoBattleLine.Support;
-        }
-
-        private float GetCoreDiscoveryMultiplier(DemoCombatModel combat, DemoUnitModel attacker)
-        {
-            if (combat == null || combat.IsFinished || attacker == null || attacker.CombatId != combat.Id)
-                return 1f;
-            float bonus = combat.Participants
-                .Select(GetUnit)
-                .Where(unit => unit != null && unit.Stats.HasTrait(DemoUnitTrait.SakamotoCoreInsight) &&
-                               IsActiveParticipant(combat, unit, attacker.Team))
-                .Sum(unit => Balance.SakamotoCoreDiscoveryBonus);
-            return Mathf.Max(0f, 1f + bonus);
-        }
-
-        private DemoUnitModel SelectBattleTarget(DemoCombatModel combat, DemoUnitModel attacker)
-        {
-            List<DemoUnitModel> candidates = combat.Participants
-                .Select(GetUnit)
-                .Where(unit => unit != null && unit.IsAlive && unit.Team != attacker.Team)
-                .ToList();
-            if (candidates.Count == 0)
-                return null;
-
-            if (attacker.Stats.AttackProfile == DemoAttackProfile.ScreenPiercing)
-            {
-                List<DemoUnitModel> rear = candidates.Where(unit =>
-                {
-                    DemoBattleLine line = combat.GetAssignment(unit.Id).Line;
-                    return line == DemoBattleLine.Main || line == DemoBattleLine.Support;
-                }).ToList();
-                float chance = Mathf.Clamp01(attacker.Stats.ScreenPenetration) *
-                               (1f - GetScreeningEfficiency(combat.Id, candidates[0].Team));
-                if (rear.Count > 0 && _random.NextDouble() < chance)
-                {
-                    DemoUnitModel rearTarget = SelectPreferredTarget(attacker, rear);
-                    DemoUnitModel guard = TrySelectGuardInterceptor(combat, candidates[0].Team);
-                    if (guard != null)
-                    {
-                        Raise($"{guard.DisplayName} 拦截了对后排的穿线攻击", combat.Center, false, combat.Id);
-                        return guard;
-                    }
-                    return rearTarget;
-                }
-            }
-
-            foreach (DemoBattleLine line in new[] { DemoBattleLine.Vanguard, DemoBattleLine.Main, DemoBattleLine.Support })
-            {
-                DemoUnitModel target = SelectPreferredTarget(attacker,
-                    candidates.Where(unit => combat.GetAssignment(unit.Id).Line == line));
-                if (target != null)
-                    return target;
-            }
-            return null;
-        }
-
-        private DemoUnitModel SelectPreferredTarget(DemoUnitModel attacker, IEnumerable<DemoUnitModel> candidates)
-        {
-            IOrderedEnumerable<DemoUnitModel> ordered = attacker.Role == DemoUnitRole.Witch
-                ? candidates.OrderBy(unit => unit.Stats.AttackProfile == DemoAttackProfile.ScreenPiercing ? 0 : 1)
-                    .ThenBy(unit => unit.HealthRatio)
-                    .ThenBy(unit => unit.Id)
-                : candidates.OrderBy(unit => unit.HealthRatio).ThenBy(unit => unit.Id);
-            return ordered.FirstOrDefault();
-        }
-
-        private DemoUnitModel TrySelectGuardInterceptor(DemoCombatModel combat, DemoTeam defendingTeam)
-        {
-            List<DemoUnitModel> guards = combat.Participants.Select(GetUnit)
-                .Where(unit => IsActiveParticipant(combat, unit, defendingTeam) &&
-                               unit.Role == DemoUnitRole.Guard &&
-                               combat.GetAssignment(unit.Id).Line == DemoBattleLine.Vanguard)
-                .OrderBy(unit => unit.HealthRatio)
-                .ThenBy(unit => unit.Id)
-                .ToList();
-            if (guards.Count == 0 || _random.NextDouble() >= Mathf.Clamp01(Balance.GuardInterceptionChance))
-                return null;
-            return guards[0];
-        }
-
-        private void TickRetreats(DemoCombatModel combat, float dt)
-        {
-            foreach (DemoUnitModel unit in combat.Participants.Select(GetUnit).Where(unit => unit != null && unit.Activity == DemoUnitActivity.Retreating).ToList())
-            {
-                unit.RetreatRemaining -= dt;
-                if (unit.RetreatRemaining > 0f)
-                    continue;
-
-                Vector3 away = unit.Position - combat.Center;
-                if (away.sqrMagnitude < 0.01f)
-                    away = unit.Team == DemoTeam.Player ? Vector3.left : Vector3.right;
-                unit.Position = ClampToMap(combat.Center + away.normalized * (combat.ReinforcementRadius + Balance.RetreatSafeDistance));
-                unit.CombatId = -1;
-                unit.PendingReinforcementBattleId = -1;
-                unit.ProtectedUntil = SimulationTime + Balance.DisengageProtectionDuration;
-                if (unit.DeploymentState == DemoUnitDeploymentState.Returning)
-                {
-                    unit.Destination = BasePosition;
-                    unit.HasDestination = true;
-                    unit.Activity = DemoUnitActivity.Moving;
-                }
-                else
-                {
-                    unit.HasDestination = false;
-                    unit.Activity = DemoUnitActivity.Protected;
-                }
-                combat.Participants.Remove(unit.Id);
-                Raise($"{unit.DisplayName} 完成撤退并获得脱战保护", unit.Position, true, combat.Id);
+                if (restored)
+                    Raise($"{support.DisplayName} emitted a support pulse.", support.Position, false);
             }
         }
 
@@ -1620,135 +1172,168 @@ namespace SWRTS.Demo1
                 strike.Remaining -= dt;
                 if (strike.Remaining > 0f)
                     continue;
-
                 strike.Resolved = true;
                 DemoUnitModel attacker = GetUnit(strike.AttackerId);
-                if (attacker == null)
+                if (attacker == null || !attacker.IsAlive)
                     continue;
                 List<DemoUnitModel> targets = _units.Values
-                    .Where(unit => unit.IsAlive && unit.Team != attacker.Team && HorizontalDistance(unit.Position, strike.Target) <= strike.Radius)
+                    .Where(unit => unit.IsAlive && unit.IsOperational && unit.Team != attacker.Team &&
+                                   HorizontalDistance(unit.Position, strike.Target) <= strike.Radius)
                     .ToList();
-                if (targets.Count == 0)
-                {
-                    Raise("远程打击落空：目标已离开区域", strike.Target, true);
-                    continue;
-                }
-
                 foreach (DemoUnitModel target in targets)
                 {
                     DemoDamageResult result = DemoDamageResolver.Resolve(
-                        attacker, target, Balance, _random, 0f, Balance.RemoteStrikeDamageMultiplier);
+                        attacker, target, Balance, _random, GetEffectiveShieldBonus(target.Id), Balance.RemoteStrikeDamageMultiplier);
                     ReportDamage(attacker, target, result, strike.Target, true);
+                    if (result.Destroyed)
+                        ClearDestroyedTarget(target.Id);
                 }
-                Raise($"远程打击命中 {targets.Count} 个目标（未创建新战斗）", strike.Target, true);
+                Raise($"Remote strike hit {targets.Count} targets.", strike.Target, true);
             }
         }
 
-        private void AddParticipant(DemoCombatModel combat, DemoUnitModel unit)
+        private float GetCoreDiscoveryMultiplier(DemoUnitModel attacker)
         {
-            if (!unit.IsAlive || !unit.IsOperational || combat.IsFinished)
+            if (attacker == null || !attacker.IsAlive)
+                return 1f;
+            float bonus = _units.Values
+                .Where(provider => CanProvideAura(provider, attacker) && provider.Stats.HasTrait(DemoUnitTrait.SakamotoCoreInsight))
+                .Sum(provider => Balance.SakamotoCoreDiscoveryBonus);
+            return Mathf.Max(0f, 1f + bonus);
+        }
+
+        private bool CanProvideAura(DemoUnitModel provider, DemoUnitModel target)
+        {
+            return provider != null && target != null && provider.IsAlive && target.IsAlive &&
+                   provider.IsOperational && target.IsOperational && provider.Team == target.Team &&
+                   provider.Stats.SupportRadius > 0f &&
+                   HorizontalDistance(provider.Position, target.Position) <= provider.Stats.SupportRadius;
+        }
+
+        private static bool CanReceiveAura(DemoUnitModel unit)
+        {
+            return unit != null && unit.IsAlive && unit.IsOperational;
+        }
+
+        private bool IsTargetVisibleToAttacker(DemoUnitModel attacker, DemoUnitModel target)
+        {
+            if (attacker.Team == DemoTeam.Player)
+                return target.HasPersistentPlayerIntel ||
+                       (target.IsCurrentlyObservedByPlayer && target.PlayerIntelLevel >= DemoIntelLevel.Identified);
+            return HorizontalDistance(attacker.Position, target.Position) <= Mathf.Max(0f, attacker.Stats.VisionRadius);
+        }
+
+        private void AssignAutomaticTarget(DemoUnitModel unit, DemoUnitModel target)
+        {
+            unit.LockedTargetId = target.Id;
+            unit.OrderedTargetId = -1;
+            unit.HasExplicitAttackOrder = false;
+            unit.TargetLastKnownPosition = target.Position;
+            unit.HasTargetLastKnownPosition = true;
+            unit.Activity = DemoUnitActivity.Pursuing;
+        }
+
+        private void AssignEnemyTarget(DemoUnitModel enemy, DemoUnitModel target)
+        {
+            enemy.LockedTargetId = target.Id;
+            enemy.OrderedTargetId = -1;
+            enemy.HasExplicitAttackOrder = false;
+            enemy.TargetLastKnownPosition = target.Position;
+            enemy.HasTargetLastKnownPosition = true;
+            enemy.EnemyAiTargetId = target.Id;
+            enemy.EnemyAiLastKnownPosition = target.Position;
+            enemy.EnemyAiHasLastKnownPosition = true;
+        }
+
+        private void ClearTarget(DemoUnitModel unit)
+        {
+            if (unit == null)
                 return;
-            if (!combat.Participants.Add(unit.Id))
+            unit.LockedTargetId = -1;
+            unit.OrderedTargetId = -1;
+            unit.HasExplicitAttackOrder = false;
+            unit.HasTargetLastKnownPosition = false;
+            unit.EnemyAiTargetId = -1;
+            if (unit.Activity == DemoUnitActivity.Attacking || unit.Activity == DemoUnitActivity.Pursuing)
+            {
+                unit.HasDestination = false;
+                unit.Activity = DemoUnitActivity.Idle;
+            }
+        }
+
+        private void ClearDestroyedTarget(int targetId)
+        {
+            foreach (DemoUnitModel unit in _units.Values.Where(unit => unit.LockedTargetId == targetId).ToList())
+                ClearTarget(unit);
+        }
+
+        private void SetMovement(DemoUnitModel unit, Vector3 destination, DemoUnitActivity activity)
+        {
+            if (unit == null || unit.IsFixed || !unit.IsAlive || !unit.IsOperational)
                 return;
-            DemoBattleLine line = unit.Stats.PreferredBattleLine;
-            combat.Assignments[unit.Id] = new DemoCombatParticipantState(unit.Id, line);
-            if (unit.Role == DemoUnitRole.Support)
-                combat.Assignments[unit.Id].RoleAbilityRemaining = Mathf.Max(0.1f, Balance.SupportPulseInterval);
-            unit.CombatId = combat.Id;
-            unit.PendingReinforcementBattleId = -1;
+            unit.Destination = ClampToMap(destination);
+            unit.HasDestination = true;
+            unit.Activity = activity;
+            Vector3 facing = unit.Destination - unit.Position;
+            facing.y = 0f;
+            if (facing.sqrMagnitude > 0.001f)
+                unit.Facing = facing.normalized;
+        }
+
+        private void StopMovement(DemoUnitModel unit)
+        {
+            if (unit == null)
+                return;
+            unit.Destination = unit.Position;
             unit.HasDestination = false;
-            unit.Activity = DemoUnitActivity.Fighting;
-            Raise($"{unit.DisplayName} 进入{BattleLineName(line)}", combat.Center, false, combat.Id);
-        }
-
-        private bool IsParticipantOnLine(DemoCombatModel combat, DemoUnitModel unit, DemoTeam team, DemoBattleLine line)
-        {
-            return unit != null && unit.IsAlive && unit.Team == team && combat.Participants.Contains(unit.Id) &&
-                   combat.GetAssignment(unit.Id)?.Line == line;
-        }
-
-        public static string BattleLineName(DemoBattleLine line)
-        {
-            switch (line)
-            {
-                case DemoBattleLine.Vanguard: return "前卫线";
-                case DemoBattleLine.Main: return "主战线";
-                case DemoBattleLine.Support: return "支援线";
-                default: return line.ToString();
-            }
-        }
-
-        private void EndCombat(DemoCombatModel combat)
-        {
-            combat.IsFinished = true;
-            foreach (DemoUnitModel unit in combat.Participants.Select(GetUnit).Where(unit => unit != null && unit.IsAlive))
-            {
-                unit.CombatId = -1;
-                unit.PendingReinforcementBattleId = -1;
-                if (unit.DeploymentState == DemoUnitDeploymentState.Returning)
-                {
-                    unit.Destination = BasePosition;
-                    unit.HasDestination = true;
-                    unit.Activity = DemoUnitActivity.Moving;
-                }
-                else
-                {
-                    unit.Activity = SimulationTime < unit.ProtectedUntil ? DemoUnitActivity.Protected : DemoUnitActivity.Idle;
-                }
-            }
-            combat.Participants.Clear();
-            Raise($"战斗 #{combat.Id} 结束", combat.Center, true, combat.Id);
+            if (unit.Activity == DemoUnitActivity.Moving || unit.Activity == DemoUnitActivity.Pursuing)
+                unit.Activity = DemoUnitActivity.Idle;
         }
 
         private void ReportDamage(DemoUnitModel attacker, DemoUnitModel target, DemoDamageResult result, Vector3 position, bool remote)
         {
-            string modifier = result.CoreHit ? "核心命中" : result.Critical ? "暴击" : "命中";
-            int combatId = target.CombatId >= 0 ? target.CombatId : attacker.CombatId;
+            string modifier = result.CoreHit ? "core hit" : result.Critical ? "critical hit" : "hit";
             if (result.Destroyed)
             {
                 if (target.Team == DemoTeam.Player)
                     target.DeploymentState = DemoUnitDeploymentState.Lost;
-                Raise($"{target.DisplayName} 被{(remote ? "远程打击" : attacker.DisplayName)}击毁", position, true, combatId);
+                Raise($"{target.DisplayName} was destroyed by {(remote ? "a remote strike" : attacker.DisplayName)}.", position, true);
             }
             else if (result.CoreHit || target.HealthRatio <= 0.3f)
-                Raise($"{attacker.DisplayName} {modifier} {target.DisplayName}，目标生命 {target.Health:0}", position, true, combatId);
+                Raise($"{attacker.DisplayName} scored a {modifier} on {target.DisplayName}; HP {target.Health:0}.", position, true);
         }
 
         private void EvaluateOutcome()
         {
             List<DemoUnitModel> enemies = _units.Values.Where(unit => unit.Team == DemoTeam.Enemy).ToList();
-            if (MissionObjective == DemoMissionObjective.DestroyAllEnemies &&
-                enemies.Count > 0 && enemies.All(unit => !unit.IsAlive))
+            if (MissionObjective == DemoMissionObjective.DestroyAllEnemies && enemies.Count > 0 && enemies.All(unit => !unit.IsAlive))
             {
                 Outcome = DemoOutcome.Victory;
-                Raise("任务完成：来袭敌军已全部歼灭", enemies[0].Position, true);
+                Raise("Mission complete: all attacking enemies destroyed.", enemies[0].Position, true);
                 return;
             }
-
             if (MissionObjective == DemoMissionObjective.DestroyFortress)
             {
                 List<DemoUnitModel> fortresses = enemies.Where(unit => unit.Role == DemoUnitRole.Fortress).ToList();
                 if (fortresses.Count > 0 && fortresses.All(unit => !unit.IsAlive))
                 {
                     Outcome = DemoOutcome.Victory;
-                    Raise("任务完成：敌方固定目标已摧毁", fortresses[0].Position, true);
+                    Raise("Mission complete: fixed enemy objective destroyed.", fortresses[0].Position, true);
                     return;
                 }
             }
-
             List<DemoUnitModel> playerRoster = _units.Values.Where(unit => unit.Team == DemoTeam.Player).ToList();
             if (playerRoster.Count > 0 && playerRoster.All(unit => unit.DeploymentState == DemoUnitDeploymentState.Lost))
             {
                 Outcome = DemoOutcome.Defeat;
-                Raise("任务失败：我方已无可作战单位", Vector3.zero, true);
+                Raise("Mission failed: no player units remain operational.", Vector3.zero, true);
             }
         }
 
         private bool CanMove(DemoUnitModel unit)
         {
             return unit != null && unit.IsAlive && unit.IsOperational &&
-                   (unit.Team == DemoTeam.Enemy || unit.DeploymentState == DemoUnitDeploymentState.Active) &&
-                   !unit.IsFixed && unit.CombatId < 0;
+                   (unit.Team == DemoTeam.Enemy || unit.DeploymentState == DemoUnitDeploymentState.Active) && !unit.IsFixed;
         }
 
         private Vector3 ClampToMap(Vector3 position)
@@ -1766,9 +1351,9 @@ namespace SWRTS.Demo1
             return Vector3.Distance(a, b);
         }
 
-        private void Raise(string message, Vector3 position, bool important, int combatId = -1)
+        private void Raise(string message, Vector3 position, bool important)
         {
-            EventRaised?.Invoke(new DemoBattleEvent(SimulationTime, message, position, important, combatId));
+            EventRaised?.Invoke(new DemoBattleEvent(SimulationTime, message, position, important));
         }
     }
 }

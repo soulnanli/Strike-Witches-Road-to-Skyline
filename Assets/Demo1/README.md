@@ -50,12 +50,9 @@ These values remain code-prototype balance and are not additions to Feishu revis
 ### Interface presentation pass
 
 - The strategic HUD uses a unified dark tactical palette with cyan player, red enemy, amber warning and green success semantics. Mission, commands, feedback, selected units and recent events are visually separated instead of relying on Unity's default controls.
-- Strategic map lines use fixed screen-pixel widths. Selection, vision, engagement, route, combat-zone, remote-strike and grid lines remain legible across the complete camera zoom range instead of shrinking with world scale.
+- Strategic map lines use fixed screen-pixel widths. Selection, vision, warning radius, attack range, target lock, route, remote-strike and grid lines remain legible across the complete camera zoom range instead of shrinking with world scale.
 - Selected-unit cards prioritize name, activity and the three live resources. Single selection keeps the detailed character panel on the right; multi-selection remains summarized on the left.
-- Battle bubbles now expose battle trend, team counts and screening status at a glance. Screening below 50% is shown as a warning.
-- The live battle panel has a stronger header, mirrored player/enemy lanes, explicit battle balance, compact unit states, selected-card outlines, a dedicated event area and grouped commands.
-- Live panel refreshes immediately deactivate the previous graphics before Unity's delayed destruction runs, so only one set of text, bars and cards can render in a frame.
-- The battle panel offsets itself from the fixed 340-pixel strategic HUD after Canvas scaling so that it remains usable in both 16:9 and smaller Game Views.
+- Selected units show an amber warning-radius circle, a red attack-range circle and a red line to the current locked target or its last known position.
 
 This visual pass implements the information requirements of Feishu revision 6 without defining a final production art direction.
 
@@ -74,44 +71,33 @@ This visual pass implements the information requirements of Feishu revision 6 wi
 
 - Click the 501 base marker to open the readiness overlay, select standby witches and launch them into the existing theatre.
 - Left click / drag: select one or several witches. Shift modifies the current selection.
-- Single-selecting a witch opens a live character detail panel on the right. It hides for multi-selection and while the battle panel is open.
+- Single-selecting a witch opens a live character detail panel on the right. It hides for multi-selection.
 - Right click ground: give every selected witch an independent move order into the same small destination area.
-- Right click a discovered enemy, or `A` then left click it: approach automatically and initiate combat when in engagement range.
-- `G`: send selected eligible witches to reinforce the nearest active battle.
-- `R`: start the delayed retreat process for selected participants.
-- `H`: order selected non-fighting witches to return to Folkestone. A fighting witch must complete the normal retreat first.
+- Right click a discovered enemy, or `A` then left click it: lock the target, pursue it and fire whenever it enters attack range.
+- **Auto** toggles automatic acquisition of the nearest identified enemy inside the unit's warning radius. **Stop attack** disables automatic acquisition and clears the current lock.
+- `H`: clear the current target and order selected witches to return to Folkestone.
 - `B` then left click: use an area-level remote strike if the selected unit has that capability. No witch in the current scenario has it after Lynette's rework.
 - `Space`: pause/resume simulation. Camera, selection and orders remain available while paused.
 - `F`: focus the selected units. WASD/arrow keys, edge scrolling, middle drag and wheel control the camera.
 - `Ctrl+1..9`: save a control group; `1..9`: recall and focus it.
-- Click a battle bubble: open the live three-line battle panel. Opening it does not pause the simulation.
 
-## Three-line battle prototype
+## Individual target-lock combat experiment
 
-- Vanguard, main and support lines have no participant limit; every reinforcement enters its preferred line directly.
-- Witches and guards prefer the vanguard, artillery and scouts prefer the main line, and support units and fortresses prefer the support line.
-- Ordinary attacks must target the nearest occupied enemy line. Vanguard units provide screening for units behind them.
-- Artillery and scouts use screen-piercing attacks. Their chance to reach the main/support lines is `penetration * (1 - screening efficiency)`; complete screening blocks penetration.
-- Select a friendly card in the live battle panel to order a two-second line change. Repositioning units remain exposed but cannot attack, screen or support until the timer completes.
-- The lines now have explicit tradeoffs: vanguard deals 10% less damage but takes 15% less damage and provides 25% more screening; main deals 15% more damage; support deals 20% less damage but multiplies active support effects by 1.5. Global shield support only works from the support line.
-- Every role has a combat identity beyond base stats:
-  - witches prioritize enemy screen-piercing threats on the currently exposed line;
-  - artillery performs a 1.45x calibrated salvo every third attack;
-  - scouts mark hit targets for four seconds, causing 20% more incoming damage;
-  - support witches pulse allied shield and magic every four seconds while active on the support line;
-  - guards on the vanguard have a 65% chance to intercept a successful attack that pierced toward the rear;
-  - fortresses enter an emergency barrage below 50% health, attacking 35% faster and dealing 15% more damage.
-- Opening the battle panel suppresses map-space unit names, health bars and combat IDs so tactical overlays never cover the panel.
-- Enemy scouts, guards and the fortress use reinforced prototype durability and attack values, giving line changes and reinforcement deployment time to affect the battle.
-- These formation rules and values are code-only prototype assumptions and have not been written back to Feishu revision 6.
+- Combat never leaves the operational map and does not create a battle container, formation, reserve queue, reinforcement state, retreat timer, battle bubble or separate battle panel.
+- Every active unit owns its current target, target order type, last-known target position, warning radius, attack range, attack cooldown and auto-attack stance.
+- A manual attack order keeps pursuing the target while it is observable; after contact is lost the attacker flies to the last-known position and then clears the order. A normal move order cancels the lock.
+- With auto attack enabled, a unit acquires the nearest identified enemy inside its warning radius. It fires only inside its independent attack range and automatically chooses another eligible target after the current one is destroyed.
+- Support pulses and Sakamoto/Miyafuji trait auras are distance based. Their `SupportRadius` is serialized per character; providers affect themselves as well as nearby active allies.
+- Artillery keeps the every-third-attack calibrated salvo, scouts keep their damage-amplifying mark and fortresses keep the low-health emergency barrage. These resolve directly between individual world units.
+- This branch intentionally deviates from the battle-instance flow in Feishu revision 6 so the team can compare an individual-combat prototype against the formation-combat branch. No Feishu revision was changed.
 
 ## Witch trait prototype
 
 - Traits are passive, data-driven flags on witch stats. Multiple traits can be combined later without adding character-name checks to combat resolution.
-- Sakamoto's **Magic Eye Command** increases base core discovery by 100% for every active ally in the same combat, including Sakamoto herself.
-- Miyafuji's **Guardian Heart** increases shield absorption efficiency by 15% for every active ally in the same combat, including Miyafuji herself. This replaces her previous 28% support-line global-shield bonus; her support pulse remains unchanged.
-- A team aura stops contributing while its holder is retreating, repositioning or destroyed. Multiple sources stack additively.
-- Lynette's **Precision Shooter** adds 18 percentage points of critical chance (12% to 30% in the scenario) and multiplies her attack interval by 1.375 (1.6s to 2.2s). She now uses standard single-target attacks: no map remote strike, no screen penetration and no every-third-shot artillery salvo.
+- Sakamoto's **Magic Eye Command** increases base core discovery by 100% for herself and active allies within her 12 km support radius.
+- Miyafuji's **Guardian Heart** increases shield absorption efficiency by 15% for herself and active allies within her 12 km support radius. Her support pulse uses the same radius.
+- An aura stops contributing when its holder is not active or is destroyed. Multiple sources stack additively.
+- Lynette's **Precision Shooter** adds 18 percentage points of critical chance (12% to 30% in the scenario) and multiplies her attack interval by 1.375 (1.6s to 2.2s). She uses standard single-target attacks and has no map remote strike or every-third-shot artillery salvo.
 - The character detail panel shows each unit's trait and effective critical chance, attack interval and core-discovery value. Adjusted values include their base value for comparison.
 - These traits and values are code-only prototype assumptions and have not been written back to Feishu revision 6.
 
@@ -129,9 +115,9 @@ This visual pass implements the information requirements of Feishu revision 6 wi
 ## Independent enemy AI prototype
 
 - Enemy decisions run at a 0.5-second interval. Every mobile enemy owns its target, last-known position and state; there is no director, shared blackboard, contact sharing or coordinated reinforcement logic.
-- The scout cycles through a configured patrol route, pursues the nearest player inside its own circular vision, starts combat inside engagement range and investigates only its own last-known contact position after losing sight. Below 30% health it requests the normal delayed retreat.
-- Guards hold individual home positions, pursue the nearest player visible inside their own vision and 18-unit home leash, engage through the normal combat system, and return to their own post after losing the target. Guards do not voluntarily retreat.
-- Independent enemies can still enter the same battle when their personal behavior takes them into its forced-engagement area. This is a consequence of existing battle geography, not a joint AI decision.
+- The scout cycles through a configured patrol route, locks the nearest player inside its own circular vision, pursues and attacks in range, and investigates only its own last-known contact position after losing sight. Below 30% health it breaks its lock and returns along its route.
+- Guards hold individual home positions, pursue and directly attack the nearest player visible inside their own vision and 18-unit home leash, then return to their own post after losing the target.
+- Enemies never merge decisions or enter a shared battle; overlapping fights are simply several independent target locks in the same world area.
 - The fortress remains fixed and reactive. It has no strategic AI layer.
 - These behaviors and values are code-only prototype assumptions because Feishu revision 6 explicitly leaves AI engagement and retreat decisions for later design.
 

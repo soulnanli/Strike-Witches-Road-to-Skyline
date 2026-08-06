@@ -17,15 +17,6 @@ MonoBehaviour:
     CriticalMultiplier: 1.55
     CoreMultiplier: 2.4
     ShieldMagicCostPerDamage: 0.55
-    ReinforcementRadius: 13
-    ForcedEngagementRadius: 6
-    ScreenRequiredPerProtectedUnit: 1
-    BattleLineChangeDuration: 2
-    VanguardAttackMultiplier: 0.9
-    VanguardDamageTakenMultiplier: 0.85
-    VanguardScreenMultiplier: 1.25
-    MainAttackMultiplier: 1.15
-    SupportAttackMultiplier: 0.8
     SupportEffectMultiplier: 1.5
     ArtillerySalvoEveryAttacks: 3
     ArtillerySalvoDamageMultiplier: 1.45
@@ -34,7 +25,6 @@ MonoBehaviour:
     SupportPulseInterval: 4
     SupportPulseShield: 6
     SupportPulseMagic: 4
-    GuardInterceptionChance: 0.65
     FortressBarrageHealthThreshold: 0.5
     FortressBarrageDamageMultiplier: 1.15
     FortressBarrageIntervalMultiplier: 0.65
@@ -51,9 +41,6 @@ MonoBehaviour:
     EnemyAiScoutRetreatHealthRatio: 0.3
     EnemyAiGuardLeashRadius: 18
     EnemyAiArrivalRadius: 1.25
-    RetreatBaseDuration: 4.5
-    DisengageProtectionDuration: 5
-    RetreatSafeDistance: 9
     DestinationRadius: 1.8
     RemoteStrikeDelay: 3
     RemoteStrikeRadius: 5

@@ -16,13 +16,6 @@ namespace SWRTS.Demo1
             RemoteStrike
         }
 
-        private sealed class CombatVisual
-        {
-            public GameObject Root;
-            public LineRenderer Reinforcement;
-            public LineRenderer Forced;
-        }
-
         private sealed class StrikeVisual
         {
             public GameObject Root;
@@ -31,17 +24,10 @@ namespace SWRTS.Demo1
 
         private readonly Dictionary<int, Demo1UnitView> _unitViews = new Dictionary<int, Demo1UnitView>();
         private readonly Dictionary<DemoUnitConfig, int> _configuredUnitIds = new Dictionary<DemoUnitConfig, int>();
-        private readonly Dictionary<int, CombatVisual> _combatViews = new Dictionary<int, CombatVisual>();
         private readonly Dictionary<int, StrikeVisual> _strikeViews = new Dictionary<int, StrikeVisual>();
         private readonly HashSet<int> _selection = new HashSet<int>();
         private readonly Dictionary<int, List<int>> _controlGroups = new Dictionary<int, List<int>>();
         private readonly List<DemoBattleEvent> _events = new List<DemoBattleEvent>();
-
-        private sealed class PendingEngagement
-        {
-            public int TargetId;
-            public List<int> UnitIds;
-        }
 
         private Demo1Simulation _simulation;
         private Demo1Balance _balance;
@@ -56,13 +42,11 @@ namespace SWRTS.Demo1
         private DemoLevelConfig _activeLevel;
         private Camera _camera;
         private Demo1CameraController _cameraController;
-        private Demo1BattleUI _battleUi;
         private Demo1LevelSelector _levelSelector;
         private CommandMode _commandMode;
         private Vector2 _dragStart;
         private bool _dragSelecting;
         private bool _paused;
-        private PendingEngagement _pendingEngagement;
         private string _statusMessage = "左键选择，右键移动；先靠近已发现目标再交战。";
         private GUIStyle _titleStyle;
         private GUIStyle _smallStyle;
@@ -151,7 +135,6 @@ namespace SWRTS.Demo1
             CreateScenario();
             if (_sortieWitches != null && _sortieWitches.Length > 0)
                 RequestSortie(_sortieWitches);
-            BuildBattleUi();
             BuildLevelSelector();
             SyncViews();
         }
@@ -213,10 +196,8 @@ namespace SWRTS.Demo1
             HandleGlobalInput();
             if (!_paused)
                 _simulation.Advance(Time.deltaTime);
-            ResolvePendingEngagement();
             HandlePointerInput();
             SyncViews();
-            _battleUi?.Sync();
         }
 
         private void OnDisable()
@@ -381,8 +362,7 @@ namespace SWRTS.Demo1
             witch.MaxMagic = 121f;
             witch.MaxShield = 74f;
             witch.MagicRecovery = 5f;
-            witch.PreferredBattleLine = DemoBattleLine.Vanguard;
-            witch.ScreenPower = 1f;
+            witch.AttackRange = witch.EngagementRadius;
             witch.WitchVisionType = DemoWitchVisionType.Ordinary;
             witch.VisionRadius = 24f;
             witch.VisionAngle = 100f;
@@ -391,7 +371,7 @@ namespace SWRTS.Demo1
             ace.Attack = 44f;
             ace.CoreDiscovery = 0.28f;
             ace.Mobility = 1.25f;
-            ace.ScreenPower = 1.2f;
+            ace.SupportRadius = 12f;
             ace.Traits = DemoUnitTrait.SakamotoCoreInsight;
 
             DemoUnitStats support = witch.Clone();
@@ -402,8 +382,7 @@ namespace SWRTS.Demo1
             support.MaxShield = 96f;
             support.GlobalShieldBonus = 0f;
             support.MagicRecovery = 9f;
-            support.PreferredBattleLine = DemoBattleLine.Support;
-            support.ScreenPower = 0.35f;
+            support.SupportRadius = 12f;
             support.Traits = DemoUnitTrait.MiyafujiShieldAura;
 
             DemoUnitStats artillery = witch.Clone();
@@ -413,10 +392,6 @@ namespace SWRTS.Demo1
             artillery.MaxShield = 67f;
             artillery.CanRemoteStrike = false;
             artillery.CoreDiscovery = 0.22f;
-            artillery.PreferredBattleLine = DemoBattleLine.Main;
-            artillery.AttackProfile = DemoAttackProfile.Standard;
-            artillery.ScreenPenetration = 0f;
-            artillery.ScreenPower = 0.25f;
             artillery.Traits = DemoUnitTrait.LynetteSharpshooter;
 
             DemoUnitStats nightWitch = witch.Clone();
@@ -427,7 +402,6 @@ namespace SWRTS.Demo1
             nightWitch.Defense = 11f;
             nightWitch.MagicRecovery = 7f;
             nightWitch.CoreDiscovery = 0.24f;
-            nightWitch.PreferredBattleLine = DemoBattleLine.Main;
             nightWitch.WitchVisionType = DemoWitchVisionType.Night;
             nightWitch.VisionRadius = 48f;
             nightWitch.VisionAngle = 360f;
@@ -442,10 +416,7 @@ namespace SWRTS.Demo1
             neuroi.CoreConcealment = 0.65f;
             neuroi.MoveSpeed = 4.8f;
             neuroi.EngagementRadius = 7.5f;
-            neuroi.PreferredBattleLine = DemoBattleLine.Main;
-            neuroi.AttackProfile = DemoAttackProfile.ScreenPiercing;
-            neuroi.ScreenPenetration = 0.5f;
-            neuroi.ScreenPower = 0.45f;
+            neuroi.AttackRange = 7.5f;
 
             DemoUnitStats guard = neuroi.Clone();
             guard.MaxHealth = 260f;
@@ -454,10 +425,6 @@ namespace SWRTS.Demo1
             guard.MaxMagic = 120f;
             guard.MaxShield = 100f;
             guard.MoveSpeed = 4.2f;
-            guard.PreferredBattleLine = DemoBattleLine.Vanguard;
-            guard.AttackProfile = DemoAttackProfile.Standard;
-            guard.ScreenPenetration = 0f;
-            guard.ScreenPower = 1.15f;
 
             DemoUnitStats fortress = neuroi.Clone();
             fortress.MaxHealth = 720f;
@@ -468,12 +435,9 @@ namespace SWRTS.Demo1
             fortress.CoreConcealment = 0.9f;
             fortress.AttackInterval = 2.2f;
             fortress.EngagementRadius = 10f;
+            fortress.AttackRange = 10f;
             fortress.VisionRadius = 26f;
             fortress.MoveSpeed = 0f;
-            fortress.PreferredBattleLine = DemoBattleLine.Support;
-            fortress.AttackProfile = DemoAttackProfile.Standard;
-            fortress.ScreenPenetration = 0f;
-            fortress.ScreenPower = 0f;
 
             DemoUnitDeploymentState fallbackDeployment = _baseCommandMode
                 ? DemoUnitDeploymentState.Standby
@@ -574,7 +538,6 @@ namespace SWRTS.Demo1
 
         public DemoCommandResult CommandMove(Vector3 destination)
         {
-            _pendingEngagement = null;
             DemoCommandResult result = _simulation == null
                 ? DemoCommandResult.Fail("战场尚未初始化")
                 : _simulation.IssueMove(_selection, destination);
@@ -586,37 +549,8 @@ namespace SWRTS.Demo1
         {
             if (_simulation == null)
                 return ApplyAndReturn(DemoCommandResult.Fail("战场尚未初始化"));
-
-            DemoUnitModel target = _simulation.GetUnit(targetId);
-            if (target == null || !target.IsAlive || target.Team != DemoTeam.Enemy)
-                return ApplyAndReturn(DemoCommandResult.Fail("交战目标无效"));
-            if (!target.CanBeDirectlyTargetedByPlayer)
-                return ApplyAndReturn(DemoCommandResult.Fail(target.HasPlayerIntel ? "当前只有目标的最后已知位置" : "尚未获得目标情报"));
-
-            List<DemoUnitModel> attackers = _selection
-                .Select(_simulation.GetUnit)
-                .Where(unit => unit != null && unit.IsAlive && unit.Team == DemoTeam.Player && !unit.IsFixed && unit.CombatId < 0)
-                .OrderBy(unit => Vector3.Distance(unit.Position, target.Position))
-                .ToList();
-            if (attackers.Count == 0)
-                return ApplyAndReturn(DemoCommandResult.Fail("请先选择一个可作战单位"));
-
-            DemoUnitModel attacker = attackers[0];
-            if (target.CombatId >= 0)
-                return ApplyAndReturn(_simulation.RequestReinforcement(attackers.Select(unit => unit.Id), target.CombatId));
-
-            float distance = Vector3.Distance(attacker.Position, target.Position);
-            if (distance <= attacker.Stats.EngagementRadius)
-                return StartSelectedCombat(attacker, target, attackers.Select(unit => unit.Id).ToList());
-
-            List<int> unitIds = attackers.Select(unit => unit.Id).ToList();
-            DemoCommandResult moveResult = _simulation.IssueMove(unitIds, target.Position);
-            if (!moveResult.Success)
-                return ApplyAndReturn(moveResult);
-
-            _pendingEngagement = new PendingEngagement { TargetId = targetId, UnitIds = unitIds };
             _commandMode = CommandMode.Select;
-            return ApplyAndReturn(DemoCommandResult.Ok($"正在接近 {target.DisplayName}，进入射程后将自动开战"));
+            return ApplyAndReturn(_simulation.RequestAttack(_selection, targetId));
         }
 
         public DemoCommandResult CommandRemoteStrike(Vector3 target)
@@ -653,40 +587,11 @@ namespace SWRTS.Demo1
             TogglePause();
         }
 
-        public DemoCommandResult CommandBattleLineChange(int unitId, DemoBattleLine line)
+        public DemoCommandResult CommandSetAutoAttack(bool enabled)
         {
-            DemoCommandResult result = _simulation.RequestBattleLineChange(unitId, line);
+            DemoCommandResult result = _simulation.SetAutoAttack(_selection, enabled);
             ApplyResult(result);
             return result;
-        }
-
-        public DemoCommandResult CommandReinforceCombat(int combatId)
-        {
-            DemoCommandResult result = _simulation.RequestReinforcement(_selection, combatId);
-            ApplyResult(result);
-            return result;
-        }
-
-        public DemoCommandResult CommandRetreatUnit(int unitId)
-        {
-            DemoCommandResult result = _simulation.RequestRetreat(new[] { unitId });
-            ApplyResult(result);
-            return result;
-        }
-
-        public void FocusCombat(int combatId)
-        {
-            DemoCombatModel combat = _simulation.GetCombat(combatId);
-            if (combat != null)
-                _cameraController.Focus(combat.Center);
-        }
-
-        private void BuildBattleUi()
-        {
-            GameObject uiObject = new GameObject("Demo1 Battle UI");
-            uiObject.transform.SetParent(transform, false);
-            _battleUi = uiObject.AddComponent<Demo1BattleUI>();
-            _battleUi.Initialize(this);
         }
 
         private void BuildLevelSelector()
@@ -743,11 +648,6 @@ namespace SWRTS.Demo1
                 TogglePause();
             if (Input.GetKeyDown(KeyCode.Escape))
             {
-                if (_battleUi != null && _battleUi.IsPanelOpen)
-                {
-                    _battleUi.ClosePanel();
-                    return;
-                }
                 _commandMode = CommandMode.Select;
                 _statusMessage = "命令已取消";
             }
@@ -758,12 +658,8 @@ namespace SWRTS.Demo1
             }
             if (Input.GetKeyDown(KeyCode.B))
                 EnterRemoteStrikeMode();
-            if (Input.GetKeyDown(KeyCode.R))
-                ApplyResult(_simulation.RequestRetreat(_selection));
             if (Input.GetKeyDown(KeyCode.H))
                 ApplyResult(_simulation.RequestReturnToBase(_selection));
-            if (Input.GetKeyDown(KeyCode.G))
-                ReinforceNearestBattle();
             if (Input.GetKeyDown(KeyCode.F))
                 FocusSelection();
             if (Input.GetKeyDown(KeyCode.Return) && _simulation.Outcome != DemoOutcome.Running)
@@ -876,82 +772,6 @@ namespace SWRTS.Demo1
             }
         }
 
-        private DemoCommandResult StartSelectedCombat(DemoUnitModel attacker, DemoUnitModel target, List<int> selectedIds)
-        {
-            DemoCommandResult result = _simulation.StartCombat(attacker.Id, target.Id);
-            ApplyResult(result);
-            if (!result.Success)
-                return result;
-
-            int combatId = target.CombatId >= 0 ? target.CombatId : attacker.CombatId;
-            List<int> remaining = selectedIds.Where(id => id != attacker.Id).ToList();
-            if (remaining.Count > 0 && combatId >= 0)
-                _simulation.RequestReinforcement(remaining, combatId);
-            _pendingEngagement = null;
-            _commandMode = CommandMode.Select;
-            return result;
-        }
-
-        private void ResolvePendingEngagement()
-        {
-            if (_pendingEngagement == null || _simulation == null || _paused)
-                return;
-
-            DemoUnitModel target = _simulation.GetUnit(_pendingEngagement.TargetId);
-            if (target == null || !target.IsAlive)
-            {
-                _pendingEngagement = null;
-                _statusMessage = "自动接战已取消：目标已失效";
-                return;
-            }
-            if (!target.CanBeDirectlyTargetedByPlayer)
-            {
-                _pendingEngagement = null;
-                _statusMessage = "自动接战已取消：目标失去确认，单位将前往最后已知位置";
-                return;
-            }
-
-            List<DemoUnitModel> attackers = _pendingEngagement.UnitIds
-                .Select(_simulation.GetUnit)
-                .Where(unit => unit != null && unit.IsAlive && unit.Team == DemoTeam.Player && unit.CombatId < 0)
-                .OrderBy(unit => Vector3.Distance(unit.Position, target.Position))
-                .ToList();
-            if (attackers.Count == 0)
-            {
-                _pendingEngagement = null;
-                return;
-            }
-
-            if (target.CombatId >= 0)
-            {
-                ApplyResult(_simulation.RequestReinforcement(attackers.Select(unit => unit.Id), target.CombatId));
-                _pendingEngagement = null;
-                return;
-            }
-
-            DemoUnitModel attacker = attackers[0];
-            if (Vector3.Distance(attacker.Position, target.Position) <= attacker.Stats.EngagementRadius)
-                StartSelectedCombat(attacker, target, _pendingEngagement.UnitIds);
-        }
-
-        private void ReinforceNearestBattle()
-        {
-            List<DemoCombatModel> battles = _simulation.Combats.Where(combat => !combat.IsFinished).ToList();
-            if (battles.Count == 0)
-            {
-                _statusMessage = "当前没有可增援的战斗";
-                return;
-            }
-            DemoUnitModel anchor = _selection.Select(_simulation.GetUnit).FirstOrDefault(unit => unit != null);
-            if (anchor == null)
-            {
-                _statusMessage = "请先选择增援单位";
-                return;
-            }
-            DemoCombatModel closest = battles.OrderBy(combat => Vector3.Distance(anchor.Position, combat.Center)).First();
-            ApplyResult(_simulation.RequestReinforcement(_selection, closest.Id));
-        }
-
         private void FocusSelection()
         {
             List<DemoUnitModel> units = _selection.Select(_simulation.GetUnit).Where(unit => unit != null && unit.IsAlive).ToList();
@@ -959,6 +779,14 @@ namespace SWRTS.Demo1
                 return;
             Vector3 center = units.Aggregate(Vector3.zero, (sum, unit) => sum + unit.Position) / units.Count;
             _cameraController.Focus(center);
+        }
+
+        private bool IsAutoAttackEnabledForSelection()
+        {
+            List<DemoUnitModel> selected = _selection.Select(_simulation.GetUnit)
+                .Where(unit => unit != null && unit.IsAlive && unit.Team == DemoTeam.Player && !unit.IsFixed)
+                .ToList();
+            return selected.Count > 0 && selected.All(unit => unit.AutoAttackEnabled);
         }
 
         private void TogglePause()
@@ -999,25 +827,6 @@ namespace SWRTS.Demo1
                     pair.Value.Sync(model, _selection.Contains(pair.Key), visible);
             }
 
-            foreach (DemoCombatModel combat in _simulation.Combats)
-            {
-                if (!_combatViews.TryGetValue(combat.Id, out CombatVisual visual))
-                {
-                    GameObject root = new GameObject($"Combat #{combat.Id}");
-                    root.transform.SetParent(transform);
-                    visual = new CombatVisual
-                    {
-                        Root = root,
-                        Reinforcement = Demo1Drawing.CreateCircle(root.transform, "Reinforcement Zone", new Color(0.2f, 0.75f, 1f, 0.55f), 2.5f, 96),
-                        Forced = Demo1Drawing.CreateCircle(root.transform, "Forced Engagement Zone", new Color(1f, 0.28f, 0.12f, 0.85f), 3.5f, 72)
-                    };
-                    _combatViews.Add(combat.Id, visual);
-                }
-                visual.Root.SetActive(!combat.IsFinished);
-                Demo1Drawing.SetCircle(visual.Reinforcement, combat.Center, combat.ReinforcementRadius, 0.07f);
-                Demo1Drawing.SetCircle(visual.Forced, combat.Center, combat.ForcedRadius, 0.09f);
-            }
-
             foreach (DemoRemoteStrikeModel strike in _simulation.RemoteStrikes)
             {
                 if (!_strikeViews.TryGetValue(strike.Id, out StrikeVisual visual))
@@ -1043,11 +852,8 @@ namespace SWRTS.Demo1
             if (_simulation == null || _camera == null)
                 return;
             EnsureGuiStyles();
-            if (_battleUi == null || !_battleUi.IsPanelOpen)
-            {
-                DrawWorldLabels();
-                DrawCharacterDetailPanel();
-            }
+            DrawWorldLabels();
+            DrawCharacterDetailPanel();
             DrawTopBar();
             DrawSidePanel();
             DrawSelectionBox();
@@ -1088,14 +894,18 @@ namespace SWRTS.Demo1
             y += 27f;
             if (DrawHudButton(new Rect(14f, y, 98f, 34f), _paused ? "继续  Space" : "暂停  Space", _hudButtonStyle, new Color(0.09f, 0.16f, 0.2f), new Color(0.13f, 0.25f, 0.3f))) TogglePause();
             if (DrawHudButton(new Rect(120f, y, 98f, 34f), "聚焦  F", _hudButtonStyle, new Color(0.09f, 0.16f, 0.2f), new Color(0.13f, 0.25f, 0.3f))) FocusSelection();
-            if (DrawHudButton(new Rect(226f, y, 98f, 34f), "撤退  R", _hudDangerButtonStyle, new Color(0.34f, 0.1f, 0.1f), new Color(0.52f, 0.15f, 0.13f))) ApplyResult(_simulation.RequestRetreat(_selection));
+            bool autoAttackEnabled = IsAutoAttackEnabledForSelection();
+            if (DrawHudButton(new Rect(226f, y, 98f, 34f), autoAttackEnabled ? "自动：开" : "自动：关", _hudPrimaryButtonStyle,
+                    new Color(0.07f, 0.31f, 0.4f), new Color(0.08f, 0.46f, 0.58f)))
+                CommandSetAutoAttack(!autoAttackEnabled);
             y += 42f;
             if (DrawHudButton(new Rect(14f, y, 98f, 34f), "交战  A", _hudPrimaryButtonStyle, new Color(0.07f, 0.31f, 0.4f), new Color(0.08f, 0.46f, 0.58f)))
             {
                 _commandMode = CommandMode.Engage;
                 _statusMessage = "交战模式：点击敌方目标";
             }
-            if (DrawHudButton(new Rect(120f, y, 98f, 34f), "增援  G", _hudPrimaryButtonStyle, new Color(0.07f, 0.31f, 0.4f), new Color(0.08f, 0.46f, 0.58f))) ReinforceNearestBattle();
+            if (DrawHudButton(new Rect(120f, y, 98f, 34f), "停止攻击", _hudButtonStyle, new Color(0.09f, 0.16f, 0.2f), new Color(0.13f, 0.25f, 0.3f)))
+                CommandSetAutoAttack(false);
             if (DrawHudButton(new Rect(226f, y, 98f, 34f), "打击  B", _hudButtonStyle, new Color(0.09f, 0.16f, 0.2f), new Color(0.13f, 0.25f, 0.3f)))
                 EnterRemoteStrikeMode();
             y += 42f;
@@ -1139,15 +949,18 @@ namespace SWRTS.Demo1
         {
             Rect card = new Rect(14f, y, PanelWidth - 28f, 68f);
             GUI.Box(card, string.Empty, _unitCardStyle);
-            Color stateAccent = unit.Activity == DemoUnitActivity.Retreating ? WarningAccent : PlayerAccent;
+            Color stateAccent = unit.Activity == DemoUnitActivity.Attacking ? WarningAccent : PlayerAccent;
             FillRect(new Rect(card.x, card.y, 4f, card.height), stateAccent);
             GUI.Label(new Rect(24f, y + 5f, 190f, 22f), unit.DisplayName, _unitNameStyle);
             GUI.Label(new Rect(212f, y + 5f, 96f, 22f), $"{ActivityName(unit.Activity)}  ·  {VisionTypeName(unit.Stats.WitchVisionType)}", _tagStyle);
             DrawBar(new Rect(24f, y + 32f, 88f, 15f), unit.HealthRatio, new Color(0.88f, 0.24f, 0.22f), $"HP {unit.Health:0}");
             DrawBar(new Rect(120f, y + 32f, 88f, 15f), unit.MagicRatio, new Color(0.3f, 0.52f, 0.96f), $"MP {unit.Magic:0}");
             DrawBar(new Rect(216f, y + 32f, 88f, 15f), unit.ShieldRatio, new Color(0.12f, 0.72f, 0.84f), $"盾 {unit.Shield:0}");
-            if (unit.Activity == DemoUnitActivity.Retreating)
-                GUI.Label(new Rect(24f, y + 49f, 280f, 17f), $"撤退进度  {unit.RetreatProgress:P0}", _detailMutedStyle);
+            if (unit.LockedTargetId >= 0)
+            {
+                DemoUnitModel target = _simulation.GetUnit(unit.LockedTargetId);
+                GUI.Label(new Rect(24f, y + 49f, 280f, 17f), $"锁定目标  {(target != null ? target.DisplayName : "最后已知位置")}", _detailMutedStyle);
+            }
             else if (unit.Stats.CanRemoteStrike)
                 GUI.Label(new Rect(24f, y + 49f, 280f, 17f), $"远程打击冷却  {unit.RemoteStrikeCooldown:0.0}s", _detailMutedStyle);
         }
@@ -1192,9 +1005,9 @@ namespace SWRTS.Demo1
             GUI.Label(new Rect(14f, y, contentWidth, 42f), BuildCurrentActionText(unit), _smallStyle);
             y += 45f;
 
-            GUI.Label(new Rect(14f, y, contentWidth, 20f), "阵位与目标", _detailHeaderStyle);
+            GUI.Label(new Rect(14f, y, contentWidth, 20f), "目标与姿态", _detailHeaderStyle);
             y += 22f;
-            GUI.Label(new Rect(14f, y, contentWidth, 44f), BuildFormationText(unit), _smallStyle);
+            GUI.Label(new Rect(14f, y, contentWidth, 44f), BuildTargetingText(unit), _smallStyle);
             y += 48f;
 
             GUI.Label(new Rect(14f, y, contentWidth, 20f), "视野", _detailHeaderStyle);
@@ -1209,12 +1022,12 @@ namespace SWRTS.Demo1
             y += 22f;
             DrawDetailStatRow(ref y, contentWidth, "攻击", unit.Stats.Attack.ToString("0.#"), "防御", unit.Stats.Defense.ToString("0.#"));
             DrawDetailStatRow(ref y, contentWidth, "机动", unit.Stats.Mobility.ToString("0.#"), "移速", unit.Stats.MoveSpeed.ToString("0.#"));
-            DrawDetailStatRow(ref y, contentWidth, "交战距离", unit.Stats.EngagementRadius.ToString("0.#"), "攻击间隔",
-                FormatAdjustedSeconds(unit.Stats.AttackInterval, _simulation.GetEffectiveAttackInterval(unit.Id)));
+            DrawDetailStatRow(ref y, contentWidth, "警戒半径", unit.Stats.EngagementRadius.ToString("0.#"), "攻击射程", unit.Stats.AttackRange.ToString("0.#"));
+            DrawDetailStatRow(ref y, contentWidth, "攻击间隔",
+                FormatAdjustedSeconds(unit.Stats.AttackInterval, _simulation.GetEffectiveAttackInterval(unit.Id)), "支援半径", unit.Stats.SupportRadius.ToString("0.#"));
             DrawDetailStatRow(ref y, contentWidth, "暴击",
                 FormatAdjustedPercent(unit.Stats.CriticalChance, _simulation.GetEffectiveCriticalChance(unit.Id)), "核心发现",
                 FormatAdjustedPercent(unit.Stats.CoreDiscovery, _simulation.GetEffectiveCoreDiscovery(unit.Id)));
-            DrawDetailStatRow(ref y, contentWidth, "屏障", unit.Stats.ScreenPower.ToString("0.##"), "穿线", unit.Stats.ScreenPenetration.ToString("P0"));
             y += 4f;
             GUI.Label(new Rect(14f, y, contentWidth, 20f), $"特质 · {TraitName(unit.Stats.Traits)}", _detailHeaderStyle);
             y += 22f;
@@ -1258,42 +1071,33 @@ namespace SWRTS.Demo1
 
         private string BuildCurrentActionText(DemoUnitModel unit)
         {
-            DemoCombatModel combat = unit.CombatId >= 0 ? _simulation.GetCombat(unit.CombatId) : null;
-            DemoCombatParticipantState assignment = combat?.GetAssignment(unit.Id);
-            if (assignment?.IsRepositioning == true)
-                return $"换位中：前往{Demo1Simulation.BattleLineName(assignment.TargetLine)}，剩余 {assignment.RepositionRemaining:0.0}s";
-            if (unit.Activity == DemoUnitActivity.Retreating)
-                return $"撤退中：完成度 {unit.RetreatProgress:P0}，剩余 {unit.RetreatRemaining:0.0}s";
-            if (unit.Activity == DemoUnitActivity.Reinforcing)
-                return $"增援战斗 #{unit.PendingReinforcementBattleId}，目的地 ({unit.Destination.x:0.0}, {unit.Destination.z:0.0})";
+            DemoUnitModel target = unit.LockedTargetId >= 0 ? _simulation.GetUnit(unit.LockedTargetId) : null;
+            if (unit.Activity == DemoUnitActivity.Attacking && target != null)
+                return $"攻击中：{target.DisplayName}，距离 {Vector3.Distance(unit.Position, target.Position):0.0}";
+            if (unit.Activity == DemoUnitActivity.Pursuing)
+                return target != null
+                    ? $"追击中：{target.DisplayName}，距离 {Vector3.Distance(unit.Position, target.Position):0.0}"
+                    : $"前往目标最后已知位置 ({unit.TargetLastKnownPosition.x:0.0}, {unit.TargetLastKnownPosition.z:0.0})";
             if (unit.HasDestination)
                 return $"{ActivityName(unit.Activity)}：前往 ({unit.Destination.x:0.0}, {unit.Destination.z:0.0})";
-            if (unit.Activity == DemoUnitActivity.Fighting && combat != null)
-                return $"战斗中：战斗 #{combat.Id}";
             return $"{ActivityName(unit.Activity)}  ·  位置 ({unit.Position.x:0.0}, {unit.Position.z:0.0})";
         }
 
-        private string BuildFormationText(DemoUnitModel unit)
+        private string BuildTargetingText(DemoUnitModel unit)
         {
-            DemoCombatModel combat = unit.CombatId >= 0 ? _simulation.GetCombat(unit.CombatId) : null;
-            DemoCombatParticipantState assignment = combat?.GetAssignment(unit.Id);
-            if (assignment == null)
-                return $"默认阵位：{Demo1Simulation.BattleLineName(unit.Stats.PreferredBattleLine)}\n当前未加入战斗";
-
-            string targetName = "暂无目标";
-            DemoUnitModel target = assignment.LastTargetId >= 0 ? _simulation.GetUnit(assignment.LastTargetId) : null;
-            if (target != null)
-                targetName = $"最近目标：{target.DisplayName}";
-            string line = assignment.IsRepositioning
-                ? $"{Demo1Simulation.BattleLineName(assignment.Line)} → {Demo1Simulation.BattleLineName(assignment.TargetLine)}"
-                : Demo1Simulation.BattleLineName(assignment.Line);
-            return $"战斗 #{combat.Id}  ·  {line}\n{targetName}";
+            string stance = unit.AutoAttackEnabled ? "自动攻击：开启" : "自动攻击：关闭";
+            DemoUnitModel target = unit.LockedTargetId >= 0 ? _simulation.GetUnit(unit.LockedTargetId) : null;
+            if (target != null && target.IsAlive)
+                return $"{stance}  ·  {(unit.HasExplicitAttackOrder ? "手动锁定" : "自动锁定")}\n目标：{target.DisplayName}";
+            return unit.HasTargetLastKnownPosition
+                ? $"{stance}\n目标丢失，最后位置 ({unit.TargetLastKnownPosition.x:0.0}, {unit.TargetLastKnownPosition.z:0.0})"
+                : $"{stance}\n当前无目标";
         }
 
         private bool IsCharacterDetailVisible(out DemoUnitModel unit)
         {
             unit = null;
-            if (_simulation == null || _selection.Count != 1 || (_battleUi != null && _battleUi.IsPanelOpen))
+            if (_simulation == null || _selection.Count != 1)
                 return false;
             unit = _simulation.GetUnit(_selection.First());
             return unit != null && unit.IsAlive && unit.Team == DemoTeam.Player;
@@ -1326,12 +1130,6 @@ namespace SWRTS.Demo1
                 if (unit.Team == DemoTeam.Player || unit.PlayerIntelLevel == DemoIntelLevel.Assessed)
                     DrawBar(new Rect(screen.x - 34f, y + 7f, 68f, 5f), unit.HealthRatio,
                         unit.Team == DemoTeam.Player ? new Color(0.2f, 0.75f, 1f) : new Color(1f, 0.2f, 0.18f), string.Empty);
-            }
-
-            foreach (DemoCombatModel combat in _simulation.Combats.Where(combat => !combat.IsFinished))
-            {
-                Vector3 screen = _camera.WorldToScreenPoint(combat.Center);
-                GUI.Label(new Rect(screen.x - 60f, Screen.height - screen.y - 15f, 120f, 24f), $"战斗 #{combat.Id}", _worldLabelStyle);
             }
 
             foreach (DemoRemoteStrikeModel strike in _simulation.RemoteStrikes.Where(strike => !strike.Resolved))
@@ -1612,10 +1410,8 @@ namespace SWRTS.Demo1
             {
                 case DemoUnitActivity.Idle: return "待命";
                 case DemoUnitActivity.Moving: return "移动";
-                case DemoUnitActivity.Reinforcing: return "增援中";
-                case DemoUnitActivity.Fighting: return "战斗中";
-                case DemoUnitActivity.Retreating: return "撤退中";
-                case DemoUnitActivity.Protected: return "脱战保护";
+                case DemoUnitActivity.Pursuing: return "追击中";
+                case DemoUnitActivity.Attacking: return "攻击中";
                 case DemoUnitActivity.Destroyed: return "失去战斗力";
                 default: return activity.ToString();
             }
@@ -1648,14 +1444,14 @@ namespace SWRTS.Demo1
         private static string RoleDescription(DemoUnitModel unit)
         {
             if (unit.Stats.HasTrait(DemoUnitTrait.LynetteSharpshooter))
-                return "作战方式：使用不能穿线的标准单体攻击，不发动炮击校射齐射。";
+                return "作战方式：使用高暴击、较长攻击间隔的精密单体射击。";
             switch (unit.Role)
             {
-                case DemoUnitRole.Witch: return "角色特性：优先压制当前暴露阵线中的穿线威胁。";
-                case DemoUnitRole.Support: return "角色特性：在支援线周期性恢复友军护盾与魔力。";
-                case DemoUnitRole.Artillery: return "角色特性：每三次攻击发动一次校准齐射，并可尝试穿线。";
+                case DemoUnitRole.Witch: return "角色特性：在警戒半径内自动锁定目标，进入射程后直接攻击。";
+                case DemoUnitRole.Support: return "角色特性：周期性恢复支援半径内友军的护盾与魔力。";
+                case DemoUnitRole.Artillery: return "角色特性：每三次攻击发动一次校准齐射。";
                 case DemoUnitRole.Scout: return "角色特性：命中后标记目标，使其承受更多伤害。";
-                case DemoUnitRole.Guard: return "角色特性：在前卫线拦截敌方穿线攻击。";
+                case DemoUnitRole.Guard: return "角色特性：在警戒半径内主动追击并压制魔女。";
                 case DemoUnitRole.Fortress: return "角色特性：低生命时进入紧急弹幕状态。";
                 default: return string.Empty;
             }
