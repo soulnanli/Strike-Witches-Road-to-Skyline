@@ -10,6 +10,9 @@ namespace SWRTS.Demo1
         private LineRenderer _visionSector;
         private LineRenderer _engagementCircle;
         private LineRenderer _attackCircle;
+        private LineRenderer _optimalCircle;
+        private LineRenderer _abilityCircle;
+        private LineRenderer _abilitySector;
         private LineRenderer _routeLine;
         private LineRenderer _targetLine;
         private Material _material;
@@ -33,6 +36,9 @@ namespace SWRTS.Demo1
             _visionSector = Demo1Drawing.CreateSector(transform, "Ordinary Vision", new Color(0.25f, 0.78f, 1f, 0.5f), 2f, 40);
             _engagementCircle = Demo1Drawing.CreateCircle(transform, "Engagement", new Color(1f, 0.72f, 0.18f, 0.55f), 2f, 64);
             _attackCircle = Demo1Drawing.CreateCircle(transform, "Attack Range", new Color(1f, 0.22f, 0.16f, 0.78f), 2.5f, 64);
+            _optimalCircle = Demo1Drawing.CreateCircle(transform, "Optimal Range", new Color(1f, 0.72f, 0.18f, 0.62f), 2f, 64);
+            _abilityCircle = Demo1Drawing.CreateCircle(transform, "Ability Range", new Color(0.72f, 0.35f, 1f, 0.82f), 2.5f, 72);
+            _abilitySector = Demo1Drawing.CreateSector(transform, "Ability Sector", new Color(0.72f, 0.35f, 1f, 0.82f), 2.5f, 48);
             _routeLine = Demo1Drawing.CreateLine(transform, "Route", new Color(0.2f, 1f, 0.9f, 0.75f), 3f);
             _targetLine = Demo1Drawing.CreateLine(transform, "Target Lock", new Color(1f, 0.24f, 0.16f, 0.9f), 3.5f);
             _routeLine.enabled = false;
@@ -71,6 +77,9 @@ namespace SWRTS.Demo1
             _targetLine.enabled = selected && model.LockedTargetId >= 0 && model.HasTargetLastKnownPosition;
             if (_targetLine.enabled)
             {
+                Color lockColor = Color.Lerp(new Color(1f, 0.7f, 0.16f, 0.75f), new Color(1f, 0.16f, 0.12f, 1f), model.LockQualityRatio);
+                _targetLine.startColor = lockColor;
+                _targetLine.endColor = lockColor;
                 _targetLine.SetPosition(0, model.Position + Vector3.up * 0.18f);
                 _targetLine.SetPosition(1, model.TargetLastKnownPosition + Vector3.up * 0.18f);
             }
@@ -85,17 +94,35 @@ namespace SWRTS.Demo1
                                     model.Stats.WitchVisionType == DemoWitchVisionType.Ordinary;
             _engagementCircle.enabled = selected;
             _attackCircle.enabled = selected;
+            _optimalCircle.enabled = selected;
+            _abilityCircle.enabled = selected && model.Team == DemoTeam.Player &&
+                                     model.Stats.SpecialAbility != DemoSpecialAbility.None &&
+                                     model.Stats.SpecialAbility != DemoSpecialAbility.MagicEyeSearch;
+            _abilitySector.enabled = selected && model.Team == DemoTeam.Player &&
+                                     model.Stats.SpecialAbility == DemoSpecialAbility.MagicEyeSearch;
             if (!selected)
                 return;
 
             float bodyRadius = model.IsFixed ? 2.2f : 1.15f;
             Demo1Drawing.SetCircle(_selectionCircle, model.Position, bodyRadius, 0.09f);
+            float rangePenalty = 1f - 0.25f * model.SuppressionRatio;
             if (_visionCircle.enabled)
-                Demo1Drawing.SetCircle(_visionCircle, model.Position, model.Stats.VisionRadius, 0.055f);
+                Demo1Drawing.SetCircle(_visionCircle, model.Position, model.Stats.VisionRadius * rangePenalty, 0.055f);
             if (_visionSector.enabled)
-                Demo1Drawing.SetSector(_visionSector, model.Position, model.Facing, model.Stats.VisionRadius, model.Stats.VisionAngle, 0.055f);
+                Demo1Drawing.SetSector(_visionSector, model.Position, model.Facing, model.Stats.VisionRadius * rangePenalty, model.Stats.VisionAngle, 0.055f);
             Demo1Drawing.SetCircle(_engagementCircle, model.Position, model.Stats.EngagementRadius, 0.065f);
-            Demo1Drawing.SetCircle(_attackCircle, model.Position, model.Stats.AttackRange, 0.075f);
+            Demo1Drawing.SetCircle(_attackCircle, model.Position, model.Stats.AttackRange * rangePenalty, 0.075f);
+            Demo1Drawing.SetCircle(_optimalCircle, model.Position, model.Stats.OptimalAttackRange * rangePenalty, 0.06f);
+            if (_abilityCircle.enabled)
+            {
+                float radius = model.Stats.SpecialAbility == DemoSpecialAbility.LightningStrike
+                    ? model.Stats.AbilityRadius
+                    : model.Stats.AbilityRange;
+                Demo1Drawing.SetCircle(_abilityCircle, model.Position, radius, 0.08f);
+            }
+            if (_abilitySector.enabled)
+                Demo1Drawing.SetSector(_abilitySector, model.Position, model.Facing, model.Stats.AbilityRange,
+                    model.Stats.AbilityArcAngle, 0.08f);
         }
 
         private static Color RoleColor(DemoUnitRole role)

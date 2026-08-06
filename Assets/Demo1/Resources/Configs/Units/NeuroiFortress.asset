@@ -36,6 +36,17 @@ MonoBehaviour:
     WitchVisionType: 0
     EngagementRadius: 10
     AttackRange: 10
+    OptimalAttackRange: 7
+    BaseAccuracy: 0.74
+    Penetration: 24
+    Armor: 32
+    MagazineSize: 999
+    ReserveAmmo: 0
+    AmmoPerAttack: 1
+    ReloadDuration: 0.1
+    UnlimitedReserveAmmo: 1
+    ExplosiveRadius: 0
+    ProjectileSpeed: 16
     SupportRadius: 0
     CanRemoteStrike: 0
     Traits: 0

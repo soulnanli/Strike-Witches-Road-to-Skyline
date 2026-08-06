@@ -30,6 +30,7 @@ namespace SWRTS.Demo1.PlayModeTests
             float healthBefore = enemy.Health;
             DemoCommandResult attack = controller.CommandEngage(enemy.Id);
             Assert.That(attack.Success, Is.True, attack.Message);
+            player.LockQuality = 100f;
             controller.Simulation.Advance(0.2f);
             yield return null;
 
@@ -70,10 +71,13 @@ namespace SWRTS.Demo1.PlayModeTests
             Demo1UnitView view = Object.FindObjectsByType<Demo1UnitView>(FindObjectsSortMode.None)
                 .Single(item => item.UnitId == player.Id);
             Transform attackRange = view.transform.Find("Attack Range");
+            Transform optimalRange = view.transform.Find("Optimal Range");
             Transform targetLock = view.transform.Find("Target Lock");
             Assert.That(attackRange, Is.Not.Null);
+            Assert.That(optimalRange, Is.Not.Null);
             Assert.That(targetLock, Is.Not.Null);
             Assert.That(attackRange.GetComponent<LineRenderer>().enabled, Is.True);
+            Assert.That(optimalRange.GetComponent<LineRenderer>().enabled, Is.True);
             Assert.That(targetLock.GetComponent<LineRenderer>().enabled, Is.True);
 
             Assert.That(controller.CommandSetAutoAttack(false).Success, Is.True);

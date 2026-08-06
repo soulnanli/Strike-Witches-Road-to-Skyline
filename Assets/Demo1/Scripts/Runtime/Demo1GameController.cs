@@ -13,7 +13,8 @@ namespace SWRTS.Demo1
         {
             Select,
             Engage,
-            RemoteStrike
+            RemoteStrike,
+            AbilityTarget
         }
 
         private sealed class StrikeVisual
@@ -44,6 +45,7 @@ namespace SWRTS.Demo1
         private Demo1CameraController _cameraController;
         private Demo1LevelSelector _levelSelector;
         private CommandMode _commandMode;
+        private int _abilitySourceId = -1;
         private Vector2 _dragStart;
         private bool _dragSelecting;
         private bool _paused;
@@ -363,6 +365,13 @@ namespace SWRTS.Demo1
             witch.MaxShield = 74f;
             witch.MagicRecovery = 5f;
             witch.AttackRange = witch.EngagementRadius;
+            witch.OptimalAttackRange = 6f;
+            witch.BaseAccuracy = 0.72f;
+            witch.Penetration = 16f;
+            witch.MagazineSize = 8;
+            witch.ReserveAmmo = 32;
+            witch.AmmoPerAttack = 1;
+            witch.ReloadDuration = 3f;
             witch.WitchVisionType = DemoWitchVisionType.Ordinary;
             witch.VisionRadius = 24f;
             witch.VisionAngle = 100f;
@@ -371,8 +380,14 @@ namespace SWRTS.Demo1
             ace.Attack = 44f;
             ace.CoreDiscovery = 0.28f;
             ace.Mobility = 1.25f;
-            ace.SupportRadius = 12f;
-            ace.Traits = DemoUnitTrait.SakamotoCoreInsight;
+            ace.SupportRadius = 0f;
+            ace.Traits = DemoUnitTrait.None;
+            ace.SpecialAbility = DemoSpecialAbility.MagicEyeSearch;
+            ace.AbilityMagicCost = 30f;
+            ace.AbilityCooldown = 20f;
+            ace.AbilityRange = 36f;
+            ace.AbilityDuration = 6f;
+            ace.AbilityArcAngle = 45f;
 
             DemoUnitStats support = witch.Clone();
             support.MaxHealth = 181f;
@@ -382,8 +397,14 @@ namespace SWRTS.Demo1
             support.MaxShield = 96f;
             support.GlobalShieldBonus = 0f;
             support.MagicRecovery = 9f;
-            support.SupportRadius = 12f;
-            support.Traits = DemoUnitTrait.MiyafujiShieldAura;
+            support.SupportRadius = 0f;
+            support.Traits = DemoUnitTrait.None;
+            support.SpecialAbility = DemoSpecialAbility.Heal;
+            support.AbilityMagicCost = 15f;
+            support.AbilityCooldown = 10f;
+            support.AbilityRange = 6f;
+            support.AbilityDuration = 3f;
+            support.AbilityValue = 0.12f;
 
             DemoUnitStats artillery = witch.Clone();
             artillery.MaxHealth = 174f;
@@ -392,7 +413,21 @@ namespace SWRTS.Demo1
             artillery.MaxShield = 67f;
             artillery.CanRemoteStrike = false;
             artillery.CoreDiscovery = 0.22f;
-            artillery.Traits = DemoUnitTrait.LynetteSharpshooter;
+            artillery.Traits = DemoUnitTrait.None;
+            artillery.MagazineSize = 5;
+            artillery.ReserveAmmo = 20;
+            artillery.ReloadDuration = 4f;
+            artillery.AttackInterval = 2.2f;
+            artillery.OptimalAttackRange = 8f;
+            artillery.AttackRange = 12f;
+            artillery.Penetration = 24f;
+            artillery.SpecialAbility = DemoSpecialAbility.FireControlSolution;
+            artillery.AbilityCooldown = 8f;
+            artillery.AbilityRange = 24f;
+            artillery.AbilityDuration = 3f;
+            artillery.AbilityDamageMultiplier = 2f;
+            artillery.AbilityPenetration = 32f;
+            artillery.AbilityMinimumAccuracy = 0.85f;
 
             DemoUnitStats nightWitch = witch.Clone();
             nightWitch.MaxHealth = 181f;
@@ -405,6 +440,23 @@ namespace SWRTS.Demo1
             nightWitch.WitchVisionType = DemoWitchVisionType.Night;
             nightWitch.VisionRadius = 48f;
             nightWitch.VisionAngle = 360f;
+            nightWitch.MagazineSize = 1;
+            nightWitch.ReserveAmmo = 8;
+            nightWitch.ReloadDuration = 5f;
+            nightWitch.AttackInterval = 5f;
+            nightWitch.OptimalAttackRange = 8f;
+            nightWitch.AttackRange = 12f;
+            nightWitch.ExplosiveRadius = 2.5f;
+            nightWitch.Penetration = 20f;
+
+            DemoUnitStats perrine = witch.Clone();
+            perrine.SpecialAbility = DemoSpecialAbility.LightningStrike;
+            perrine.AbilityMagicCost = 40f;
+            perrine.AbilityCooldown = 14f;
+            perrine.AbilityRadius = 5f;
+            perrine.AbilityDamageMultiplier = 2f;
+            perrine.AbilityPenetration = perrine.Penetration;
+            perrine.AbilitySuppression = 35f;
 
             DemoUnitStats neuroi = witch.Clone();
             neuroi.WitchVisionType = DemoWitchVisionType.None;
@@ -417,6 +469,11 @@ namespace SWRTS.Demo1
             neuroi.MoveSpeed = 4.8f;
             neuroi.EngagementRadius = 7.5f;
             neuroi.AttackRange = 7.5f;
+            neuroi.OptimalAttackRange = 5.5f;
+            neuroi.BaseAccuracy = 0.68f;
+            neuroi.Penetration = 18f;
+            neuroi.Armor = 15f;
+            neuroi.UnlimitedReserveAmmo = true;
 
             DemoUnitStats guard = neuroi.Clone();
             guard.MaxHealth = 260f;
@@ -448,7 +505,7 @@ namespace SWRTS.Demo1
                 _baseCommandMode ? _simulation.BasePosition : new Vector3(-25f, 0f, -3f), fallbackDeployment);
             AddUnit("莉涅特", DemoTeam.Player, DemoUnitRole.Artillery, artillery,
                 _baseCommandMode ? _simulation.BasePosition : new Vector3(-27f, 0f, 5f), fallbackDeployment);
-            AddUnit("佩琳", DemoTeam.Player, DemoUnitRole.Witch, witch,
+            AddUnit("佩琳", DemoTeam.Player, DemoUnitRole.Witch, perrine,
                 _baseCommandMode ? _simulation.BasePosition : new Vector3(-23f, 0f, 12f), fallbackDeployment);
             AddUnit("桑妮亚·V·利特维亚克", DemoTeam.Player, DemoUnitRole.Witch, nightWitch,
                 _baseCommandMode ? _simulation.BasePosition : new Vector3(-32f, 0f, 12f), fallbackDeployment);
@@ -566,6 +623,41 @@ namespace SWRTS.Demo1
                 : _simulation.ScheduleRemoteStrike(artillery.Id, target));
         }
 
+        public DemoCommandResult CommandSpecialAbility(int targetId = -1)
+        {
+            if (_simulation == null)
+                return ApplyAndReturn(DemoCommandResult.Fail("战场尚未初始化"));
+            DemoUnitModel caster = _selection.Count == 1 ? _simulation.GetUnit(_selection.First()) : null;
+            if (caster == null || caster.Team != DemoTeam.Player)
+                return ApplyAndReturn(DemoCommandResult.Fail("主动技能需要单选一名魔女"));
+            _commandMode = CommandMode.Select;
+            _abilitySourceId = -1;
+            return ApplyAndReturn(_simulation.RequestSpecialAbility(caster.Id, targetId));
+        }
+
+        private void EnterSpecialAbilityMode()
+        {
+            DemoUnitModel caster = _simulation != null && _selection.Count == 1
+                ? _simulation.GetUnit(_selection.First())
+                : null;
+            if (caster == null || caster.Team != DemoTeam.Player || caster.Stats.SpecialAbility == DemoSpecialAbility.None)
+            {
+                _statusMessage = "主动技能需要单选具有技能的魔女";
+                return;
+            }
+            if (caster.Stats.SpecialAbility == DemoSpecialAbility.MagicEyeSearch ||
+                caster.Stats.SpecialAbility == DemoSpecialAbility.LightningStrike)
+            {
+                CommandSpecialAbility();
+                return;
+            }
+            _abilitySourceId = caster.Id;
+            _commandMode = CommandMode.AbilityTarget;
+            _statusMessage = caster.Stats.SpecialAbility == DemoSpecialAbility.Heal
+                ? "治疗：点击范围内另一名友军"
+                : "射击诸元装订：点击已评估或核心标记的敌人";
+        }
+
         private void EnterRemoteStrikeMode()
         {
             bool hasRemoteStriker = _simulation != null && _selection.Select(_simulation.GetUnit)
@@ -649,6 +741,7 @@ namespace SWRTS.Demo1
             if (Input.GetKeyDown(KeyCode.Escape))
             {
                 _commandMode = CommandMode.Select;
+                _abilitySourceId = -1;
                 _statusMessage = "命令已取消";
             }
             if (Input.GetKeyDown(KeyCode.A))
@@ -658,6 +751,8 @@ namespace SWRTS.Demo1
             }
             if (Input.GetKeyDown(KeyCode.B))
                 EnterRemoteStrikeMode();
+            if (Input.GetKeyDown(KeyCode.S))
+                EnterSpecialAbilityMode();
             if (Input.GetKeyDown(KeyCode.H))
                 ApplyResult(_simulation.RequestReturnToBase(_selection));
             if (Input.GetKeyDown(KeyCode.F))
@@ -735,6 +830,20 @@ namespace SWRTS.Demo1
             }
 
             Demo1UnitView view = RaycastUnit(Input.mousePosition);
+            if (_commandMode == CommandMode.AbilityTarget)
+            {
+                DemoUnitModel caster = _simulation.GetUnit(_abilitySourceId);
+                DemoUnitModel target = view == null ? null : _simulation.GetUnit(view.UnitId);
+                if (caster == null || target == null)
+                {
+                    _statusMessage = "技能需要选择有效目标";
+                    return;
+                }
+                _selection.Clear();
+                _selection.Add(caster.Id);
+                CommandSpecialAbility(target.Id);
+                return;
+            }
             if (_commandMode == CommandMode.Engage)
             {
                 if (view == null || _simulation.GetUnit(view.UnitId)?.Team != DemoTeam.Enemy)
@@ -906,8 +1015,8 @@ namespace SWRTS.Demo1
             }
             if (DrawHudButton(new Rect(120f, y, 98f, 34f), "停止攻击", _hudButtonStyle, new Color(0.09f, 0.16f, 0.2f), new Color(0.13f, 0.25f, 0.3f)))
                 CommandSetAutoAttack(false);
-            if (DrawHudButton(new Rect(226f, y, 98f, 34f), "打击  B", _hudButtonStyle, new Color(0.09f, 0.16f, 0.2f), new Color(0.13f, 0.25f, 0.3f)))
-                EnterRemoteStrikeMode();
+            if (DrawHudButton(new Rect(226f, y, 98f, 34f), "技能  S", _hudPrimaryButtonStyle, new Color(0.07f, 0.31f, 0.4f), new Color(0.08f, 0.46f, 0.58f)))
+                EnterSpecialAbilityMode();
             y += 42f;
             if (DrawHudButton(new Rect(14f, y, PanelWidth - 28f, 34f), "返航基地  H", _hudButtonStyle,
                     new Color(0.09f, 0.16f, 0.2f), new Color(0.13f, 0.25f, 0.3f)))
@@ -924,12 +1033,12 @@ namespace SWRTS.Demo1
             y += 29f;
 
             float eventTop = Mathf.Max(500f, Screen.height - 214f);
-            int visibleCards = Mathf.Clamp(Mathf.FloorToInt((eventTop - y - 8f) / 74f), 1, 4);
+            int visibleCards = Mathf.Clamp(Mathf.FloorToInt((eventTop - y - 8f) / 104f), 1, 3);
             List<DemoUnitModel> selected = _selection.Select(_simulation.GetUnit).Where(unit => unit != null).Take(visibleCards).ToList();
             foreach (DemoUnitModel unit in selected)
             {
                 DrawUnitCard(unit, y);
-                y += 74f;
+                y += 104f;
             }
 
             y = Mathf.Max(y + 4f, Screen.height - 214f);
@@ -947,7 +1056,7 @@ namespace SWRTS.Demo1
 
         private void DrawUnitCard(DemoUnitModel unit, float y)
         {
-            Rect card = new Rect(14f, y, PanelWidth - 28f, 68f);
+            Rect card = new Rect(14f, y, PanelWidth - 28f, 98f);
             GUI.Box(card, string.Empty, _unitCardStyle);
             Color stateAccent = unit.Activity == DemoUnitActivity.Attacking ? WarningAccent : PlayerAccent;
             FillRect(new Rect(card.x, card.y, 4f, card.height), stateAccent);
@@ -956,13 +1065,17 @@ namespace SWRTS.Demo1
             DrawBar(new Rect(24f, y + 32f, 88f, 15f), unit.HealthRatio, new Color(0.88f, 0.24f, 0.22f), $"HP {unit.Health:0}");
             DrawBar(new Rect(120f, y + 32f, 88f, 15f), unit.MagicRatio, new Color(0.3f, 0.52f, 0.96f), $"MP {unit.Magic:0}");
             DrawBar(new Rect(216f, y + 32f, 88f, 15f), unit.ShieldRatio, new Color(0.12f, 0.72f, 0.84f), $"盾 {unit.Shield:0}");
+            string reserve = unit.Stats.UnlimitedReserveAmmo ? "∞" : unit.ReserveAmmo.ToString();
+            string reload = unit.IsReloading ? $" · 装填 {unit.ReloadRemaining:0.0}s" : string.Empty;
+            GUI.Label(new Rect(24f, y + 50f, 280f, 17f),
+                $"速度 {unit.CurrentSpeed:0.0}/{_simulation.GetEffectiveMoveSpeed(unit.Id):0.0} · 弹药 {unit.MagazineAmmo}/{reserve}{reload}", _detailMutedStyle);
+            GUI.Label(new Rect(24f, y + 66f, 280f, 17f),
+                $"锁定 {unit.LockQuality:0}% · 压制 {unit.Suppression:0}% · {AbilityStatus(unit)}", _detailMutedStyle);
             if (unit.LockedTargetId >= 0)
             {
                 DemoUnitModel target = _simulation.GetUnit(unit.LockedTargetId);
-                GUI.Label(new Rect(24f, y + 49f, 280f, 17f), $"锁定目标  {(target != null ? target.DisplayName : "最后已知位置")}", _detailMutedStyle);
+                GUI.Label(new Rect(24f, y + 82f, 280f, 15f), $"目标  {(target != null ? target.DisplayName : "最后已知位置")}", _detailMutedStyle);
             }
-            else if (unit.Stats.CanRemoteStrike)
-                GUI.Label(new Rect(24f, y + 49f, 280f, 17f), $"远程打击冷却  {unit.RemoteStrikeCooldown:0.0}s", _detailMutedStyle);
         }
 
         private void DrawCharacterDetailPanel()
@@ -976,7 +1089,7 @@ namespace SWRTS.Demo1
             FillRect(new Rect(panel.x, panel.y, 1f, panel.height), new Color(0.2f, 0.48f, 0.56f, 0.8f));
             GUI.BeginGroup(panel);
             Rect viewport = new Rect(4f, 4f, panel.width - 8f, panel.height - 8f);
-            float contentHeight = 660f;
+            float contentHeight = 830f;
             _detailScroll = GUI.BeginScrollView(viewport, _detailScroll, new Rect(0f, 0f, panel.width - 26f, contentHeight));
 
             float width = panel.width - 26f;
@@ -998,6 +1111,15 @@ namespace SWRTS.Demo1
             y += 25f;
             DrawDetailBar(new Rect(14f, y, contentWidth, 17f), unit.ShieldRatio, new Color(0.18f, 0.82f, 0.92f),
                 $"护盾  {unit.Shield:0}/{unit.Stats.MaxShield:0}");
+            y += 25f;
+            DrawDetailBar(new Rect(14f, y, contentWidth, 17f), unit.Stats.MoveSpeed <= 0f ? 0f : unit.CurrentSpeed / unit.Stats.MoveSpeed,
+                new Color(0.22f, 0.82f, 0.56f), $"速度  {unit.CurrentSpeed:0.0}/{_simulation.GetEffectiveMoveSpeed(unit.Id):0.0}");
+            y += 25f;
+            DrawDetailBar(new Rect(14f, y, contentWidth, 17f), unit.LockQualityRatio,
+                new Color(1f, 0.68f, 0.16f), $"锁定质量  {unit.LockQuality:0}%");
+            y += 25f;
+            DrawDetailBar(new Rect(14f, y, contentWidth, 17f), unit.SuppressionRatio,
+                new Color(0.92f, 0.25f, 0.22f), $"压制  {unit.Suppression:0}%");
             y += 34f;
 
             GUI.Label(new Rect(14f, y, contentWidth, 20f), "当前状态", _detailHeaderStyle);
@@ -1021,18 +1143,26 @@ namespace SWRTS.Demo1
             GUI.Label(new Rect(14f, y, contentWidth, 20f), "作战参数", _detailHeaderStyle);
             y += 22f;
             DrawDetailStatRow(ref y, contentWidth, "攻击", unit.Stats.Attack.ToString("0.#"), "防御", unit.Stats.Defense.ToString("0.#"));
-            DrawDetailStatRow(ref y, contentWidth, "机动", unit.Stats.Mobility.ToString("0.#"), "移速", unit.Stats.MoveSpeed.ToString("0.#"));
-            DrawDetailStatRow(ref y, contentWidth, "警戒半径", unit.Stats.EngagementRadius.ToString("0.#"), "攻击射程", unit.Stats.AttackRange.ToString("0.#"));
+            DrawDetailStatRow(ref y, contentWidth, "机动", unit.Stats.Mobility.ToString("0.#"), "最大移速", _simulation.GetEffectiveMoveSpeed(unit.Id).ToString("0.#"));
+            DrawDetailStatRow(ref y, contentWidth, "最佳射程", unit.Stats.OptimalAttackRange.ToString("0.#"), "最大射程", _simulation.GetEffectiveAttackRange(unit.Id).ToString("0.#"));
             DrawDetailStatRow(ref y, contentWidth, "攻击间隔",
-                FormatAdjustedSeconds(unit.Stats.AttackInterval, _simulation.GetEffectiveAttackInterval(unit.Id)), "支援半径", unit.Stats.SupportRadius.ToString("0.#"));
+                FormatAdjustedSeconds(unit.Stats.AttackInterval, _simulation.GetEffectiveAttackInterval(unit.Id)), "基础命中", unit.Stats.BaseAccuracy.ToString("P0"));
             DrawDetailStatRow(ref y, contentWidth, "暴击",
                 FormatAdjustedPercent(unit.Stats.CriticalChance, _simulation.GetEffectiveCriticalChance(unit.Id)), "核心发现",
                 FormatAdjustedPercent(unit.Stats.CoreDiscovery, _simulation.GetEffectiveCoreDiscovery(unit.Id)));
+            DrawDetailStatRow(ref y, contentWidth, "穿透", unit.Stats.Penetration.ToString("0.#"), "护甲", unit.Stats.Armor.ToString("0.#"));
+            string reserve = unit.Stats.UnlimitedReserveAmmo ? "∞" : unit.ReserveAmmo.ToString();
+            DrawDetailStatRow(ref y, contentWidth, "弹匣/备弹", $"{unit.MagazineAmmo}/{reserve}", "装填", unit.IsReloading ? $"{unit.ReloadRemaining:0.0}s" : "就绪");
             y += 4f;
-            GUI.Label(new Rect(14f, y, contentWidth, 20f), $"特质 · {TraitName(unit.Stats.Traits)}", _detailHeaderStyle);
+            GUI.Label(new Rect(14f, y, contentWidth, 20f), $"主动机制 · {AbilityName(unit.Stats.SpecialAbility)}", _detailHeaderStyle);
             y += 22f;
-            GUI.Label(new Rect(14f, y, contentWidth, 48f), TraitDescription(unit.Stats.Traits, _balance), _detailMutedStyle);
-            y += 51f;
+            GUI.Label(new Rect(14f, y, contentWidth, 55f), AbilityDescription(unit), _detailMutedStyle);
+            y += 58f;
+            if (unit.Stats.SpecialAbility != DemoSpecialAbility.None && DrawHudButton(new Rect(14f, y, contentWidth, 31f),
+                    $"使用 {AbilityName(unit.Stats.SpecialAbility)}  ·  {AbilityStatus(unit)}", _hudPrimaryButtonStyle,
+                    new Color(0.07f, 0.31f, 0.4f), new Color(0.08f, 0.46f, 0.58f)))
+                EnterSpecialAbilityMode();
+            y += 38f;
             GUI.Label(new Rect(14f, y, contentWidth, 42f), RoleDescription(unit), _detailMutedStyle);
 
             GUI.EndScrollView();
@@ -1446,39 +1576,60 @@ namespace SWRTS.Demo1
 
         private static string RoleDescription(DemoUnitModel unit)
         {
-            if (unit.Stats.HasTrait(DemoUnitTrait.LynetteSharpshooter))
-                return "作战方式：使用高暴击、较长攻击间隔的精密单体射击。";
+            if (unit.Stats.ExplosiveRadius > 0f)
+                return $"作战方式：火箭齐射，按目标速度计算提前量，爆炸半径 {unit.Stats.ExplosiveRadius:0.#}。";
             switch (unit.Role)
             {
                 case DemoUnitRole.Witch: return "角色特性：在警戒半径内自动锁定目标，进入射程后直接攻击。";
-                case DemoUnitRole.Support: return "角色特性：周期性恢复支援半径内友军的护盾与魔力。";
-                case DemoUnitRole.Artillery: return "角色特性：每三次攻击发动一次校准齐射。";
-                case DemoUnitRole.Scout: return "角色特性：命中后标记目标，使其承受更多伤害。";
+                case DemoUnitRole.Support: return "角色特性：可在机动中引导治疗，但治疗期间不能射击。";
+                case DemoUnitRole.Artillery: return "角色特性：单发反装甲武器，远距离射击依赖锁定质量。";
+                case DemoUnitRole.Scout: return "角色特性：独立侦察并利用高机动规避攻击。";
                 case DemoUnitRole.Guard: return "角色特性：在警戒半径内主动追击并压制魔女。";
                 case DemoUnitRole.Fortress: return "角色特性：低生命时进入紧急弹幕状态。";
                 default: return string.Empty;
             }
         }
 
-        private static string TraitName(DemoUnitTrait traits)
+        private static string AbilityName(DemoSpecialAbility ability)
         {
-            List<string> names = new List<string>();
-            if ((traits & DemoUnitTrait.SakamotoCoreInsight) != 0) names.Add("魔眼指挥");
-            if ((traits & DemoUnitTrait.MiyafujiShieldAura) != 0) names.Add("守护之心");
-            if ((traits & DemoUnitTrait.LynetteSharpshooter) != 0) names.Add("精密射手");
-            return names.Count == 0 ? "无" : string.Join(" / ", names);
+            switch (ability)
+            {
+                case DemoSpecialAbility.MagicEyeSearch: return "魔眼搜索";
+                case DemoSpecialAbility.Heal: return "治疗";
+                case DemoSpecialAbility.FireControlSolution: return "射击诸元装订";
+                case DemoSpecialAbility.LightningStrike: return "雷击";
+                default: return "无";
+            }
         }
 
-        private static string TraitDescription(DemoUnitTrait traits, Demo1Balance balance)
+        private static string AbilityStatus(DemoUnitModel unit)
         {
-            List<string> descriptions = new List<string>();
-            if ((traits & DemoUnitTrait.SakamotoCoreInsight) != 0)
-                descriptions.Add($"同场全体友军（含自身）的基础核心发现提高 {balance.SakamotoCoreDiscoveryBonus:P0}。");
-            if ((traits & DemoUnitTrait.MiyafujiShieldAura) != 0)
-                descriptions.Add($"同场全体友军（含自身）的护盾吸收效率提高 {balance.MiyafujiShieldEfficiencyBonus:P0}。");
-            if ((traits & DemoUnitTrait.LynetteSharpshooter) != 0)
-                descriptions.Add($"暴击率提高 {balance.LynetteCriticalChanceBonus:P0}，攻击间隔变为 {balance.LynetteAttackIntervalMultiplier:0.###} 倍。");
-            return descriptions.Count == 0 ? "该单位目前没有个人特质。" : string.Join("\n", descriptions);
+            if (unit.IsChannelingAbility)
+                return $"准备 {unit.AbilityChannelRemaining:0.0}s";
+            if (unit.AbilityCooldownRemaining > 0f)
+                return $"冷却 {unit.AbilityCooldownRemaining:0.0}s";
+            if (unit.Stats.SpecialAbility != DemoSpecialAbility.None)
+                return "就绪";
+            return unit.Stats.ExplosiveRadius > 0f ? "火箭齐射" : "常规武器";
+        }
+
+        private static string AbilityDescription(DemoUnitModel unit)
+        {
+            switch (unit.Stats.SpecialAbility)
+            {
+                case DemoSpecialAbility.MagicEyeSearch:
+                    return $"消耗 {unit.Stats.AbilityMagicCost:0} 魔力，扫描前方 {unit.Stats.AbilityArcAngle:0}° / {unit.Stats.AbilityRange:0}，评估并标记核心 {unit.Stats.AbilityDuration:0}s。";
+                case DemoSpecialAbility.Heal:
+                    return $"选择 {unit.Stats.AbilityRange:0} 距离内其他友军，引导 {unit.Stats.AbilityDuration:0}s，每秒恢复 {unit.Stats.AbilityValue:P0} 最大生命。";
+                case DemoSpecialAbility.FireControlSolution:
+                    return $"稳定盘旋 {unit.Stats.AbilityDuration:0}s，对 {unit.Stats.AbilityRange:0} 距离内已评估目标进行高精度反装甲射击。";
+                case DemoSpecialAbility.LightningStrike:
+                    return $"消耗 {unit.Stats.AbilityMagicCost:0} 魔力，对半径 {unit.Stats.AbilityRadius:0.#} 内敌人造成范围雷击并增加压制。";
+                default:
+                    return unit.Stats.ExplosiveRadius > 0f
+                        ? $"火箭爆炸半径 {unit.Stats.ExplosiveRadius:0.#}，按目标当前位置与速度计算提前量。"
+                        : "该单位没有主动技能。";
+            }
         }
     }
 }

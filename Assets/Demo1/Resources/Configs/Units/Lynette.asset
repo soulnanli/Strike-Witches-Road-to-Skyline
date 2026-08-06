@@ -31,7 +31,7 @@ MonoBehaviour:
     GlobalShieldBonus: 0
     CoreDiscovery: 0.22
     CoreConcealment: 0.5
-    AttackInterval: 1.6
+    AttackInterval: 2.2
     MagicRecovery: 5
     Mobility: 1
     MoveSpeed: 2.4333334
@@ -39,10 +39,33 @@ MonoBehaviour:
     VisionAngle: 100
     WitchVisionType: 1
     EngagementRadius: 8
-    AttackRange: 8
+    AttackRange: 12
+    OptimalAttackRange: 8
+    BaseAccuracy: 0.72
+    Penetration: 24
+    Armor: 0
+    MagazineSize: 5
+    ReserveAmmo: 20
+    AmmoPerAttack: 1
+    ReloadDuration: 4
+    UnlimitedReserveAmmo: 0
+    ExplosiveRadius: 0
+    ProjectileSpeed: 18
     SupportRadius: 0
     CanRemoteStrike: 0
-    Traits: 4
+    Traits: 0
+    SpecialAbility: 3
+    AbilityMagicCost: 0
+    AbilityCooldown: 8
+    AbilityRange: 24
+    AbilityRadius: 0
+    AbilityDuration: 3
+    AbilityValue: 0
+    AbilityDamageMultiplier: 2
+    AbilityPenetration: 32
+    AbilityMinimumAccuracy: 0.85
+    AbilityArcAngle: 0
+    AbilitySuppression: 0
   GrantPersistentPlayerIntel: 0
   EnemyAiProfile: 0
   UseStartingPositionAsAiHome: 1

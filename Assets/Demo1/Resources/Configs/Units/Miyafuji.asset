@@ -40,9 +40,32 @@ MonoBehaviour:
     WitchVisionType: 1
     EngagementRadius: 8
     AttackRange: 8
-    SupportRadius: 12
+    OptimalAttackRange: 6
+    BaseAccuracy: 0.72
+    Penetration: 16
+    Armor: 0
+    MagazineSize: 8
+    ReserveAmmo: 32
+    AmmoPerAttack: 1
+    ReloadDuration: 3
+    UnlimitedReserveAmmo: 0
+    ExplosiveRadius: 0
+    ProjectileSpeed: 12
+    SupportRadius: 0
     CanRemoteStrike: 0
-    Traits: 2
+    Traits: 0
+    SpecialAbility: 2
+    AbilityMagicCost: 15
+    AbilityCooldown: 10
+    AbilityRange: 6
+    AbilityRadius: 0
+    AbilityDuration: 3
+    AbilityValue: 0.12
+    AbilityDamageMultiplier: 1
+    AbilityPenetration: 0
+    AbilityMinimumAccuracy: 0
+    AbilityArcAngle: 0
+    AbilitySuppression: 0
   GrantPersistentPlayerIntel: 0
   EnemyAiProfile: 0
   UseStartingPositionAsAiHome: 1

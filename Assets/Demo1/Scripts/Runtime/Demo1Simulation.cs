@@ -28,6 +28,15 @@ namespace SWRTS.Demo1
         Night
     }
 
+    public enum DemoSpecialAbility
+    {
+        None,
+        MagicEyeSearch,
+        Heal,
+        FireControlSolution,
+        LightningStrike
+    }
+
     [Flags]
     public enum DemoUnitTrait
     {
@@ -139,6 +148,24 @@ namespace SWRTS.Demo1
         public float BaseArrivalRadius = 2f;
         public float BaseLaunchSpread = 1.5f;
         public float BaseTurnaroundDuration = 20f;
+        public float LoiterRadius = 1.5f;
+        public float LockFireThreshold = 25f;
+        public float LockBaseGrowthPerSecond = 25f;
+        public float LockDecayPerSecond = 35f;
+        public float RangeModifierAtMaximum = 0.45f;
+        public float MinimumHitChance = 0.05f;
+        public float MaximumHitChance = 0.95f;
+        public float MinimumEvasionChance = 0.05f;
+        public float MaximumEvasionChance = 0.45f;
+        public float SuppressionBasePerHit = 8f;
+        public float SuppressionDamageScale = 40f;
+        public float ExplosiveSuppressionMultiplier = 1.5f;
+        public float SuppressionRecoveryDelay = 2f;
+        public float SuppressionRecoveryPerSecond = 12f;
+        public float FullSuppressionAttackIntervalPenalty = 0.75f;
+        public float FullSuppressionSpeedPenalty = 0.3f;
+        public float FullSuppressionVisionRangePenalty = 0.25f;
+        public float FullSuppressionLockPenalty = 0.5f;
         public int RandomSeed = 1944;
 
         public float HistoricalSpeedToMapUnitsPerSecond(float kilometersPerHour)
@@ -175,9 +202,32 @@ namespace SWRTS.Demo1
         public DemoWitchVisionType WitchVisionType = DemoWitchVisionType.None;
         public float EngagementRadius = 8f;
         public float AttackRange = 8f;
+        public float OptimalAttackRange = 6f;
+        public float BaseAccuracy = 0.72f;
+        public float Penetration = 16f;
+        public float Armor;
+        public int MagazineSize = 8;
+        public int ReserveAmmo = 32;
+        public int AmmoPerAttack = 1;
+        public float ReloadDuration = 3f;
+        public bool UnlimitedReserveAmmo;
+        public float ExplosiveRadius;
+        public float ProjectileSpeed = 12f;
         public float SupportRadius;
         public bool CanRemoteStrike;
         public DemoUnitTrait Traits = DemoUnitTrait.None;
+        public DemoSpecialAbility SpecialAbility;
+        public float AbilityMagicCost;
+        public float AbilityCooldown;
+        public float AbilityRange;
+        public float AbilityRadius;
+        public float AbilityDuration;
+        public float AbilityValue;
+        public float AbilityDamageMultiplier = 1f;
+        public float AbilityPenetration;
+        public float AbilityMinimumAccuracy;
+        public float AbilityArcAngle;
+        public float AbilitySuppression;
 
         public bool HasTrait(DemoUnitTrait trait)
         {
@@ -220,8 +270,13 @@ namespace SWRTS.Demo1
         public readonly bool Critical;
         public readonly bool CoreHit;
         public readonly bool Destroyed;
+        public readonly bool Hit;
+        public readonly bool Evaded;
+        public readonly float HitChance;
+        public readonly float EvasionChance;
 
-        public DemoDamageResult(float rawDamage, float shieldDamage, float healthDamage, bool critical, bool coreHit, bool destroyed)
+        public DemoDamageResult(float rawDamage, float shieldDamage, float healthDamage, bool critical, bool coreHit,
+            bool destroyed, bool hit = true, bool evaded = false, float hitChance = 1f, float evasionChance = 0f)
         {
             RawDamage = rawDamage;
             ShieldDamage = shieldDamage;
@@ -229,6 +284,10 @@ namespace SWRTS.Demo1
             Critical = critical;
             CoreHit = coreHit;
             Destroyed = destroyed;
+            Hit = hit;
+            Evaded = evaded;
+            HitChance = hitChance;
+            EvasionChance = evasionChance;
         }
     }
 
@@ -260,6 +319,13 @@ namespace SWRTS.Demo1
         public Vector3 Destination;
         public bool HasDestination;
         public bool HasManualMoveOrder;
+        public float CurrentSpeed;
+        public Vector3 CurrentVelocity;
+        public float TurnRatio;
+        public bool HasLoiter;
+        public Vector3 LoiterCenter;
+        public float LoiterAngle;
+        public float StableLoiterTime;
         public DemoUnitActivity Activity = DemoUnitActivity.Idle;
         public DemoUnitDeploymentState DeploymentState;
         public float TurnaroundRemaining;
@@ -267,6 +333,12 @@ namespace SWRTS.Demo1
         public float Magic;
         public float Shield;
         public float AttackCooldown;
+        public int MagazineAmmo;
+        public int ReserveAmmo;
+        public float ReloadRemaining;
+        public float LockQuality;
+        public float Suppression;
+        public float LastHitAt = float.NegativeInfinity;
         public float RemoteStrikeCooldown;
         public bool AutoAttackEnabled = true;
         public int LockedTargetId = -1;
@@ -276,6 +348,10 @@ namespace SWRTS.Demo1
         public bool HasTargetLastKnownPosition;
         public int AttacksPerformed;
         public float RoleAbilityRemaining;
+        public float AbilityCooldownRemaining;
+        public float AbilityChannelRemaining;
+        public int AbilityTargetId = -1;
+        public Vector3 LastAimPoint;
         public float MarkedUntil;
         public bool FortressBarrageAnnounced;
         public bool IsRevealedToPlayer;
@@ -307,6 +383,11 @@ namespace SWRTS.Demo1
         public float HealthRatio => Stats.MaxHealth <= 0f ? 0f : Health / Stats.MaxHealth;
         public float MagicRatio => Stats.MaxMagic <= 0f ? 0f : Magic / Stats.MaxMagic;
         public float ShieldRatio => Stats.MaxShield <= 0f ? 0f : Shield / Stats.MaxShield;
+        public float SuppressionRatio => Mathf.Clamp01(Suppression / 100f);
+        public float LockQualityRatio => Mathf.Clamp01(LockQuality / 100f);
+        public bool IsReloading => ReloadRemaining > 0f;
+        public bool IsChannelingAbility => AbilityChannelRemaining > 0f;
+        public bool HasUsableAmmo => Stats.UnlimitedReserveAmmo || MagazineAmmo >= Mathf.Max(1, Stats.AmmoPerAttack) || ReserveAmmo > 0;
         public bool HasPlayerIntel => Team == DemoTeam.Player || IsRevealedToPlayer || PlayerIntelLevel != DemoIntelLevel.Unknown;
         public bool CanBeDirectlyTargetedByPlayer => Team == DemoTeam.Player || HasPersistentPlayerIntel ||
                                                      (IsCurrentlyObservedByPlayer && PlayerIntelLevel >= DemoIntelLevel.Identified) ||
@@ -332,6 +413,10 @@ namespace SWRTS.Demo1
             Health = Stats.MaxHealth;
             Magic = Stats.MaxMagic;
             Shield = Stats.MaxShield;
+            MagazineAmmo = Mathf.Max(1, Stats.MagazineSize);
+            ReserveAmmo = Mathf.Max(0, Stats.ReserveAmmo);
+            LoiterCenter = position;
+            LastAimPoint = position;
             RoleAbilityRemaining = Mathf.Max(0.1f, 4f);
             IsRevealedToPlayer = team == DemoTeam.Player;
             IsCurrentlyObservedByPlayer = team == DemoTeam.Player;
@@ -376,13 +461,25 @@ namespace SWRTS.Demo1
             float attackMultiplier = 1f,
             float damageTakenMultiplier = 1f,
             float coreDiscoveryMultiplier = 1f,
-            float criticalChanceBonus = 0f)
+            float criticalChanceBonus = 0f,
+            float hitChance = 1f,
+            float evasionChance = 0f,
+            float penetrationOverride = -1f,
+            bool forceCore = false,
+            float targetArmorMultiplier = 1f)
         {
+            hitChance = Mathf.Clamp01(hitChance);
+            evasionChance = Mathf.Clamp01(evasionChance);
+            if (random.NextDouble() >= hitChance)
+                return new DemoDamageResult(0f, 0f, 0f, false, false, false, false, false, hitChance, evasionChance);
+            if (random.NextDouble() < evasionChance)
+                return new DemoDamageResult(0f, 0f, 0f, false, false, false, true, true, hitChance, evasionChance);
+
             float raw = attacker.Stats.Attack * Mathf.Max(0f, attackMultiplier);
             float coreDiscovery = attacker.Stats.CoreDiscovery * Mathf.Max(0f, coreDiscoveryMultiplier);
             float discoveryChance = coreDiscovery /
                                     Mathf.Max(0.01f, coreDiscovery + target.Stats.CoreConcealment);
-            bool coreHit = random.NextDouble() < Mathf.Clamp01(discoveryChance);
+            bool coreHit = forceCore || random.NextDouble() < Mathf.Clamp01(discoveryChance);
             float criticalChance = attacker.Stats.CriticalChance + Mathf.Max(0f, criticalChanceBonus);
             bool critical = !coreHit && random.NextDouble() < Mathf.Clamp01(criticalChance);
             if (coreHit)
@@ -390,13 +487,22 @@ namespace SWRTS.Demo1
             else if (critical)
                 raw *= balance.CriticalMultiplier;
 
-            float incoming = Mathf.Max(balance.MinimumDamage, raw - Mathf.Max(0f, target.Stats.Defense));
-            incoming = Mathf.Max(balance.MinimumDamage, incoming * Mathf.Max(0f, damageTakenMultiplier));
-            float shieldEfficiency = Mathf.Max(0.1f, 1f + globalShieldBonus);
+            float incoming = raw * Mathf.Max(0f, damageTakenMultiplier);
+            if (target.Team == DemoTeam.Enemy && target.Stats.Armor > 0f)
+            {
+                float effectiveArmor = target.Stats.Armor * Mathf.Max(0f, targetArmorMultiplier) * (coreHit ? 0.5f : 1f);
+                float penetration = penetrationOverride >= 0f ? penetrationOverride : attacker.Stats.Penetration;
+                float armorMultiplier = penetration >= effectiveArmor
+                    ? 1f
+                    : penetration >= effectiveArmor * 0.75f ? 0.35f : 0.1f;
+                incoming *= armorMultiplier;
+            }
+
+            float shieldEfficiency = target.Team == DemoTeam.Player ? 1f : 0f;
             float availableShieldAbsorption = target.Shield * shieldEfficiency;
             float availableMagicAbsorption = target.Magic / Mathf.Max(0.01f, balance.ShieldMagicCostPerDamage) * shieldEfficiency;
             float absorbed = Mathf.Min(incoming, Mathf.Min(availableShieldAbsorption, availableMagicAbsorption));
-            float shieldSpent = absorbed / shieldEfficiency;
+            float shieldSpent = shieldEfficiency > 0f ? absorbed : 0f;
             target.Shield = Mathf.Max(0f, target.Shield - shieldSpent);
             target.Magic = Mathf.Max(0f, target.Magic - shieldSpent * balance.ShieldMagicCostPerDamage);
 
@@ -412,7 +518,8 @@ namespace SWRTS.Demo1
                 target.HasExplicitAttackOrder = false;
             }
 
-            return new DemoDamageResult(raw, shieldSpent, healthDamage, critical, coreHit, !target.IsAlive);
+            return new DemoDamageResult(raw, shieldSpent, healthDamage, critical, coreHit, !target.IsAlive,
+                true, false, hitChance, evasionChance);
         }
     }
 
@@ -447,7 +554,20 @@ namespace SWRTS.Demo1
         public DemoUnitModel AddUnit(string name, DemoTeam team, DemoUnitRole role, DemoUnitStats stats, Vector3 position,
             DemoUnitDeploymentState deploymentState)
         {
-            DemoUnitModel unit = new DemoUnitModel(_nextUnitId++, name, team, role, stats, ClampToMap(position));
+            DemoUnitStats runtimeStats = stats?.Clone() ?? new DemoUnitStats();
+            if (runtimeStats.MagazineSize <= 0) runtimeStats.MagazineSize = 8;
+            if (runtimeStats.AmmoPerAttack <= 0) runtimeStats.AmmoPerAttack = 1;
+            if (runtimeStats.ReloadDuration <= 0f) runtimeStats.ReloadDuration = 3f;
+            if (runtimeStats.BaseAccuracy <= 0f) runtimeStats.BaseAccuracy = 0.72f;
+            if (runtimeStats.OptimalAttackRange <= 0f) runtimeStats.OptimalAttackRange = runtimeStats.AttackRange * 0.75f;
+            if (runtimeStats.Penetration <= 0f) runtimeStats.Penetration = team == DemoTeam.Enemy ? 18f : 16f;
+            if (team == DemoTeam.Enemy)
+            {
+                runtimeStats.UnlimitedReserveAmmo = true;
+                if (runtimeStats.Armor <= 0f)
+                    runtimeStats.Armor = Mathf.Max(1f, runtimeStats.Defense * 1.5f);
+            }
+            DemoUnitModel unit = new DemoUnitModel(_nextUnitId++, name, team, role, runtimeStats, ClampToMap(position));
             unit.DeploymentState = team == DemoTeam.Player ? deploymentState : DemoUnitDeploymentState.Active;
             unit.RoleAbilityRemaining = Mathf.Max(0.1f, Balance.SupportPulseInterval);
             _units.Add(unit.Id, unit);
@@ -492,6 +612,17 @@ namespace SWRTS.Demo1
                 unit.HasManualMoveOrder = false;
                 ClearTarget(unit);
                 unit.TurnaroundRemaining = 0f;
+                unit.CurrentSpeed = 0f;
+                unit.CurrentVelocity = Vector3.zero;
+                unit.HasLoiter = false;
+                unit.StableLoiterTime = 0f;
+                unit.MagazineAmmo = Mathf.Max(1, unit.Stats.MagazineSize);
+                unit.ReserveAmmo = Mathf.Max(0, unit.Stats.ReserveAmmo);
+                unit.ReloadRemaining = 0f;
+                unit.LockQuality = 0f;
+                unit.Suppression = 0f;
+                unit.AbilityCooldownRemaining = 0f;
+                CancelAbilityChannel(unit, false);
                 unit.DeploymentState = DemoUnitDeploymentState.Active;
                 unit.Activity = DemoUnitActivity.Idle;
             }
@@ -513,6 +644,7 @@ namespace SWRTS.Demo1
 
             foreach (DemoUnitModel unit in candidates)
             {
+                CancelAbilityChannel(unit, false);
                 ClearTarget(unit);
                 unit.DeploymentState = DemoUnitDeploymentState.Returning;
                 SetMovement(unit, BasePosition, DemoUnitActivity.Moving, true);
@@ -583,7 +715,7 @@ namespace SWRTS.Demo1
         public float GetEffectiveCoreDiscovery(int unitId)
         {
             DemoUnitModel unit = GetUnit(unitId);
-            return unit == null ? 0f : unit.Stats.CoreDiscovery * GetCoreDiscoveryMultiplier(unit);
+            return unit == null ? 0f : unit.Stats.CoreDiscovery;
         }
 
         public float GetEffectiveCriticalChance(int unitId)
@@ -591,10 +723,7 @@ namespace SWRTS.Demo1
             DemoUnitModel unit = GetUnit(unitId);
             if (unit == null)
                 return 0f;
-            float bonus = unit.Stats.HasTrait(DemoUnitTrait.LynetteSharpshooter)
-                ? Balance.LynetteCriticalChanceBonus
-                : 0f;
-            return Mathf.Clamp01(unit.Stats.CriticalChance + bonus);
+            return Mathf.Clamp01(unit.Stats.CriticalChance);
         }
 
         public float GetEffectiveAttackInterval(int unitId)
@@ -602,32 +731,71 @@ namespace SWRTS.Demo1
             DemoUnitModel unit = GetUnit(unitId);
             if (unit == null)
                 return 0f;
-            float multiplier = unit.Stats.HasTrait(DemoUnitTrait.LynetteSharpshooter)
-                ? Balance.LynetteAttackIntervalMultiplier
-                : 1f;
+            float multiplier = 1f + Balance.FullSuppressionAttackIntervalPenalty * unit.SuppressionRatio;
             return Mathf.Max(0.2f, unit.Stats.AttackInterval * multiplier);
         }
 
         public float GetEffectiveShieldBonus(int targetUnitId)
         {
-            DemoUnitModel target = GetUnit(targetUnitId);
-            if (!CanReceiveAura(target))
+            return 0f;
+        }
+
+        public float GetEffectiveMoveSpeed(int unitId)
+        {
+            DemoUnitModel unit = GetUnit(unitId);
+            if (unit == null)
                 return 0f;
-            float bonus = 0f;
-            foreach (DemoUnitModel provider in _units.Values.Where(unit => CanProvideAura(unit, target)))
-            {
-                if (provider.Role == DemoUnitRole.Support)
-                    bonus += provider.Stats.GlobalShieldBonus * Balance.SupportEffectMultiplier;
-                if (provider.Stats.HasTrait(DemoUnitTrait.MiyafujiShieldAura))
-                    bonus += Balance.MiyafujiShieldEfficiencyBonus;
-            }
-            return Mathf.Max(0f, bonus);
+            float suppressionMultiplier = 1f - Balance.FullSuppressionSpeedPenalty * unit.SuppressionRatio;
+            float abilityMultiplier = unit.Stats.SpecialAbility == DemoSpecialAbility.Heal && unit.IsChannelingAbility ? 0.5f : 1f;
+            return Mathf.Max(0f, unit.Stats.MoveSpeed * suppressionMultiplier * abilityMultiplier);
+        }
+
+        public float GetEffectiveVisionRadius(int unitId)
+        {
+            DemoUnitModel unit = GetUnit(unitId);
+            return unit == null ? 0f : Mathf.Max(0f,
+                unit.Stats.VisionRadius * (1f - Balance.FullSuppressionVisionRangePenalty * unit.SuppressionRatio));
+        }
+
+        public float GetEffectiveAttackRange(int unitId)
+        {
+            DemoUnitModel unit = GetUnit(unitId);
+            return unit == null ? 0f : Mathf.Max(0.1f,
+                unit.Stats.AttackRange * (1f - Balance.FullSuppressionVisionRangePenalty * unit.SuppressionRatio));
         }
 
         public float GetMarkRemaining(int unitId)
         {
             DemoUnitModel unit = GetUnit(unitId);
             return unit == null ? 0f : Mathf.Max(0f, unit.MarkedUntil - SimulationTime);
+        }
+
+        public DemoCommandResult RequestSpecialAbility(int unitId, int targetId = -1)
+        {
+            DemoUnitModel caster = GetUnit(unitId);
+            if (caster == null || caster.Team != DemoTeam.Player || !caster.IsAlive ||
+                caster.DeploymentState != DemoUnitDeploymentState.Active)
+                return DemoCommandResult.Fail("Selected witch cannot use an ability.");
+            if (caster.Stats.SpecialAbility == DemoSpecialAbility.None)
+                return DemoCommandResult.Fail("Selected witch has no active ability.");
+            if (caster.AbilityCooldownRemaining > 0f)
+                return DemoCommandResult.Fail($"Ability cooling down ({caster.AbilityCooldownRemaining:0.0}s).");
+            if (caster.IsChannelingAbility)
+                return DemoCommandResult.Fail("Ability is already being prepared.");
+
+            switch (caster.Stats.SpecialAbility)
+            {
+                case DemoSpecialAbility.MagicEyeSearch:
+                    return ActivateMagicEye(caster);
+                case DemoSpecialAbility.Heal:
+                    return BeginHealing(caster, targetId);
+                case DemoSpecialAbility.FireControlSolution:
+                    return BeginFireControlSolution(caster, targetId);
+                case DemoSpecialAbility.LightningStrike:
+                    return ActivateLightning(caster);
+                default:
+                    return DemoCommandResult.Fail("Ability is not implemented.");
+            }
         }
 
         public DemoCommandResult SetAutoAttack(IEnumerable<int> unitIds, bool enabled)
@@ -669,11 +837,16 @@ namespace SWRTS.Demo1
 
             foreach (DemoUnitModel unit in candidates)
             {
+                if (unit.Stats.SpecialAbility == DemoSpecialAbility.Heal && unit.IsChannelingAbility)
+                    CancelAbilityChannel(unit, true);
+                bool changedTarget = unit.LockedTargetId != target.Id;
                 unit.LockedTargetId = target.Id;
                 unit.OrderedTargetId = target.Id;
                 unit.HasExplicitAttackOrder = true;
                 unit.TargetLastKnownPosition = target.Team == DemoTeam.Enemy ? target.PlayerVisiblePosition : target.Position;
                 unit.HasTargetLastKnownPosition = true;
+                if (changedTarget)
+                    unit.LockQuality = 0f;
                 if (unit.HasManualMoveOrder && unit.HasDestination)
                     unit.Activity = DemoUnitActivity.Moving;
                 else
@@ -701,10 +874,12 @@ namespace SWRTS.Demo1
             for (int i = 0; i < candidates.Count; i++)
             {
                 float angle = candidates.Count == 1 ? 0f : i * Mathf.PI * 2f / candidates.Count;
-                Vector3 offset = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle)) * spacing;
+                Vector3 offset = candidates.Count == 1
+                    ? Vector3.zero
+                    : new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle)) * spacing;
                 DemoUnitModel unit = candidates[i];
-                unit.OrderedTargetId = -1;
-                unit.HasExplicitAttackOrder = false;
+                if (unit.Stats.SpecialAbility == DemoSpecialAbility.FireControlSolution && unit.IsChannelingAbility)
+                    CancelAbilityChannel(unit, false);
                 SetMovement(unit, destination + offset, DemoUnitActivity.Moving, true);
             }
             Raise($"Independent move order assigned to {candidates.Count} units.", destination, false);
@@ -740,12 +915,13 @@ namespace SWRTS.Demo1
                 SimulationTime += dt;
                 TickUnitResources(dt);
                 TickVisibility(dt);
+                TickLockQuality(dt);
+                TickAbilities(dt);
                 TickEnemyAi(dt);
                 TickAutomaticTargeting();
                 TickTargetNavigation();
                 TickMovement(dt);
                 TickIndividualCombat(dt);
-                TickSupportPulses(dt);
                 TickRemoteStrikes(dt);
                 EvaluateOutcome();
                 remaining -= dt;
@@ -772,6 +948,13 @@ namespace SWRTS.Demo1
                         unit.Shield = unit.Stats.MaxShield;
                         unit.AttackCooldown = 0f;
                         unit.RemoteStrikeCooldown = 0f;
+                        unit.MagazineAmmo = Mathf.Max(1, unit.Stats.MagazineSize);
+                        unit.ReserveAmmo = Mathf.Max(0, unit.Stats.ReserveAmmo);
+                        unit.ReloadRemaining = 0f;
+                        unit.LockQuality = 0f;
+                        unit.Suppression = 0f;
+                        unit.AbilityCooldownRemaining = 0f;
+                        CancelAbilityChannel(unit, false);
                         unit.DeploymentState = DemoUnitDeploymentState.Standby;
                         unit.Activity = DemoUnitActivity.Idle;
                         Raise($"{unit.DisplayName} is ready for another sortie.", BasePosition, true);
@@ -783,6 +966,23 @@ namespace SWRTS.Demo1
 
                 unit.AttackCooldown = Mathf.Max(0f, unit.AttackCooldown - dt);
                 unit.RemoteStrikeCooldown = Mathf.Max(0f, unit.RemoteStrikeCooldown - dt);
+                unit.AbilityCooldownRemaining = Mathf.Max(0f, unit.AbilityCooldownRemaining - dt);
+                if (SimulationTime - unit.LastHitAt >= Balance.SuppressionRecoveryDelay)
+                    unit.Suppression = Mathf.Max(0f, unit.Suppression - Balance.SuppressionRecoveryPerSecond * dt);
+
+                if (unit.ReloadRemaining > 0f)
+                {
+                    unit.ReloadRemaining = Mathf.Max(0f, unit.ReloadRemaining - dt);
+                    if (unit.ReloadRemaining <= 0f)
+                    {
+                        int needed = Mathf.Max(0, unit.Stats.MagazineSize - unit.MagazineAmmo);
+                        int loaded = unit.Stats.UnlimitedReserveAmmo ? needed : Mathf.Min(needed, unit.ReserveAmmo);
+                        unit.MagazineAmmo += loaded;
+                        if (!unit.Stats.UnlimitedReserveAmmo)
+                            unit.ReserveAmmo -= loaded;
+                        Raise($"{unit.DisplayName} completed reload.", unit.Position, false);
+                    }
+                }
                 if (unit.LockedTargetId < 0)
                 {
                     unit.Magic = Mathf.Min(unit.Stats.MaxMagic, unit.Magic + unit.Stats.MagicRecovery * dt);
@@ -794,13 +994,83 @@ namespace SWRTS.Demo1
 
         private void TickMovement(float dt)
         {
-            foreach (DemoUnitModel unit in _units.Values.Where(unit => unit.IsAlive && unit.IsOperational && unit.HasDestination && !unit.IsFixed))
+            foreach (DemoUnitModel unit in _units.Values.Where(unit => unit.IsAlive && unit.IsOperational && !unit.IsFixed))
             {
-                Vector3 movement = unit.Destination - unit.Position;
-                movement.y = 0f;
-                if (movement.sqrMagnitude > 0.001f)
-                    unit.Facing = movement.normalized;
-                unit.Position = ClampToMap(Vector3.MoveTowards(unit.Position, unit.Destination, unit.Stats.MoveSpeed * dt));
+                if (unit.HasLoiter && !unit.HasDestination)
+                {
+                    float radius = Mathf.Max(0.1f, Balance.LoiterRadius);
+                    float maximumSpeed = GetEffectiveMoveSpeed(unit.Id);
+                    float loiterAcceleration = Mathf.Max(0.01f, unit.Stats.MoveSpeed / 4f);
+                    unit.CurrentSpeed = Mathf.MoveTowards(unit.CurrentSpeed, maximumSpeed, loiterAcceleration * dt);
+                    unit.LoiterAngle += unit.CurrentSpeed / radius * dt;
+                    Vector3 radial = new Vector3(Mathf.Cos(unit.LoiterAngle), 0f, Mathf.Sin(unit.LoiterAngle));
+                    Vector3 tangent = new Vector3(-radial.z, 0f, radial.x);
+                    unit.Position = ClampToMap(unit.LoiterCenter + radial * radius);
+                    unit.Facing = tangent;
+                    unit.CurrentVelocity = tangent * unit.CurrentSpeed;
+                    float requestedTurnRate = unit.CurrentSpeed / radius;
+                    float availableTurnRate = 60f * Mathf.Deg2Rad * Mathf.Max(0.01f, unit.Stats.Mobility);
+                    unit.TurnRatio = Mathf.Clamp01(requestedTurnRate / availableTurnRate);
+                    unit.StableLoiterTime += dt;
+                    continue;
+                }
+
+                Vector3 desiredDirection = Vector3.zero;
+                float distanceToDestination = float.PositiveInfinity;
+                if (unit.HasDestination)
+                {
+                    Vector3 toDestination = unit.Destination - unit.Position;
+                    toDestination.y = 0f;
+                    distanceToDestination = toDestination.magnitude;
+                    if (distanceToDestination > 0.001f)
+                        desiredDirection = toDestination / distanceToDestination;
+                    unit.StableLoiterTime = 0f;
+                }
+
+                float effectiveMaximumSpeed = GetEffectiveMoveSpeed(unit.Id);
+                if (desiredDirection.sqrMagnitude > 0.001f)
+                {
+                    Vector3 facing = unit.Facing.sqrMagnitude > 0.001f ? unit.Facing.normalized : desiredDirection;
+                    float headingDelta = Vector3.Angle(facing, desiredDirection);
+                    unit.TurnRatio = Mathf.Clamp01(headingDelta / 180f);
+                    float turnRate = 60f * Mathf.Max(0f, unit.Stats.Mobility);
+                    unit.Facing = Vector3.RotateTowards(facing, desiredDirection, turnRate * Mathf.Deg2Rad * dt, 0f).normalized;
+                    effectiveMaximumSpeed *= Mathf.Lerp(1f, 0.55f, unit.TurnRatio);
+                }
+                else
+                    unit.TurnRatio = 0f;
+
+                float acceleration = Mathf.Max(0.01f, unit.Stats.MoveSpeed / 4f);
+                float targetSpeed = desiredDirection.sqrMagnitude > 0.001f ? effectiveMaximumSpeed : 0f;
+                if (unit.HasDestination && !float.IsInfinity(distanceToDestination))
+                    targetSpeed = Mathf.Min(targetSpeed, Mathf.Max(0.5f, distanceToDestination * 0.75f));
+                unit.CurrentSpeed = Mathf.MoveTowards(unit.CurrentSpeed, targetSpeed, acceleration * dt);
+                unit.CurrentVelocity = unit.Facing * unit.CurrentSpeed;
+
+                if (unit.HasDestination && distanceToDestination <= Mathf.Max(unit.CurrentSpeed * dt + 0.05f,
+                        Balance.DestinationRadius * 0.2f))
+                {
+                    unit.Position = unit.Destination;
+                    unit.HasDestination = false;
+                    unit.HasManualMoveOrder = false;
+                    if (unit.DeploymentState == DemoUnitDeploymentState.Returning)
+                    {
+                        unit.Position = BasePosition;
+                        unit.HasLoiter = false;
+                        unit.CurrentSpeed = 0f;
+                        unit.CurrentVelocity = Vector3.zero;
+                        unit.Activity = DemoUnitActivity.Idle;
+                        unit.DeploymentState = DemoUnitDeploymentState.Servicing;
+                        unit.TurnaroundRemaining = Mathf.Max(0f, Balance.BaseTurnaroundDuration);
+                        Raise($"{unit.DisplayName} landed and entered service.", BasePosition, true);
+                        continue;
+                    }
+                    BeginLoiter(unit, unit.Position);
+                    if (unit.Activity == DemoUnitActivity.Moving)
+                        unit.Activity = DemoUnitActivity.Idle;
+                }
+                else if (desiredDirection.sqrMagnitude > 0.001f)
+                    unit.Position = ClampToMap(unit.Position + unit.CurrentVelocity * dt);
 
                 if (unit.DeploymentState == DemoUnitDeploymentState.Returning &&
                     HorizontalDistance(unit.Position, BasePosition) <= Balance.BaseArrivalRadius)
@@ -809,6 +1079,9 @@ namespace SWRTS.Demo1
                     unit.Destination = BasePosition;
                     unit.HasDestination = false;
                     unit.HasManualMoveOrder = false;
+                    unit.HasLoiter = false;
+                    unit.CurrentSpeed = 0f;
+                    unit.CurrentVelocity = Vector3.zero;
                     unit.Activity = DemoUnitActivity.Idle;
                     unit.DeploymentState = DemoUnitDeploymentState.Servicing;
                     unit.TurnaroundRemaining = Mathf.Max(0f, Balance.BaseTurnaroundDuration);
@@ -816,14 +1089,6 @@ namespace SWRTS.Demo1
                     continue;
                 }
 
-                if (HorizontalDistance(unit.Position, unit.Destination) <= Balance.DestinationRadius * 0.2f)
-                {
-                    unit.Position = unit.Destination;
-                    unit.HasDestination = false;
-                    unit.HasManualMoveOrder = false;
-                    if (unit.Activity == DemoUnitActivity.Moving)
-                        unit.Activity = DemoUnitActivity.Idle;
-                }
             }
         }
 
@@ -848,7 +1113,8 @@ namespace SWRTS.Demo1
         {
             Vector3 toTarget = targetPosition - observer.Position;
             toTarget.y = 0f;
-            if (toTarget.sqrMagnitude > observer.Stats.VisionRadius * observer.Stats.VisionRadius)
+            float visionRadius = GetEffectiveVisionRadius(observer.Id);
+            if (toTarget.sqrMagnitude > visionRadius * visionRadius)
                 return false;
             if (observer.Stats.WitchVisionType == DemoWitchVisionType.Night || toTarget.sqrMagnitude < 0.001f)
                 return true;
@@ -912,6 +1178,210 @@ namespace SWRTS.Demo1
                 Raise($"Lost identification: {enemy.DisplayName}.", enemy.LastKnownPosition, false);
             if (previous != DemoIntelLevel.Unknown && enemy.PlayerIntelLevel == DemoIntelLevel.Unknown)
                 Raise($"Contact lost: {enemy.DisplayName}.", enemy.LastKnownPosition, false);
+        }
+
+        private void TickLockQuality(float dt)
+        {
+            foreach (DemoUnitModel attacker in _units.Values.Where(unit => unit.IsAlive && unit.IsOperational && unit.LockedTargetId >= 0).ToList())
+            {
+                DemoUnitModel target = GetUnit(attacker.LockedTargetId);
+                if (target == null || !target.IsAlive || !target.IsOperational || target.Team == attacker.Team)
+                {
+                    ClearTarget(attacker);
+                    continue;
+                }
+
+                if (!IsTargetVisibleToAttacker(attacker, target))
+                {
+                    attacker.LockQuality = Mathf.Max(0f, attacker.LockQuality - Balance.LockDecayPerSecond * dt);
+                    continue;
+                }
+
+                float intelFactor = attacker.Team == DemoTeam.Player && target.PlayerIntelLevel >= DemoIntelLevel.Assessed ? 1.25f : 1f;
+                float maximumRange = GetEffectiveAttackRange(attacker.Id);
+                float rangeScale = 1f - Balance.FullSuppressionVisionRangePenalty * attacker.SuppressionRatio;
+                float optimalRange = Mathf.Min(maximumRange, Mathf.Max(0.1f, attacker.Stats.OptimalAttackRange * rangeScale));
+                float distance = HorizontalDistance(attacker.Position, target.Position);
+                float distanceFactor = distance <= optimalRange
+                    ? 1f
+                    : Mathf.Lerp(1f, 0.5f, Mathf.InverseLerp(optimalRange, maximumRange, distance));
+                float turnFactor = 1f - 0.5f * attacker.TurnRatio;
+                float suppressionFactor = 1f - Balance.FullSuppressionLockPenalty * attacker.SuppressionRatio;
+                float growth = Balance.LockBaseGrowthPerSecond * intelFactor * distanceFactor * turnFactor * suppressionFactor;
+                attacker.LockQuality = Mathf.Min(100f, attacker.LockQuality + growth * dt);
+                if (attacker.LockQuality >= Balance.LockFireThreshold - 0.001f)
+                    attacker.LockQuality = Mathf.Max(Balance.LockFireThreshold, attacker.LockQuality);
+            }
+        }
+
+        private void TickAbilities(float dt)
+        {
+            foreach (DemoUnitModel caster in _units.Values.Where(unit => unit.IsAlive && unit.IsOperational && unit.IsChannelingAbility).ToList())
+            {
+                switch (caster.Stats.SpecialAbility)
+                {
+                    case DemoSpecialAbility.Heal:
+                    {
+                        DemoUnitModel target = GetUnit(caster.AbilityTargetId);
+                        float magicCost = Mathf.Max(0f, caster.Stats.AbilityMagicCost) * dt;
+                        if (target == null || !target.IsAlive || target.Team != caster.Team || target.Id == caster.Id ||
+                            HorizontalDistance(caster.Position, target.Position) > caster.Stats.AbilityRange || caster.Magic + 0.0001f < magicCost)
+                        {
+                            CancelAbilityChannel(caster, true);
+                            Raise($"{caster.DisplayName}'s healing was interrupted.", caster.Position, false);
+                            break;
+                        }
+                        caster.Magic = Mathf.Max(0f, caster.Magic - magicCost);
+                        target.Health = Mathf.Min(target.Stats.MaxHealth,
+                            target.Health + target.Stats.MaxHealth * Mathf.Max(0f, caster.Stats.AbilityValue) * dt);
+                        caster.AbilityChannelRemaining = Mathf.Max(0f, caster.AbilityChannelRemaining - dt);
+                        if (caster.AbilityChannelRemaining <= 0f)
+                        {
+                            CancelAbilityChannel(caster, true);
+                            Raise($"{caster.DisplayName} completed healing {target.DisplayName}.", target.Position, true);
+                        }
+                        break;
+                    }
+                    case DemoSpecialAbility.FireControlSolution:
+                    {
+                        if (caster.HasDestination || !caster.HasLoiter)
+                        {
+                            CancelAbilityChannel(caster, false);
+                            Raise($"{caster.DisplayName}'s fire-control solution was cancelled by movement.", caster.Position, false);
+                            break;
+                        }
+                        caster.AbilityChannelRemaining = Mathf.Max(0f, caster.AbilityChannelRemaining - dt);
+                        if (caster.AbilityChannelRemaining <= 0f)
+                            ExecuteFireControlShot(caster);
+                        break;
+                    }
+                }
+            }
+        }
+
+        private DemoCommandResult ActivateMagicEye(DemoUnitModel caster)
+        {
+            if (caster.Magic < caster.Stats.AbilityMagicCost)
+                return DemoCommandResult.Fail("Not enough magic for Magic Eye Search.");
+            caster.Magic -= caster.Stats.AbilityMagicCost;
+            caster.AbilityCooldownRemaining = caster.Stats.AbilityCooldown;
+            float range = Mathf.Max(0f, caster.Stats.AbilityRange);
+            float arc = Mathf.Clamp(caster.Stats.AbilityArcAngle, 1f, 360f);
+            int count = 0;
+            foreach (DemoUnitModel enemy in _units.Values.Where(unit => unit.IsAlive && unit.Team != caster.Team))
+            {
+                Vector3 toEnemy = enemy.Position - caster.Position;
+                toEnemy.y = 0f;
+                if (toEnemy.magnitude > range || (toEnemy.sqrMagnitude > 0.001f && Vector3.Angle(caster.Facing, toEnemy) > arc * 0.5f))
+                    continue;
+                enemy.IsRevealedToPlayer = true;
+                enemy.IsCurrentlyObservedByPlayer = true;
+                enemy.PlayerIntelLevel = DemoIntelLevel.Assessed;
+                enemy.IdentificationProgress = 1f;
+                enemy.AssessmentProgress = 1f;
+                enemy.LastKnownPosition = enemy.Position;
+                enemy.LastObservedAt = SimulationTime;
+                enemy.MarkedUntil = Mathf.Max(enemy.MarkedUntil, SimulationTime + caster.Stats.AbilityDuration);
+                count++;
+            }
+            Raise($"{caster.DisplayName} assessed {count} enemies with Magic Eye Search.", caster.Position, true);
+            return DemoCommandResult.Ok($"Magic Eye Search assessed {count} enemies.");
+        }
+
+        private DemoCommandResult BeginHealing(DemoUnitModel caster, int targetId)
+        {
+            DemoUnitModel target = GetUnit(targetId);
+            if (target == null || !target.IsAlive || !target.IsOperational || target.Team != caster.Team || target.Id == caster.Id)
+                return DemoCommandResult.Fail("Healing requires another active friendly witch.");
+            if (HorizontalDistance(caster.Position, target.Position) > caster.Stats.AbilityRange)
+                return DemoCommandResult.Fail("Healing target is out of range.");
+            if (caster.Magic <= 0f)
+                return DemoCommandResult.Fail("Not enough magic to begin healing.");
+            caster.AbilityTargetId = target.Id;
+            caster.AbilityChannelRemaining = Mathf.Max(0.1f, caster.Stats.AbilityDuration);
+            Raise($"{caster.DisplayName} began healing {target.DisplayName}.", caster.Position, false);
+            return DemoCommandResult.Ok("Healing channel started.");
+        }
+
+        private DemoCommandResult BeginFireControlSolution(DemoUnitModel caster, int targetId)
+        {
+            DemoUnitModel target = GetUnit(targetId);
+            if (target == null || !target.IsAlive || !target.IsOperational || target.Team == caster.Team)
+                return DemoCommandResult.Fail("Fire-control solution requires an enemy target.");
+            if (target.PlayerIntelLevel < DemoIntelLevel.Assessed && GetMarkRemaining(target.Id) <= 0f)
+                return DemoCommandResult.Fail("Target must be assessed or core-marked.");
+            if (HorizontalDistance(caster.Position, target.Position) > caster.Stats.AbilityRange)
+                return DemoCommandResult.Fail("Target is outside fire-control range.");
+            if (!CanFireWeapon(caster))
+                return DemoCommandResult.Fail("Weapon is reloading or out of ammunition.");
+            if (caster.HasDestination)
+                return DemoCommandResult.Fail("Stable loiter is required before binding fire-control data.");
+            if (!caster.HasLoiter)
+                BeginLoiter(caster, caster.Position);
+            caster.AbilityTargetId = target.Id;
+            caster.AbilityChannelRemaining = Mathf.Max(0.1f, caster.Stats.AbilityDuration);
+            caster.StableLoiterTime = 0f;
+            Raise($"{caster.DisplayName} began binding fire-control data on {target.DisplayName}.", caster.Position, false);
+            return DemoCommandResult.Ok("Fire-control solution started; maintain loiter.");
+        }
+
+        private DemoCommandResult ActivateLightning(DemoUnitModel caster)
+        {
+            if (caster.Magic < caster.Stats.AbilityMagicCost)
+                return DemoCommandResult.Fail("Not enough magic for Lightning Strike.");
+            caster.Magic -= caster.Stats.AbilityMagicCost;
+            caster.AbilityCooldownRemaining = caster.Stats.AbilityCooldown;
+            List<DemoUnitModel> targets = _units.Values.Where(unit => unit.IsAlive && unit.IsOperational && unit.Team != caster.Team &&
+                HorizontalDistance(unit.Position, caster.Position) <= caster.Stats.AbilityRadius).ToList();
+            foreach (DemoUnitModel target in targets)
+            {
+                DemoDamageResult result = DemoDamageResolver.Resolve(caster, target, Balance, _random, 0f,
+                    caster.Stats.AbilityDamageMultiplier, 1f, 1f, 0f, 1f, 0f,
+                    caster.Stats.AbilityPenetration > 0f ? caster.Stats.AbilityPenetration : caster.Stats.Penetration,
+                    target.MarkedUntil > SimulationTime, 0.5f);
+                ApplySuppression(target, result, false, caster.Stats.AbilitySuppression);
+                ReportDamage(caster, target, result, target.Position, false);
+                if (result.Destroyed)
+                    ClearDestroyedTarget(target.Id);
+            }
+            Raise($"{caster.DisplayName} struck {targets.Count} enemies with lightning.", caster.Position, true);
+            return DemoCommandResult.Ok($"Lightning struck {targets.Count} enemies.");
+        }
+
+        private void ExecuteFireControlShot(DemoUnitModel caster)
+        {
+            DemoUnitModel target = GetUnit(caster.AbilityTargetId);
+            if (target == null || !target.IsAlive || !target.IsOperational || target.Team == caster.Team ||
+                HorizontalDistance(caster.Position, target.Position) > caster.Stats.AbilityRange || !CanFireWeapon(caster))
+            {
+                CancelAbilityChannel(caster, true);
+                Raise($"{caster.DisplayName}'s fire-control shot was aborted.", caster.Position, false);
+                return;
+            }
+            float hitChance = Mathf.Max(caster.Stats.AbilityMinimumAccuracy, CalculateHitChance(caster, target, true));
+            float evasion = CalculateEvasionChance(target);
+            DemoDamageResult result = DemoDamageResolver.Resolve(caster, target, Balance, _random, 0f,
+                caster.Stats.AbilityDamageMultiplier, 1f, 1f, 0f, hitChance, evasion,
+                caster.Stats.AbilityPenetration, target.MarkedUntil > SimulationTime);
+            ConsumeAmmo(caster);
+            caster.AttacksPerformed++;
+            caster.AttackCooldown = GetEffectiveAttackInterval(caster.Id);
+            ApplySuppression(target, result, false);
+            ReportDamage(caster, target, result, target.Position, false);
+            CancelAbilityChannel(caster, true);
+            Raise($"{caster.DisplayName} fired a bound anti-armour shot.", caster.Position, true);
+            if (result.Destroyed)
+                ClearDestroyedTarget(target.Id);
+        }
+
+        private void CancelAbilityChannel(DemoUnitModel unit, bool startCooldown)
+        {
+            if (unit == null)
+                return;
+            unit.AbilityChannelRemaining = 0f;
+            unit.AbilityTargetId = -1;
+            if (startCooldown)
+                unit.AbilityCooldownRemaining = Mathf.Max(unit.AbilityCooldownRemaining, unit.Stats.AbilityCooldown);
         }
 
         private void TickEnemyAi(float dt)
@@ -1008,7 +1478,7 @@ namespace SWRTS.Demo1
 
         private DemoUnitModel FindNearestVisiblePlayer(DemoUnitModel observer, bool enforceHomeLeash)
         {
-            float visionRadius = Mathf.Max(0f, observer.Stats.VisionRadius);
+            float visionRadius = GetEffectiveVisionRadius(observer.Id);
             return _units.Values
                 .Where(unit => unit.IsAlive && unit.IsOperational && unit.Team == DemoTeam.Player &&
                                HorizontalDistance(observer.Position, unit.Position) <= visionRadius &&
@@ -1030,7 +1500,8 @@ namespace SWRTS.Demo1
                     DemoUnitModel target = _units.Values
                         .Where(candidate => candidate.IsAlive && candidate.IsOperational && candidate.Team == DemoTeam.Enemy &&
                                             candidate.IsCurrentlyObservedByPlayer && candidate.PlayerIntelLevel >= DemoIntelLevel.Identified &&
-                                            HorizontalDistance(unit.Position, candidate.Position) <= unit.Stats.EngagementRadius)
+                                            HorizontalDistance(unit.Position, candidate.Position) <=
+                                            unit.Stats.EngagementRadius * (1f - Balance.FullSuppressionVisionRangePenalty * unit.SuppressionRatio))
                         .OrderBy(candidate => HorizontalDistance(unit.Position, candidate.Position))
                         .ThenBy(candidate => candidate.Id)
                         .FirstOrDefault();
@@ -1070,13 +1541,12 @@ namespace SWRTS.Demo1
                         unit.TargetLastKnownPosition = target.Position;
                         unit.HasTargetLastKnownPosition = true;
                     }
-                    else
-                        ClearTarget(unit);
                     unit.Activity = DemoUnitActivity.Moving;
                     continue;
                 }
                 if (unit.Team == DemoTeam.Player && !unit.HasExplicitAttackOrder &&
-                    (!targetVisible || HorizontalDistance(unit.Position, target.Position) > unit.Stats.EngagementRadius))
+                    ((!targetVisible && unit.LockQuality <= 0f) ||
+                     HorizontalDistance(unit.Position, target.Position) > unit.Stats.EngagementRadius))
                 {
                     ClearTarget(unit);
                     continue;
@@ -1087,7 +1557,7 @@ namespace SWRTS.Demo1
                     unit.TargetLastKnownPosition = target.Position;
                     unit.HasTargetLastKnownPosition = true;
                     float distance = HorizontalDistance(unit.Position, target.Position);
-                    float attackRange = Mathf.Max(0.1f, unit.Stats.AttackRange);
+                    float attackRange = GetEffectiveAttackRange(unit.Id);
                     float pursuitStopRange = attackRange * 0.75f;
                     if (unit.IsFixed)
                         unit.Activity = distance <= attackRange ? DemoUnitActivity.Attacking : DemoUnitActivity.Idle;
@@ -1122,24 +1592,16 @@ namespace SWRTS.Demo1
             {
                 DemoUnitModel target = GetUnit(attacker.LockedTargetId);
                 if (target == null || !target.IsAlive || !IsTargetVisibleToAttacker(attacker, target) ||
-                    HorizontalDistance(attacker.Position, target.Position) > Mathf.Max(0.1f, attacker.Stats.AttackRange))
+                    HorizontalDistance(attacker.Position, target.Position) > GetEffectiveAttackRange(attacker.Id) ||
+                    attacker.LockQuality < Balance.LockFireThreshold)
                     continue;
-                if (attacker.AttackCooldown > 0f)
+                if (attacker.AttackCooldown > 0f || attacker.IsChannelingAbility || !CanFireWeapon(attacker))
                     continue;
 
-                Vector3 facing = target.Position - attacker.Position;
-                facing.y = 0f;
-                if (facing.sqrMagnitude > 0.001f)
-                    attacker.Facing = facing.normalized;
-                float attackMultiplier = target.MarkedUntil > SimulationTime ? Balance.ScoutMarkDamageMultiplier : 1f;
                 int nextAttack = attacker.AttacksPerformed + 1;
-                bool artillerySalvo = attacker.Role == DemoUnitRole.Artillery &&
-                                       !attacker.Stats.HasTrait(DemoUnitTrait.LynetteSharpshooter) &&
-                                       nextAttack % Mathf.Max(1, Balance.ArtillerySalvoEveryAttacks) == 0;
-                if (artillerySalvo)
-                    attackMultiplier *= Balance.ArtillerySalvoDamageMultiplier;
                 bool fortressBarrage = attacker.Role == DemoUnitRole.Fortress &&
                                        attacker.HealthRatio <= Balance.FortressBarrageHealthThreshold;
+                float attackMultiplier = 1f;
                 if (fortressBarrage)
                 {
                     attackMultiplier *= Balance.FortressBarrageDamageMultiplier;
@@ -1150,22 +1612,37 @@ namespace SWRTS.Demo1
                     }
                 }
 
-                float criticalBonus = attacker.Stats.HasTrait(DemoUnitTrait.LynetteSharpshooter)
-                    ? Balance.LynetteCriticalChanceBonus
-                    : 0f;
-                DemoDamageResult result = DemoDamageResolver.Resolve(
-                    attacker, target, Balance, _random, GetEffectiveShieldBonus(target.Id), attackMultiplier, 1f,
-                    GetCoreDiscoveryMultiplier(attacker), criticalBonus);
+                List<DemoUnitModel> impactedTargets;
+                Vector3 impactPosition;
+                if (attacker.Stats.ExplosiveRadius > 0f)
+                {
+                    impactPosition = CalculateLeadPoint(attacker, target);
+                    attacker.LastAimPoint = impactPosition;
+                    impactedTargets = _units.Values.Where(unit => unit.IsAlive && unit.IsOperational && unit.Team != attacker.Team &&
+                        HorizontalDistance(unit.Position, impactPosition) <= attacker.Stats.ExplosiveRadius).ToList();
+                }
+                else
+                {
+                    impactPosition = target.Position;
+                    impactedTargets = new List<DemoUnitModel> { target };
+                }
+
+                foreach (DemoUnitModel impacted in impactedTargets)
+                {
+                    float hitChance = CalculateHitChance(attacker, impacted, false);
+                    float evasionChance = CalculateEvasionChance(impacted);
+                    DemoDamageResult result = DemoDamageResolver.Resolve(attacker, impacted, Balance, _random, 0f,
+                        attackMultiplier, 1f, 1f, 0f, hitChance, evasionChance, -1f,
+                        impacted.MarkedUntil > SimulationTime);
+                    ApplySuppression(impacted, result, attacker.Stats.ExplosiveRadius > 0f);
+                    ReportDamage(attacker, impacted, result, impactPosition, false);
+                    if (result.Destroyed)
+                        ClearDestroyedTarget(impacted.Id);
+                }
+                ConsumeAmmo(attacker);
                 attacker.AttacksPerformed = nextAttack;
-                if (attacker.Role == DemoUnitRole.Scout && target.IsAlive)
-                    target.MarkedUntil = Mathf.Max(target.MarkedUntil, SimulationTime + Balance.ScoutMarkDuration);
                 float intervalMultiplier = fortressBarrage ? Balance.FortressBarrageIntervalMultiplier : 1f;
                 attacker.AttackCooldown = Mathf.Max(0.2f, GetEffectiveAttackInterval(attacker.Id) * intervalMultiplier);
-                ReportDamage(attacker, target, result, target.Position, false);
-                if (artillerySalvo)
-                    Raise($"{attacker.DisplayName} completed a calibrated salvo.", attacker.Position, false);
-                if (result.Destroyed)
-                    ClearDestroyedTarget(target.Id);
             }
         }
 
@@ -1222,12 +1699,7 @@ namespace SWRTS.Demo1
 
         private float GetCoreDiscoveryMultiplier(DemoUnitModel attacker)
         {
-            if (attacker == null || !attacker.IsAlive)
-                return 1f;
-            float bonus = _units.Values
-                .Where(provider => CanProvideAura(provider, attacker) && provider.Stats.HasTrait(DemoUnitTrait.SakamotoCoreInsight))
-                .Sum(provider => Balance.SakamotoCoreDiscoveryBonus);
-            return Mathf.Max(0f, 1f + bonus);
+            return 1f;
         }
 
         private bool CanProvideAura(DemoUnitModel provider, DemoUnitModel target)
@@ -1248,22 +1720,26 @@ namespace SWRTS.Demo1
             if (attacker.Team == DemoTeam.Player)
                 return target.HasPersistentPlayerIntel ||
                        (target.IsCurrentlyObservedByPlayer && target.PlayerIntelLevel >= DemoIntelLevel.Identified);
-            return HorizontalDistance(attacker.Position, target.Position) <= Mathf.Max(0f, attacker.Stats.VisionRadius);
+            return HorizontalDistance(attacker.Position, target.Position) <= GetEffectiveVisionRadius(attacker.Id);
         }
 
         private void AssignAutomaticTarget(DemoUnitModel unit, DemoUnitModel target)
         {
+            bool changedTarget = unit.LockedTargetId != target.Id;
             unit.LockedTargetId = target.Id;
             unit.OrderedTargetId = -1;
             unit.HasExplicitAttackOrder = false;
             unit.TargetLastKnownPosition = target.Position;
             unit.HasTargetLastKnownPosition = true;
+            if (changedTarget)
+                unit.LockQuality = 0f;
             if (!unit.HasManualMoveOrder)
                 unit.Activity = DemoUnitActivity.Pursuing;
         }
 
         private void AssignEnemyTarget(DemoUnitModel enemy, DemoUnitModel target)
         {
+            bool changedTarget = enemy.LockedTargetId != target.Id;
             enemy.LockedTargetId = target.Id;
             enemy.OrderedTargetId = -1;
             enemy.HasExplicitAttackOrder = false;
@@ -1272,6 +1748,8 @@ namespace SWRTS.Demo1
             enemy.EnemyAiTargetId = target.Id;
             enemy.EnemyAiLastKnownPosition = target.Position;
             enemy.EnemyAiHasLastKnownPosition = true;
+            if (changedTarget)
+                enemy.LockQuality = 0f;
         }
 
         private void ClearTarget(DemoUnitModel unit)
@@ -1279,6 +1757,7 @@ namespace SWRTS.Demo1
             if (unit == null)
                 return;
             unit.LockedTargetId = -1;
+            unit.LockQuality = 0f;
             unit.OrderedTargetId = -1;
             unit.HasExplicitAttackOrder = false;
             unit.HasTargetLastKnownPosition = false;
@@ -1308,11 +1787,9 @@ namespace SWRTS.Demo1
             unit.Destination = ClampToMap(destination);
             unit.HasDestination = true;
             unit.HasManualMoveOrder = manualMoveOrder;
+            unit.HasLoiter = false;
+            unit.StableLoiterTime = 0f;
             unit.Activity = activity;
-            Vector3 facing = unit.Destination - unit.Position;
-            facing.y = 0f;
-            if (facing.sqrMagnitude > 0.001f)
-                unit.Facing = facing.normalized;
         }
 
         private void StopMovement(DemoUnitModel unit)
@@ -1322,12 +1799,113 @@ namespace SWRTS.Demo1
             unit.Destination = unit.Position;
             unit.HasDestination = false;
             unit.HasManualMoveOrder = false;
+            if (!unit.HasLoiter)
+                BeginLoiter(unit, unit.Position);
             if (unit.Activity == DemoUnitActivity.Moving || unit.Activity == DemoUnitActivity.Pursuing)
                 unit.Activity = DemoUnitActivity.Idle;
         }
 
+        private void BeginLoiter(DemoUnitModel unit, Vector3 center)
+        {
+            if (unit == null || unit.IsFixed || !unit.IsAlive)
+                return;
+            unit.LoiterCenter = ClampToMap(center);
+            unit.HasLoiter = true;
+            Vector3 radial = unit.Position - unit.LoiterCenter;
+            radial.y = 0f;
+            if (radial.sqrMagnitude < 0.001f)
+                radial = unit.Facing.sqrMagnitude > 0.001f ? unit.Facing.normalized : Vector3.right;
+            unit.LoiterAngle = Mathf.Atan2(radial.z, radial.x);
+            unit.Position = ClampToMap(unit.LoiterCenter + radial.normalized * Mathf.Max(0.1f, Balance.LoiterRadius));
+            unit.StableLoiterTime = 0f;
+        }
+
+        private bool CanFireWeapon(DemoUnitModel unit)
+        {
+            if (unit == null || unit.ReloadRemaining > 0f)
+                return false;
+            int cost = Mathf.Max(1, unit.Stats.AmmoPerAttack);
+            if (unit.MagazineAmmo >= cost)
+                return true;
+            StartReload(unit);
+            return false;
+        }
+
+        private void StartReload(DemoUnitModel unit)
+        {
+            if (unit == null || unit.ReloadRemaining > 0f || unit.MagazineAmmo >= unit.Stats.MagazineSize)
+                return;
+            if (!unit.Stats.UnlimitedReserveAmmo && unit.ReserveAmmo <= 0)
+            {
+                if (unit.Team == DemoTeam.Player && unit.DeploymentState == DemoUnitDeploymentState.Active)
+                {
+                    ClearTarget(unit);
+                    CancelAbilityChannel(unit, false);
+                    unit.DeploymentState = DemoUnitDeploymentState.Returning;
+                    SetMovement(unit, BasePosition, DemoUnitActivity.Moving, true);
+                    Raise($"{unit.DisplayName} exhausted ammunition and is returning to base.", unit.Position, true);
+                }
+                return;
+            }
+            unit.ReloadRemaining = Mathf.Max(0.01f, unit.Stats.ReloadDuration);
+            Raise($"{unit.DisplayName} began reloading.", unit.Position, false);
+        }
+
+        private void ConsumeAmmo(DemoUnitModel unit)
+        {
+            int cost = Mathf.Max(1, unit.Stats.AmmoPerAttack);
+            unit.MagazineAmmo = Mathf.Max(0, unit.MagazineAmmo - cost);
+            if (unit.MagazineAmmo < cost)
+                StartReload(unit);
+        }
+
+        private float CalculateHitChance(DemoUnitModel attacker, DemoUnitModel target, bool ignoreRangeFalloff)
+        {
+            float maximumRange = GetEffectiveAttackRange(attacker.Id);
+            float rangeScale = 1f - Balance.FullSuppressionVisionRangePenalty * attacker.SuppressionRatio;
+            float optimalRange = Mathf.Min(maximumRange, Mathf.Max(0.1f, attacker.Stats.OptimalAttackRange * rangeScale));
+            float distance = HorizontalDistance(attacker.Position, target.Position);
+            float rangeModifier = ignoreRangeFalloff || distance <= optimalRange
+                ? 1f
+                : Mathf.Lerp(1f, Balance.RangeModifierAtMaximum, Mathf.InverseLerp(optimalRange, maximumRange, distance));
+            float chance = attacker.Stats.BaseAccuracy * rangeModifier *
+                           (0.5f + 0.5f * attacker.LockQualityRatio) *
+                           (1f - 0.5f * attacker.SuppressionRatio);
+            return Mathf.Clamp(chance, Balance.MinimumHitChance, Balance.MaximumHitChance);
+        }
+
+        private float CalculateEvasionChance(DemoUnitModel target)
+        {
+            float speedRatio = target.Stats.MoveSpeed <= 0f ? 0f : Mathf.Clamp01(target.CurrentSpeed / target.Stats.MoveSpeed);
+            float chance = 0.05f + 0.08f * (target.Stats.Mobility - 1f) + 0.12f * speedRatio +
+                           0.15f * target.TurnRatio - 0.2f * target.SuppressionRatio;
+            return Mathf.Clamp(chance, Balance.MinimumEvasionChance, Balance.MaximumEvasionChance);
+        }
+
+        private Vector3 CalculateLeadPoint(DemoUnitModel attacker, DemoUnitModel target)
+        {
+            float projectileSpeed = Mathf.Max(0.1f, attacker.Stats.ProjectileSpeed);
+            float travelTime = HorizontalDistance(attacker.Position, target.Position) / projectileSpeed;
+            return ClampToMap(target.Position + target.CurrentVelocity * travelTime);
+        }
+
+        private void ApplySuppression(DemoUnitModel target, DemoDamageResult result, bool explosive, float additional = 0f)
+        {
+            if (target == null || !result.Hit || result.Evaded)
+                return;
+            float dealt = result.ShieldDamage + result.HealthDamage;
+            float gain = Balance.SuppressionBasePerHit + Balance.SuppressionDamageScale * dealt /
+                         Mathf.Max(1f, target.Stats.MaxHealth);
+            if (explosive)
+                gain *= Balance.ExplosiveSuppressionMultiplier;
+            target.Suppression = Mathf.Clamp(target.Suppression + gain + Mathf.Max(0f, additional), 0f, 100f);
+            target.LastHitAt = SimulationTime;
+        }
+
         private void ReportDamage(DemoUnitModel attacker, DemoUnitModel target, DemoDamageResult result, Vector3 position, bool remote)
         {
+            if (!result.Hit || result.Evaded)
+                return;
             string modifier = result.CoreHit ? "core hit" : result.Critical ? "critical hit" : "hit";
             if (result.Destroyed)
             {

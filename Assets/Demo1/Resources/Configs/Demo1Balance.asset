@@ -54,4 +54,22 @@ MonoBehaviour:
     BaseArrivalRadius: 2
     BaseLaunchSpread: 1.5
     BaseTurnaroundDuration: 20
+    LoiterRadius: 1.5
+    LockFireThreshold: 25
+    LockBaseGrowthPerSecond: 25
+    LockDecayPerSecond: 35
+    RangeModifierAtMaximum: 0.45
+    MinimumHitChance: 0.05
+    MaximumHitChance: 0.95
+    MinimumEvasionChance: 0.05
+    MaximumEvasionChance: 0.45
+    SuppressionBasePerHit: 8
+    SuppressionDamageScale: 40
+    ExplosiveSuppressionMultiplier: 1.5
+    SuppressionRecoveryDelay: 2
+    SuppressionRecoveryPerSecond: 12
+    FullSuppressionAttackIntervalPenalty: 0.75
+    FullSuppressionSpeedPenalty: 0.3
+    FullSuppressionVisionRangePenalty: 0.25
+    FullSuppressionLockPenalty: 0.5
     RandomSeed: 1944

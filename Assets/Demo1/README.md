@@ -27,15 +27,15 @@ This real-scale conversion is a user-requested code prototype. It follows the Fe
 
 ## ScriptableObject configuration
 
-- Global combat, vision, AI and trait tuning lives in `Assets/Demo1/Resources/Configs/Demo1Balance.asset`.
-- Every scenario unit has an independent `DemoUnitConfig` asset under `Assets/Demo1/Resources/Configs/Units`. The asset contains identity, team, role, spawn position, all combat/vision stats, traits, persistent intelligence and individual AI setup.
+- Global combat, vision, AI, lock and suppression tuning lives in `Assets/Demo1/Resources/Configs/Demo1Balance.asset`.
+- Every scenario unit has an independent `DemoUnitConfig` asset under `Assets/Demo1/Resources/Configs/Units`. The asset contains identity, team, role, spawn position, movement, weapon, ammunition, armour, active-ability, vision, persistent-intelligence and individual-AI values.
 - Runtime models clone values from these assets, so health, cooldowns and other battle changes never write back into project assets.
 - The controller discovers the default assets through `Resources` without scene rebinding. Inspector-assigned configs override the default resource set, while the previous code defaults remain only as a missing-asset safety fallback.
 - New configs can be created through `Assets > Create > SWRTS > Demo1 > Balance Config` and `Unit Config`.
 
 ### Player witch balance pass
 
-After the doubled values proved too strong, HP, attack, defense, magic, shield and magic recovery were reduced by 33% (multiplied by 0.67 and rounded to whole numbers). Attack intervals, critical rates, traits, vision and movement remain unchanged:
+After the doubled values proved too strong, HP, attack, defense, magic, shield and magic recovery were reduced by 33% (multiplied by 0.67 and rounded to whole numbers). Vision and historical movement values remain unchanged; weapon cadence, ammunition and active mechanisms now follow the individual-combat specification:
 
 | Witch | HP | Attack | Defense | Magic | Shield | Magic recovery |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -76,7 +76,7 @@ This visual pass implements the information requirements of Feishu revision 6 wi
 - Right click a discovered enemy, or `A` then left click it: lock the target, pursue it and fire whenever it enters attack range.
 - **Auto** toggles automatic acquisition of the nearest identified enemy inside the unit's warning radius. **Stop attack** disables automatic acquisition and clears the current lock.
 - `H`: clear the current target and order selected witches to return to Folkestone.
-- `B` then left click: use an area-level remote strike if the selected unit has that capability. No witch in the current scenario has it after Lynette's rework.
+- `S` / **Skill**: use the single selected witch's active mechanism. Sakamoto and Perrine resolve immediately; Miyafuji and Lynette then require a map-unit target.
 - `Space`: pause/resume simulation. Camera, selection and orders remain available while paused.
 - `F`: focus the selected units. WASD/arrow keys, edge scrolling, middle drag and wheel control the camera.
 - `Ctrl+1..9`: save a control group; `1..9`: recall and focus it.
@@ -84,23 +84,25 @@ This visual pass implements the information requirements of Feishu revision 6 wi
 ## Individual target-lock combat experiment
 
 - Combat never leaves the operational map and does not create a battle container, formation, reserve queue, reinforcement state, retreat timer, battle bubble or separate battle panel.
-- Every active unit owns its current target, target order type, last-known target position, warning radius, attack range, attack cooldown and auto-attack stance.
+- Every active unit owns its current target, target order type, last-known target position, lock quality, ammunition, reload, suppression, current velocity, attack cooldown and auto-attack stance.
 - A manual attack order keeps pursuing the target while it is observable; the attacker begins firing as soon as it enters attack range and continues moving until it reaches a closer standoff distance. After contact is lost it flies to the last-known position and then clears the order.
 - Movement and firing are independent. A normal move order keeps the current lock, allows automatic target acquisition and preserves the requested route; any locked target inside attack range can be fired on without stopping movement. The move order takes priority over automatic pursuit.
 - With auto attack enabled, a unit acquires the nearest identified enemy inside its warning radius. It fires only inside its independent attack range and automatically chooses another eligible target after the current one is destroyed.
-- Support pulses and Sakamoto/Miyafuji trait auras are distance based. Their `SupportRadius` is serialized per character; providers affect themselves as well as nearby active allies.
-- Artillery keeps the every-third-attack calibrated salvo, scouts keep their damage-amplifying mark and fortresses keep the low-health emergency barrage. These resolve directly between individual world units.
-- This branch intentionally deviates from the battle-instance flow in Feishu revision 6 so the team can compare an individual-combat prototype against the formation-combat branch. No Feishu revision was changed.
+- Movement uses four-second acceleration to maximum speed, `60 degrees/s x Mobility` turning, turn-dependent speed caps and a 1.5-unit loiter after arrival. Movement and ordinary fire remain independent.
+- Lock quality grows from intelligence, distance, turning and suppression, must reach 25 before firing, and decays by 35 per second without observation. Accuracy then applies range, lock and suppression modifiers before a separate evasion roll.
+- Standard witch machine guns use an 8/32 magazine/reserve load and a three-second reload. Empty reserves automatically order a return; the existing 20-second base service restores health, magic, shield and ammunition.
+- Enemy armour uses the 100% / 35% / 10% penetration tiers. Core marks last six seconds, halve effective armour and apply the non-stacking 2.4x core multiplier. Suppression only applies linear combat penalties and never clears orders or forces retreat.
+- This branch implements the target specification in Feishu `Demo1 战斗 个体` revision 352 and intentionally does not create battle instances, formations or a separate battle panel.
 
-## Witch trait prototype
+## Witch active mechanisms
 
-- Traits are passive, data-driven flags on witch stats. Multiple traits can be combined later without adding character-name checks to combat resolution.
-- Sakamoto's **Magic Eye Command** increases base core discovery by 100% for herself and active allies within her 12 km support radius.
-- Miyafuji's **Guardian Heart** increases shield absorption efficiency by 15% for herself and active allies within her 12 km support radius. Her support pulse uses the same radius.
-- An aura stops contributing when its holder is not active or is destroyed. Multiple sources stack additively.
-- Lynette's **Precision Shooter** adds 18 percentage points of critical chance (12% to 30% in the scenario) and multiplies her attack interval by 1.375 (1.6s to 2.2s). She uses standard single-target attacks and has no map remote strike or every-third-shot artillery salvo.
-- The character detail panel shows each unit's trait and effective critical chance, attack interval and core-discovery value. Adjusted values include their base value for comparison.
-- These traits and values are code-only prototype assumptions and have not been written back to Feishu revision 6.
+- Active mechanisms are data-driven through `DemoSpecialAbility` and per-unit serialized parameters; the simulation does not branch on display names.
+- Sakamoto's **Magic Eye Search** spends 30 magic to assess and core-mark enemies in a 45-degree, 36-unit forward sector for six seconds.
+- Miyafuji's **Heal** channels on another ally within six units for three seconds, restoring 12% maximum health per second at 15 magic per second. She moves at half speed and cannot fire while channeling; range, magic or a new attack order interrupts it.
+- Lynette has a 5/20 single-shot anti-armour weapon with a 2.2-second interval. **Fire-control Solution** requires three seconds of stable loiter and fires a doubled-damage, penetration-32 shot at an assessed or core-marked target within 24 units.
+- Sanya uses a 1/8 rocket load with a five-second reload. Her 2.5-unit explosion uses a velocity lead point and adds explosive suppression; her 48-unit circular radar remains unchanged.
+- Perrine's **Lightning Strike** spends 40 magic to damage enemies within five units, treats armour at half value and adds 35 suppression.
+- These mechanisms replace the old Sakamoto core-discovery aura, Miyafuji shield aura, support pulse and Lynette critical trait.
 
 ## Witch vision and player intelligence prototype
 
@@ -124,12 +126,11 @@ This visual pass implements the information requirements of Feishu revision 6 wi
 
 ## Configurable prototype assumptions
 
-The Feishu specification revision 6 intentionally leaves formulas and concrete values open. Demo defaults are serialized in the balance and unit ScriptableObject assets described above; `Demo1Balance` and `DemoUnitStats` remain their runtime value types:
+The individual-combat specification revision 352 defines the current prototype formulas. Demo defaults are serialized in the balance and unit ScriptableObject assets described above; `Demo1Balance` and `DemoUnitStats` remain their runtime value types:
 
-- defense is flat reduction with a minimum damage floor;
-- a discovered core replaces (rather than stacks with) an ordinary critical multiplier;
-- shield absorption consumes both shield and magic, with allied global shield bonuses improving efficiency;
-- pathing is direct movement on the unobstructed prototype map; every witch owns her route and destination offset;
+- hit, evasion, penetration, armour, core, shield and HP resolve in the documented order;
+- shield absorption consumes one shield capacity and 0.55 magic per absorbed damage;
+- pathing remains direct on the unobstructed prototype map, but acceleration, turning and loitering are continuous simulation states;
 - enemy AI uses the independent scout/guard state machines described above; player operational choices remain manual;
 - orders may be queued while paused;
 - victory is objective-driven per level: interception requires every raider to be destroyed, while both assault missions require their fortress to be destroyed; defeat occurs only after every witch in the base roster is lost, so standby, returning and servicing witches prevent premature defeat.
