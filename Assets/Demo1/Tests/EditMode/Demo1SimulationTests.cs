@@ -93,16 +93,72 @@ namespace SWRTS.Demo1.Tests
         }
 
         [Test]
-        public void MoveOrder_CancelsTargetLock()
+        public void MoveOrder_KeepsTargetLockAndFiresWhileMoving()
         {
             Demo1Simulation simulation = Scenario(out DemoUnitModel player, out DemoUnitModel enemy);
             simulation.RequestAttack(new[] { player.Id }, enemy.Id);
+            float healthBefore = enemy.Health;
 
             simulation.IssueMove(new[] { player.Id }, new Vector3(0f, 0f, 10f));
+            simulation.Advance(0.1f);
 
-            Assert.That(player.LockedTargetId, Is.EqualTo(-1));
+            Assert.That(player.LockedTargetId, Is.EqualTo(enemy.Id));
             Assert.That(player.Activity, Is.EqualTo(DemoUnitActivity.Moving));
             Assert.That(player.HasDestination, Is.True);
+            Assert.That(player.Position, Is.Not.EqualTo(Vector3.zero));
+            Assert.That(enemy.Health, Is.LessThan(healthBefore));
+        }
+
+        [Test]
+        public void Pursuit_StartsFiringBeforeMovementStops()
+        {
+            Demo1Simulation simulation = Scenario(out DemoUnitModel player, out DemoUnitModel enemy, 5f, 20f, 4f);
+            simulation.RequestAttack(new[] { player.Id }, enemy.Id);
+
+            simulation.Advance(0.1f);
+
+            Assert.That(player.Activity, Is.EqualTo(DemoUnitActivity.Pursuing));
+            Assert.That(player.HasDestination, Is.True);
+            Assert.That(player.Position.x, Is.GreaterThan(0f));
+            Assert.That(enemy.Health, Is.LessThan(enemy.Stats.MaxHealth));
+        }
+
+        [Test]
+        public void AutoAttack_CanAcquireAndFireDuringMoveOrder()
+        {
+            Demo1Simulation simulation = Scenario(out DemoUnitModel player, out DemoUnitModel enemy, 3f, 10f, 4f);
+            player.AutoAttackEnabled = false;
+            simulation.IssueMove(new[] { player.Id }, new Vector3(10f, 0f, 0f));
+            simulation.SetAutoAttack(new[] { player.Id }, true);
+            enemy.IsCurrentlyObservedByPlayer = true;
+            enemy.PlayerIntelLevel = DemoIntelLevel.Identified;
+            float healthBefore = enemy.Health;
+
+            simulation.Advance(0.1f);
+
+            Assert.That(player.LockedTargetId, Is.EqualTo(enemy.Id));
+            Assert.That(player.Activity, Is.EqualTo(DemoUnitActivity.Moving));
+            Assert.That(player.HasManualMoveOrder, Is.True);
+            Assert.That(enemy.Health, Is.LessThan(healthBefore));
+        }
+
+        [Test]
+        public void ManualAttack_DuringMoveOrderPreservesRouteAndFires()
+        {
+            Demo1Simulation simulation = Scenario(out DemoUnitModel player, out DemoUnitModel enemy, 3f, 10f, 4f);
+            Vector3 destination = new Vector3(10f, 0f, 0f);
+            simulation.IssueMove(new[] { player.Id }, destination);
+            Vector3 assignedDestination = player.Destination;
+            simulation.RequestAttack(new[] { player.Id }, enemy.Id);
+            float healthBefore = enemy.Health;
+
+            simulation.Advance(0.1f);
+
+            Assert.That(player.LockedTargetId, Is.EqualTo(enemy.Id));
+            Assert.That(player.Activity, Is.EqualTo(DemoUnitActivity.Moving));
+            Assert.That(player.HasManualMoveOrder, Is.True);
+            Assert.That(player.Destination, Is.EqualTo(assignedDestination));
+            Assert.That(enemy.Health, Is.LessThan(healthBefore));
         }
 
         [Test]

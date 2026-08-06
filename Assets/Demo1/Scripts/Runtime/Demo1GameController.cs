@@ -1072,6 +1072,9 @@ namespace SWRTS.Demo1
         private string BuildCurrentActionText(DemoUnitModel unit)
         {
             DemoUnitModel target = unit.LockedTargetId >= 0 ? _simulation.GetUnit(unit.LockedTargetId) : null;
+            if (unit.HasDestination && target != null &&
+                Vector3.Distance(unit.Position, target.Position) <= unit.Stats.AttackRange)
+                return $"移动射击：{target.DisplayName}  ·  前往 ({unit.Destination.x:0.0}, {unit.Destination.z:0.0})";
             if (unit.Activity == DemoUnitActivity.Attacking && target != null)
                 return $"攻击中：{target.DisplayName}，距离 {Vector3.Distance(unit.Position, target.Position):0.0}";
             if (unit.Activity == DemoUnitActivity.Pursuing)

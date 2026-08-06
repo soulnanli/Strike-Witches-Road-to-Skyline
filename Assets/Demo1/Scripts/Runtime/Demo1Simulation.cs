@@ -259,6 +259,7 @@ namespace SWRTS.Demo1
         public Vector3 Facing = Vector3.right;
         public Vector3 Destination;
         public bool HasDestination;
+        public bool HasManualMoveOrder;
         public DemoUnitActivity Activity = DemoUnitActivity.Idle;
         public DemoUnitDeploymentState DeploymentState;
         public float TurnaroundRemaining;
@@ -405,6 +406,7 @@ namespace SWRTS.Demo1
             {
                 target.Activity = DemoUnitActivity.Destroyed;
                 target.HasDestination = false;
+                target.HasManualMoveOrder = false;
                 target.LockedTargetId = -1;
                 target.OrderedTargetId = -1;
                 target.HasExplicitAttackOrder = false;
@@ -487,6 +489,7 @@ namespace SWRTS.Demo1
                 unit.Position = ClampToMap(BasePosition + offset);
                 unit.Destination = unit.Position;
                 unit.HasDestination = false;
+                unit.HasManualMoveOrder = false;
                 ClearTarget(unit);
                 unit.TurnaroundRemaining = 0f;
                 unit.DeploymentState = DemoUnitDeploymentState.Active;
@@ -512,7 +515,7 @@ namespace SWRTS.Demo1
             {
                 ClearTarget(unit);
                 unit.DeploymentState = DemoUnitDeploymentState.Returning;
-                SetMovement(unit, BasePosition, DemoUnitActivity.Moving);
+                SetMovement(unit, BasePosition, DemoUnitActivity.Moving, true);
             }
             Raise($"{candidates.Count} witches returning to base.", BasePosition, true);
             return DemoCommandResult.Ok($"{candidates.Count} witches returning to base.");
@@ -671,8 +674,14 @@ namespace SWRTS.Demo1
                 unit.HasExplicitAttackOrder = true;
                 unit.TargetLastKnownPosition = target.Team == DemoTeam.Enemy ? target.PlayerVisiblePosition : target.Position;
                 unit.HasTargetLastKnownPosition = true;
-                unit.HasDestination = false;
-                unit.Activity = DemoUnitActivity.Pursuing;
+                if (unit.HasManualMoveOrder && unit.HasDestination)
+                    unit.Activity = DemoUnitActivity.Moving;
+                else
+                {
+                    unit.HasDestination = false;
+                    unit.HasManualMoveOrder = false;
+                    unit.Activity = DemoUnitActivity.Pursuing;
+                }
             }
             Raise($"{candidates.Count} units locked {target.DisplayName}.", target.PlayerVisiblePosition, true);
             return DemoCommandResult.Ok($"Attack order assigned to {candidates.Count} units.");
@@ -694,8 +703,9 @@ namespace SWRTS.Demo1
                 float angle = candidates.Count == 1 ? 0f : i * Mathf.PI * 2f / candidates.Count;
                 Vector3 offset = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle)) * spacing;
                 DemoUnitModel unit = candidates[i];
-                ClearTarget(unit);
-                SetMovement(unit, destination + offset, DemoUnitActivity.Moving);
+                unit.OrderedTargetId = -1;
+                unit.HasExplicitAttackOrder = false;
+                SetMovement(unit, destination + offset, DemoUnitActivity.Moving, true);
             }
             Raise($"Independent move order assigned to {candidates.Count} units.", destination, false);
             return DemoCommandResult.Ok("Move order assigned.");
@@ -798,6 +808,7 @@ namespace SWRTS.Demo1
                     unit.Position = BasePosition;
                     unit.Destination = BasePosition;
                     unit.HasDestination = false;
+                    unit.HasManualMoveOrder = false;
                     unit.Activity = DemoUnitActivity.Idle;
                     unit.DeploymentState = DemoUnitDeploymentState.Servicing;
                     unit.TurnaroundRemaining = Mathf.Max(0f, Balance.BaseTurnaroundDuration);
@@ -809,6 +820,7 @@ namespace SWRTS.Demo1
                 {
                     unit.Position = unit.Destination;
                     unit.HasDestination = false;
+                    unit.HasManualMoveOrder = false;
                     if (unit.Activity == DemoUnitActivity.Moving)
                         unit.Activity = DemoUnitActivity.Idle;
                 }
@@ -1013,7 +1025,7 @@ namespace SWRTS.Demo1
                 if (unit.Team == DemoTeam.Player)
                 {
                     if (!unit.AutoAttackEnabled || unit.HasExplicitAttackOrder || unit.LockedTargetId >= 0 ||
-                        unit.HasDestination || unit.DeploymentState != DemoUnitDeploymentState.Active)
+                        unit.DeploymentState != DemoUnitDeploymentState.Active)
                         continue;
                     DemoUnitModel target = _units.Values
                         .Where(candidate => candidate.IsAlive && candidate.IsOperational && candidate.Team == DemoTeam.Enemy &&
@@ -1051,6 +1063,18 @@ namespace SWRTS.Demo1
                 }
 
                 bool targetVisible = IsTargetVisibleToAttacker(unit, target);
+                if (unit.HasManualMoveOrder)
+                {
+                    if (targetVisible)
+                    {
+                        unit.TargetLastKnownPosition = target.Position;
+                        unit.HasTargetLastKnownPosition = true;
+                    }
+                    else
+                        ClearTarget(unit);
+                    unit.Activity = DemoUnitActivity.Moving;
+                    continue;
+                }
                 if (unit.Team == DemoTeam.Player && !unit.HasExplicitAttackOrder &&
                     (!targetVisible || HorizontalDistance(unit.Position, target.Position) > unit.Stats.EngagementRadius))
                 {
@@ -1063,12 +1087,16 @@ namespace SWRTS.Demo1
                     unit.TargetLastKnownPosition = target.Position;
                     unit.HasTargetLastKnownPosition = true;
                     float distance = HorizontalDistance(unit.Position, target.Position);
-                    if (distance <= Mathf.Max(0.1f, unit.Stats.AttackRange))
+                    float attackRange = Mathf.Max(0.1f, unit.Stats.AttackRange);
+                    float pursuitStopRange = attackRange * 0.75f;
+                    if (unit.IsFixed)
+                        unit.Activity = distance <= attackRange ? DemoUnitActivity.Attacking : DemoUnitActivity.Idle;
+                    else if (distance <= pursuitStopRange)
                     {
                         StopMovement(unit);
                         unit.Activity = DemoUnitActivity.Attacking;
                     }
-                    else if (!unit.IsFixed)
+                    else
                         SetMovement(unit, target.Position, DemoUnitActivity.Pursuing);
                     continue;
                 }
@@ -1088,7 +1116,7 @@ namespace SWRTS.Demo1
         private void TickIndividualCombat(float dt)
         {
             foreach (DemoUnitModel attacker in _units.Values
-                         .Where(unit => unit.IsAlive && unit.IsOperational && unit.Activity == DemoUnitActivity.Attacking && unit.LockedTargetId >= 0)
+                         .Where(unit => unit.IsAlive && unit.IsOperational && unit.LockedTargetId >= 0)
                          .OrderBy(unit => unit.Id)
                          .ToList())
             {
@@ -1230,7 +1258,8 @@ namespace SWRTS.Demo1
             unit.HasExplicitAttackOrder = false;
             unit.TargetLastKnownPosition = target.Position;
             unit.HasTargetLastKnownPosition = true;
-            unit.Activity = DemoUnitActivity.Pursuing;
+            if (!unit.HasManualMoveOrder)
+                unit.Activity = DemoUnitActivity.Pursuing;
         }
 
         private void AssignEnemyTarget(DemoUnitModel enemy, DemoUnitModel target)
@@ -1254,6 +1283,11 @@ namespace SWRTS.Demo1
             unit.HasExplicitAttackOrder = false;
             unit.HasTargetLastKnownPosition = false;
             unit.EnemyAiTargetId = -1;
+            if (unit.HasManualMoveOrder && unit.HasDestination)
+            {
+                unit.Activity = DemoUnitActivity.Moving;
+                return;
+            }
             if (unit.Activity == DemoUnitActivity.Attacking || unit.Activity == DemoUnitActivity.Pursuing)
             {
                 unit.HasDestination = false;
@@ -1267,12 +1301,13 @@ namespace SWRTS.Demo1
                 ClearTarget(unit);
         }
 
-        private void SetMovement(DemoUnitModel unit, Vector3 destination, DemoUnitActivity activity)
+        private void SetMovement(DemoUnitModel unit, Vector3 destination, DemoUnitActivity activity, bool manualMoveOrder = false)
         {
             if (unit == null || unit.IsFixed || !unit.IsAlive || !unit.IsOperational)
                 return;
             unit.Destination = ClampToMap(destination);
             unit.HasDestination = true;
+            unit.HasManualMoveOrder = manualMoveOrder;
             unit.Activity = activity;
             Vector3 facing = unit.Destination - unit.Position;
             facing.y = 0f;
@@ -1286,6 +1321,7 @@ namespace SWRTS.Demo1
                 return;
             unit.Destination = unit.Position;
             unit.HasDestination = false;
+            unit.HasManualMoveOrder = false;
             if (unit.Activity == DemoUnitActivity.Moving || unit.Activity == DemoUnitActivity.Pursuing)
                 unit.Activity = DemoUnitActivity.Idle;
         }

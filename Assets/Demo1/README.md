@@ -85,7 +85,8 @@ This visual pass implements the information requirements of Feishu revision 6 wi
 
 - Combat never leaves the operational map and does not create a battle container, formation, reserve queue, reinforcement state, retreat timer, battle bubble or separate battle panel.
 - Every active unit owns its current target, target order type, last-known target position, warning radius, attack range, attack cooldown and auto-attack stance.
-- A manual attack order keeps pursuing the target while it is observable; after contact is lost the attacker flies to the last-known position and then clears the order. A normal move order cancels the lock.
+- A manual attack order keeps pursuing the target while it is observable; the attacker begins firing as soon as it enters attack range and continues moving until it reaches a closer standoff distance. After contact is lost it flies to the last-known position and then clears the order.
+- Movement and firing are independent. A normal move order keeps the current lock, allows automatic target acquisition and preserves the requested route; any locked target inside attack range can be fired on without stopping movement. The move order takes priority over automatic pursuit.
 - With auto attack enabled, a unit acquires the nearest identified enemy inside its warning radius. It fires only inside its independent attack range and automatically chooses another eligible target after the current one is destroyed.
 - Support pulses and Sakamoto/Miyafuji trait auras are distance based. Their `SupportRadius` is serialized per character; providers affect themselves as well as nearby active allies.
 - Artillery keeps the every-third-attack calibrated salvo, scouts keep their damage-amplifying mark and fortresses keep the low-health emergency barrage. These resolve directly between individual world units.
