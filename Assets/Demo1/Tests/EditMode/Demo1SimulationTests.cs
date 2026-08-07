@@ -133,6 +133,46 @@ namespace SWRTS.Demo1.Tests
         }
 
         [Test]
+        public void Movement_ArrivalRadiusAcceptsNearbyPointWithoutSnapping()
+        {
+            Demo1Balance balance = TestBalance();
+            balance.DestinationRadius = 1.8f;
+            Demo1Simulation simulation = new Demo1Simulation(balance);
+            DemoUnitModel unit = simulation.AddUnit("witch", DemoTeam.Player, DemoUnitRole.Witch, Stats(), Vector3.zero);
+            Vector3 destination = new Vector3(1.7f, 0f, 0f);
+            unit.Facing = Vector3.left;
+
+            simulation.IssueMove(new[] { unit.Id }, destination);
+            simulation.Advance(0.1f);
+
+            Assert.That(unit.HasDestination, Is.False);
+            Assert.That(unit.HasLoiter, Is.True);
+            Assert.That(unit.FlightMode, Is.EqualTo(DemoFlightMode.Loiter));
+            Assert.That(unit.LoiterCenter, Is.EqualTo(destination));
+            Assert.That(unit.Position, Is.EqualTo(Vector3.zero), "Arrival must not teleport the unit to the route center.");
+        }
+
+        [Test]
+        public void LoiterWaypoint_AdvancesInsideArrivalRadiusDespiteTurnDirection()
+        {
+            Demo1Balance balance = TestBalance();
+            balance.DestinationRadius = 1.8f;
+            Demo1Simulation simulation = new Demo1Simulation(balance);
+            DemoUnitModel unit = simulation.AddUnit("witch", DemoTeam.Player, DemoUnitRole.Witch, Stats(), Vector3.zero);
+            simulation.IssueMove(new[] { unit.Id }, new Vector3(1.7f, 0f, 0f));
+            simulation.Advance(0.1f);
+            int initialWaypoint = unit.LoiterWaypointIndex;
+            Vector3 waypoint = unit.LoiterWaypoints[initialWaypoint];
+            unit.Position = waypoint + Vector3.right * 1.7f;
+            unit.Facing = Vector3.right;
+            unit.CurrentSpeed = unit.Stats.MoveSpeed;
+
+            simulation.Advance(0.1f);
+
+            Assert.That(unit.LoiterWaypointIndex, Is.EqualTo((initialWaypoint + 1) % unit.LoiterWaypoints.Count));
+        }
+
+        [Test]
         public void Hover_DeceleratesToStopAndMoveOrderExitsHover()
         {
             Demo1Simulation simulation = new Demo1Simulation(TestBalance());

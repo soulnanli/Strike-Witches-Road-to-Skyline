@@ -1156,7 +1156,7 @@ namespace SWRTS.Demo1
                     Vector3 toWaypoint = unit.LoiterWaypoints[index] - unit.Position;
                     toWaypoint.y = 0f;
                     distanceToDestination = toWaypoint.magnitude;
-                    if (distanceToDestination <= Mathf.Max(0.2f, Balance.DestinationRadius * 0.2f))
+                    if (distanceToDestination <= GetDestinationArrivalRadius(unit))
                     {
                         unit.LoiterWaypointIndex = (index + 1) % unit.LoiterWaypoints.Count;
                         toWaypoint = unit.LoiterWaypoints[unit.LoiterWaypointIndex] - unit.Position;
@@ -1186,11 +1186,16 @@ namespace SWRTS.Demo1
                     targetSpeed = Mathf.Min(targetSpeed, Mathf.Max(0.5f, distanceToDestination * 0.75f));
                 unit.CurrentSpeed = Mathf.MoveTowards(unit.CurrentSpeed, targetSpeed, acceleration * dt);
                 unit.CurrentVelocity = unit.Facing * unit.CurrentSpeed;
+                Vector3 movementEnd = ClampToMap(unit.Position + unit.CurrentVelocity * dt);
 
-                if (unit.HasDestination && distanceToDestination <= Mathf.Max(unit.CurrentSpeed * dt + 0.05f,
-                        Balance.DestinationRadius * 0.2f))
+                float arrivalRadius = unit.DeploymentState == DemoUnitDeploymentState.Returning
+                    ? Mathf.Max(0.05f, Balance.BaseArrivalRadius)
+                    : GetDestinationArrivalRadius(unit);
+                if (unit.HasDestination && ReachesPoint(unit.Position, movementEnd, unit.Destination, arrivalRadius))
                 {
-                    unit.Position = unit.Destination;
+                    Vector3 reachedDestination = unit.Destination;
+                    if (HorizontalDistance(unit.Position, reachedDestination) > arrivalRadius)
+                        unit.Position = movementEnd;
                     unit.HasDestination = false;
                     unit.HasManualMoveOrder = false;
                     if (unit.DeploymentState == DemoUnitDeploymentState.Returning)
@@ -1206,12 +1211,23 @@ namespace SWRTS.Demo1
                         Raise($"{unit.DisplayName} landed and entered service.", BasePosition, true);
                         continue;
                     }
-                    BeginLoiter(unit, unit.Position);
+                    BeginLoiter(unit, reachedDestination);
                     if (unit.Activity == DemoUnitActivity.Moving)
                         unit.Activity = DemoUnitActivity.Idle;
                 }
                 else if (desiredDirection.sqrMagnitude > 0.001f)
-                    unit.Position = ClampToMap(unit.Position + unit.CurrentVelocity * dt);
+                {
+                    Vector3 movementStart = unit.Position;
+                    unit.Position = movementEnd;
+                    if (!unit.HasDestination && unit.FlightMode == DemoFlightMode.Loiter &&
+                        unit.LoiterWaypoints.Count > 0)
+                    {
+                        int index = Mathf.Clamp(unit.LoiterWaypointIndex, 0, unit.LoiterWaypoints.Count - 1);
+                        if (ReachesPoint(movementStart, movementEnd, unit.LoiterWaypoints[index],
+                                GetDestinationArrivalRadius(unit)))
+                            unit.LoiterWaypointIndex = (index + 1) % unit.LoiterWaypoints.Count;
+                    }
+                }
 
                 if (unit.DeploymentState == DemoUnitDeploymentState.Returning &&
                     HorizontalDistance(unit.Position, BasePosition) <= Balance.BaseArrivalRadius)
@@ -1232,6 +1248,34 @@ namespace SWRTS.Demo1
                 }
 
             }
+        }
+
+        private float GetDestinationArrivalRadius(DemoUnitModel unit)
+        {
+            float radius = unit != null && unit.Team == DemoTeam.Enemy
+                ? Balance.EnemyAiArrivalRadius
+                : Balance.DestinationRadius;
+            return Mathf.Max(0.05f, radius);
+        }
+
+        private static bool ReachesPoint(Vector3 movementStart, Vector3 movementEnd, Vector3 target, float radius)
+        {
+            movementStart.y = 0f;
+            movementEnd.y = 0f;
+            target.y = 0f;
+            float radiusSquared = Mathf.Max(0.05f, radius);
+            radiusSquared *= radiusSquared;
+            if ((movementStart - target).sqrMagnitude <= radiusSquared ||
+                (movementEnd - target).sqrMagnitude <= radiusSquared)
+                return true;
+
+            Vector3 movement = movementEnd - movementStart;
+            float movementSquared = movement.sqrMagnitude;
+            if (movementSquared <= 0.000001f)
+                return false;
+            float progress = Mathf.Clamp01(Vector3.Dot(target - movementStart, movement) / movementSquared);
+            Vector3 closestPoint = movementStart + movement * progress;
+            return (closestPoint - target).sqrMagnitude <= radiusSquared;
         }
 
         private void TickVisibility(float dt)

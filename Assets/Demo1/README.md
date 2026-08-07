@@ -89,11 +89,11 @@ This visual pass implements the information requirements of Feishu revision 6 wi
 - A manual attack order always clears the previous move, loiter and hover state. It keeps pursuing the target while observable, fires as soon as it enters attack range and settles at 75% of the current effective range. After contact is lost it flies to the last-known position and then clears the order.
 - Movement and firing are independent. A normal move order keeps the current lock, allows automatic target acquisition and preserves the requested route; any locked target inside attack range can be fired on without stopping movement. The move order takes priority over automatic pursuit.
 - With auto attack enabled, a unit acquires the nearest identified enemy inside its current effective attack range. There is no independent warning radius; suppression and Lynette's prepared fire-control state alter the same acquisition and firing boundary.
-- Movement uses eight-second acceleration to maximum speed and `60 degrees/s x Mobility` turning. A 180-degree turn limits speed to 30%. Arrival creates a 10 x 5 capsule loiter route with 2.5-unit end radii and two straight segments aligned to the arrival heading. Movement and ordinary fire remain independent.
+- Movement uses eight-second acceleration to maximum speed and `60 degrees/s x Mobility` turning. A 180-degree turn limits speed to 30%. Entering the 1.8-unit arrival radius, or crossing it during one simulation step, completes a destination or loiter waypoint without snapping the unit to its center. Arrival creates a 10 x 5 capsule loiter route with 2.5-unit end radii and two straight segments aligned to the arrival heading. Movement and ordinary fire remain independent.
 - Lock quality grows from intelligence, turning and suppression, must reach 25 before firing, and decays by 35 per second without observation or outside effective attack range. Distance within range affects neither lock growth nor accuracy; accuracy applies lock and suppression modifiers before a separate evasion roll.
 - Standard witch machine guns use an 8/32 magazine/reserve load and a three-second reload. Empty reserves automatically order a return; the existing 20-second base service restores health, magic, shield and ammunition.
 - Enemy armour uses the 100% / 35% / 10% penetration tiers. Core marks last six seconds, halve effective armour and apply the non-stacking 2.4x core multiplier. Suppression only applies linear combat penalties and never clears orders or forces retreat.
-- This branch implements the target specification in Feishu `Demo1 战斗 个体` revision 393 and intentionally does not create battle instances, formations or a separate battle panel.
+- This branch implements the target specification in Feishu `Demo1 战斗 个体` revision 395 and intentionally does not create battle instances, formations or a separate battle panel.
 
 ## Witch active mechanisms
 
@@ -115,7 +115,7 @@ This visual pass implements the information requirements of Feishu revision 6 wi
 - When observation is lost, the enemy marker freezes at its last known position. Intelligence degrades from assessed to identified after 3 seconds, to contact after 7 seconds, and disappears after 15 seconds.
 - Stale contacts cannot be directly engaged, but their last known area remains a valid movement or remote-strike destination. Mission-known fixed objectives keep persistent identified intelligence.
 - Strategic unit models and world-space labels stay hidden while the entire witch roster is at base. Standby and servicing witches never render on the theatre map; mobile interception enemies never receive mission-known persistent intelligence.
-- These vision shapes, durations and sharing rules are tracked in Feishu `Demo1 战斗 个体` revision 393.
+- These vision shapes, durations and sharing rules are tracked in Feishu `Demo1 战斗 个体` revision 395.
 
 ## Independent enemy AI prototype
 
@@ -128,7 +128,7 @@ This visual pass implements the information requirements of Feishu revision 6 wi
 
 ## Configurable prototype assumptions
 
-The individual-combat specification revision 393 defines the current prototype formulas. Demo defaults are serialized in the balance and unit ScriptableObject assets described above; `Demo1Balance` and `DemoUnitStats` remain their runtime value types:
+The individual-combat specification revision 395 defines the current prototype formulas. Demo defaults are serialized in the balance and unit ScriptableObject assets described above; `Demo1Balance` and `DemoUnitStats` remain their runtime value types:
 
 - hit, evasion, penetration, armour, core, shield and HP resolve in the documented order;
 - shield absorption consumes one shield capacity and 0.55 magic per absorbed damage;
