@@ -165,14 +165,13 @@ namespace SWRTS.Demo1
         public float LoiterRadius = 1.5f;
         public float AccelerationDuration = 8f;
         public float TurnSpeedCapAt180 = 0.3f;
-        public float LoiterMajorRadius = 5f;
-        public float LoiterMinorRadius = 2.5f;
-        public int LoiterVertexCount = 5;
+        public float LoiterStraightHalfLength = 2.5f;
+        public float LoiterTurnRadius = 2.5f;
+        public int LoiterArcSegments = 8;
         public float HoverStopSpeed = 0.02f;
         public float LockFireThreshold = 25f;
         public float LockBaseGrowthPerSecond = 25f;
         public float LockDecayPerSecond = 35f;
-        public float RangeModifierAtMaximum = 0.45f;
         public float MinimumHitChance = 0.05f;
         public float MaximumHitChance = 0.95f;
         public float MinimumEvasionChance = 0.05f;
@@ -221,9 +220,7 @@ namespace SWRTS.Demo1
         public float VisionAngle = 100f;
         public DemoWitchVisionType WitchVisionType = DemoWitchVisionType.None;
         public float ForcedRevealRadius;
-        public float EngagementRadius = 8f;
         public float AttackRange = 8f;
-        public float OptimalAttackRange = 6f;
         public float BaseAccuracy = 0.72f;
         public float Penetration = 16f;
         public float Armor;
@@ -247,7 +244,6 @@ namespace SWRTS.Demo1
         public float PassiveDamageMultiplier = 2f;
         public float PassivePenetration = 32f;
         public float PassiveMinimumAccuracy = 0.85f;
-        public bool PassiveIgnoresRangeFalloff = true;
         public float AbilityMagicCost;
         public float AbilityCooldown;
         public float AbilityRange;
@@ -641,7 +637,6 @@ namespace SWRTS.Demo1
             if (runtimeStats.AmmoPerAttack <= 0) runtimeStats.AmmoPerAttack = 1;
             if (runtimeStats.ReloadDuration <= 0f) runtimeStats.ReloadDuration = 3f;
             if (runtimeStats.BaseAccuracy <= 0f) runtimeStats.BaseAccuracy = 0.72f;
-            if (runtimeStats.OptimalAttackRange <= 0f) runtimeStats.OptimalAttackRange = runtimeStats.AttackRange * 0.75f;
             if (runtimeStats.Penetration <= 0f) runtimeStats.Penetration = team == DemoTeam.Enemy ? 18f : 16f;
             if (team == DemoTeam.Player && role == DemoUnitRole.Witch && runtimeStats.ForcedRevealRadius <= 0f)
                 runtimeStats.ForcedRevealRadius = 24f;
@@ -1358,23 +1353,18 @@ namespace SWRTS.Demo1
                     continue;
                 }
 
-                if (!IsTargetVisibleToAttacker(attacker, target))
+                float maximumRange = GetEffectiveAttackRange(attacker, target);
+                if (!IsTargetVisibleToAttacker(attacker, target) ||
+                    HorizontalDistance(attacker.Position, target.Position) > maximumRange)
                 {
                     attacker.LockQuality = Mathf.Max(0f, attacker.LockQuality - Balance.LockDecayPerSecond * dt);
                     continue;
                 }
 
                 float intelFactor = attacker.Team == DemoTeam.Player && target.PlayerIntelLevel >= DemoIntelLevel.Assessed ? 1.25f : 1f;
-                float maximumRange = GetEffectiveAttackRange(attacker, target);
-                float rangeScale = 1f - Balance.FullSuppressionVisionRangePenalty * attacker.SuppressionRatio;
-                float optimalRange = Mathf.Min(maximumRange, Mathf.Max(0.1f, attacker.Stats.OptimalAttackRange * rangeScale));
-                float distance = HorizontalDistance(attacker.Position, target.Position);
-                float distanceFactor = distance <= optimalRange
-                    ? 1f
-                    : Mathf.Lerp(1f, 0.5f, Mathf.InverseLerp(optimalRange, maximumRange, distance));
                 float turnFactor = 1f - 0.5f * attacker.TurnRatio;
                 float suppressionFactor = 1f - Balance.FullSuppressionLockPenalty * attacker.SuppressionRatio;
-                float growth = Balance.LockBaseGrowthPerSecond * intelFactor * distanceFactor * turnFactor * suppressionFactor;
+                float growth = Balance.LockBaseGrowthPerSecond * intelFactor * turnFactor * suppressionFactor;
                 attacker.LockQuality = Mathf.Min(100f, attacker.LockQuality + growth * dt);
                 if (attacker.LockQuality >= Balance.LockFireThreshold - 0.001f)
                     attacker.LockQuality = Mathf.Max(Balance.LockFireThreshold, attacker.LockQuality);
@@ -1525,7 +1515,7 @@ namespace SWRTS.Demo1
                 Raise($"{caster.DisplayName}'s fire-control shot was aborted.", caster.Position, false);
                 return;
             }
-            float hitChance = Mathf.Max(caster.Stats.AbilityMinimumAccuracy, CalculateHitChance(caster, target, true));
+            float hitChance = Mathf.Max(caster.Stats.AbilityMinimumAccuracy, CalculateHitChance(caster, target));
             float evasion = CalculateEvasionChance(target);
             DemoDamageResult result = DemoDamageResolver.Resolve(caster, target, Balance, _random, 0f,
                 caster.Stats.AbilityDamageMultiplier, 1f, 1f, 0f, hitChance, evasion,
@@ -1667,7 +1657,7 @@ namespace SWRTS.Demo1
                     DemoUnitModel target = _units.Values
                         .Where(candidate => candidate.IsAlive && candidate.IsOperational && candidate.Team == DemoTeam.Enemy &&
                                             candidate.IsCurrentlyObservedByPlayer && candidate.PlayerIntelLevel >= DemoIntelLevel.Identified &&
-                                            HorizontalDistance(unit.Position, candidate.Position) <= GetAutomaticTargetingRange(unit, candidate))
+                                            HorizontalDistance(unit.Position, candidate.Position) <= GetEffectiveAttackRange(unit, candidate))
                         .OrderBy(candidate => HorizontalDistance(unit.Position, candidate.Position))
                         .ThenBy(candidate => candidate.Id)
                         .FirstOrDefault();
@@ -1678,7 +1668,7 @@ namespace SWRTS.Demo1
                 {
                     DemoUnitModel target = _units.Values
                         .Where(candidate => candidate.IsAlive && candidate.IsOperational && candidate.Team == DemoTeam.Player &&
-                                            HorizontalDistance(unit.Position, candidate.Position) <= unit.Stats.EngagementRadius)
+                                            HorizontalDistance(unit.Position, candidate.Position) <= GetEffectiveAttackRange(unit, candidate))
                         .OrderBy(candidate => HorizontalDistance(unit.Position, candidate.Position))
                         .ThenBy(candidate => candidate.Id)
                         .FirstOrDefault();
@@ -1724,7 +1714,7 @@ namespace SWRTS.Demo1
                 }
                 if (unit.Team == DemoTeam.Player && !unit.HasExplicitAttackOrder &&
                     ((!targetVisible && unit.LockQuality <= 0f) ||
-                     HorizontalDistance(unit.Position, target.Position) > GetAutomaticTargetingRange(unit, target)))
+                     HorizontalDistance(unit.Position, target.Position) > GetEffectiveAttackRange(unit, target)))
                 {
                     ClearTarget(unit);
                     continue;
@@ -1797,8 +1787,7 @@ namespace SWRTS.Demo1
                 else
                 {
                     bool fireControl = CanUseFireControl(attacker, target);
-                    float hitChance = CalculateHitChance(attacker, target,
-                        fireControl && attacker.Stats.PassiveIgnoresRangeFalloff);
+                    float hitChance = CalculateHitChance(attacker, target);
                     if (fireControl)
                         hitChance = Mathf.Max(attacker.Stats.PassiveMinimumAccuracy, hitChance);
                     float evasionChance = CalculateEvasionChance(target);
@@ -1883,7 +1872,7 @@ namespace SWRTS.Demo1
                 Mathf.Max(0.1f, attacker.Stats.ProjectileLifetime),
                 Mathf.Max(0.05f, attacker.Stats.ProjectileContactRadius),
                 Mathf.Max(0f, attacker.Stats.ExplosiveRadius),
-                CalculateHitChance(attacker, target, false));
+                CalculateHitChance(attacker, target));
             _projectiles.Add(projectile);
             attacker.LastAimPoint = target.Position;
             Raise($"{attacker.DisplayName} launched a tracking rocket at {target.DisplayName}.", attacker.Position, false);
@@ -2068,14 +2057,24 @@ namespace SWRTS.Demo1
             unit.HoverStableTime = 0f;
             Vector3 longAxis = unit.Facing.sqrMagnitude > 0.001f ? unit.Facing.normalized : Vector3.right;
             Vector3 shortAxis = new Vector3(-longAxis.z, 0f, longAxis.x);
-            int vertexCount = Mathf.Max(3, Balance.LoiterVertexCount);
-            List<Vector3> waypoints = new List<Vector3>(vertexCount);
-            for (int i = 0; i < vertexCount; i++)
+            float straightHalfLength = Mathf.Max(0.1f, Balance.LoiterStraightHalfLength);
+            float turnRadius = Mathf.Max(0.1f, Balance.LoiterTurnRadius);
+            int arcSegments = Mathf.Max(2, Balance.LoiterArcSegments);
+            List<Vector3> waypoints = new List<Vector3>(arcSegments * 2 + 2);
+            waypoints.Add(ClampToMap(unit.LoiterCenter - longAxis * straightHalfLength + shortAxis * turnRadius));
+            waypoints.Add(ClampToMap(unit.LoiterCenter + longAxis * straightHalfLength + shortAxis * turnRadius));
+            for (int i = 1; i <= arcSegments; i++)
             {
-                float angle = i * Mathf.PI * 2f / vertexCount;
-                waypoints.Add(ClampToMap(unit.LoiterCenter +
-                    longAxis * (Mathf.Cos(angle) * Mathf.Max(0.1f, Balance.LoiterMajorRadius)) +
-                    shortAxis * (Mathf.Sin(angle) * Mathf.Max(0.1f, Balance.LoiterMinorRadius))));
+                float angle = Mathf.Lerp(90f, -90f, (float)i / arcSegments) * Mathf.Deg2Rad;
+                waypoints.Add(ClampToMap(unit.LoiterCenter + longAxis * straightHalfLength +
+                    longAxis * (Mathf.Cos(angle) * turnRadius) + shortAxis * (Mathf.Sin(angle) * turnRadius)));
+            }
+            waypoints.Add(ClampToMap(unit.LoiterCenter - longAxis * straightHalfLength - shortAxis * turnRadius));
+            for (int i = 1; i < arcSegments; i++)
+            {
+                float angle = Mathf.Lerp(-90f, -270f, (float)i / arcSegments) * Mathf.Deg2Rad;
+                waypoints.Add(ClampToMap(unit.LoiterCenter - longAxis * straightHalfLength +
+                    longAxis * (Mathf.Cos(angle) * turnRadius) + shortAxis * (Mathf.Sin(angle) * turnRadius)));
             }
             unit.SetLoiterWaypoints(waypoints);
             unit.StableLoiterTime = 0f;
@@ -2120,16 +2119,9 @@ namespace SWRTS.Demo1
                 StartReload(unit);
         }
 
-        private float CalculateHitChance(DemoUnitModel attacker, DemoUnitModel target, bool ignoreRangeFalloff)
+        private float CalculateHitChance(DemoUnitModel attacker, DemoUnitModel target)
         {
-            float maximumRange = GetEffectiveAttackRange(attacker, target);
-            float rangeScale = 1f - Balance.FullSuppressionVisionRangePenalty * attacker.SuppressionRatio;
-            float optimalRange = Mathf.Min(maximumRange, Mathf.Max(0.1f, attacker.Stats.OptimalAttackRange * rangeScale));
-            float distance = HorizontalDistance(attacker.Position, target.Position);
-            float rangeModifier = ignoreRangeFalloff || distance <= optimalRange
-                ? 1f
-                : Mathf.Lerp(1f, Balance.RangeModifierAtMaximum, Mathf.InverseLerp(optimalRange, maximumRange, distance));
-            float chance = attacker.Stats.BaseAccuracy * rangeModifier *
+            float chance = attacker.Stats.BaseAccuracy *
                            (0.5f + 0.5f * attacker.LockQualityRatio) *
                            (1f - 0.5f * attacker.SuppressionRatio);
             return Mathf.Clamp(chance, Balance.MinimumHitChance, Balance.MaximumHitChance);
@@ -2165,13 +2157,6 @@ namespace SWRTS.Demo1
                 : attacker.Stats.AttackRange;
             return Mathf.Max(0.1f, baseRange *
                 (1f - Balance.FullSuppressionVisionRangePenalty * attacker.SuppressionRatio));
-        }
-
-        private float GetAutomaticTargetingRange(DemoUnitModel attacker, DemoUnitModel target)
-        {
-            float engagement = attacker.Stats.EngagementRadius *
-                               (1f - Balance.FullSuppressionVisionRangePenalty * attacker.SuppressionRatio);
-            return Mathf.Max(engagement, GetEffectiveAttackRange(attacker, target));
         }
 
         private static float DistanceToSegment(Vector3 point, Vector3 start, Vector3 end)

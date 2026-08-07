@@ -54,7 +54,7 @@ namespace SWRTS.Demo1.PlayModeTests
         }
 
         [UnityTest]
-        public IEnumerator SelectionShowsAttackRangeAndTargetLockAndStopClearsThem()
+        public IEnumerator SelectionShowsOnlyAttackRangeAndMergedDetectionLayers()
         {
             GameObject root = new GameObject("Demo1 Target Visualization Test");
             Demo1GameController controller = root.AddComponent<Demo1GameController>();
@@ -72,18 +72,59 @@ namespace SWRTS.Demo1.PlayModeTests
                 .Single(item => item.UnitId == player.Id);
             Transform attackRange = view.transform.Find("Attack Range");
             Transform optimalRange = view.transform.Find("Optimal Range");
+            Transform engagementRange = view.transform.Find("Engagement");
             Transform targetLock = view.transform.Find("Target Lock");
             Assert.That(attackRange, Is.Not.Null);
-            Assert.That(optimalRange, Is.Not.Null);
+            Assert.That(optimalRange, Is.Null);
+            Assert.That(engagementRange, Is.Null);
             Assert.That(targetLock, Is.Not.Null);
             Assert.That(attackRange.GetComponent<LineRenderer>().enabled, Is.True);
-            Assert.That(optimalRange.GetComponent<LineRenderer>().enabled, Is.True);
             Assert.That(targetLock.GetComponent<LineRenderer>().enabled, Is.True);
+
+            GameObject overlay = GameObject.Find("Selected Range Overlay");
+            Assert.That(overlay, Is.Not.Null);
+            LineRenderer detection = overlay.GetComponentsInChildren<LineRenderer>(true)
+                .First(line => line.name.StartsWith("Detection Range"));
+            LineRenderer forcedReveal = overlay.GetComponentsInChildren<LineRenderer>(true)
+                .First(line => line.name.StartsWith("Forced Reveal"));
+            Assert.That(detection.enabled, Is.True);
+            Assert.That(forcedReveal.enabled, Is.True);
+            Assert.That(detection.startColor.r, Is.EqualTo(Demo1RangeOverlay.DetectionColor.r).Within(0.005f));
+            Assert.That(detection.startColor.g, Is.EqualTo(Demo1RangeOverlay.DetectionColor.g).Within(0.005f));
+            Assert.That(detection.startColor.b, Is.EqualTo(Demo1RangeOverlay.DetectionColor.b).Within(0.005f));
+            Assert.That(detection.startColor.a, Is.EqualTo(Demo1RangeOverlay.DetectionColor.a).Within(0.005f));
 
             Assert.That(controller.CommandSetAutoAttack(false).Success, Is.True);
             yield return null;
             Assert.That(player.LockedTargetId, Is.EqualTo(-1));
             Assert.That(targetLock.GetComponent<LineRenderer>().enabled, Is.False);
+
+            Object.Destroy(root);
+            yield return null;
+        }
+
+        [UnityTest]
+        public IEnumerator OverlappingSelectedVisionAndForcedRevealUseSingleContourPerLayer()
+        {
+            GameObject root = new GameObject("Demo1 Range Union Test");
+            Demo1GameController controller = root.AddComponent<Demo1GameController>();
+            yield return null;
+            yield return null;
+
+            DemoUnitModel ordinary = controller.Simulation.Units.First(unit =>
+                unit.Team == DemoTeam.Player && unit.Stats.WitchVisionType == DemoWitchVisionType.Ordinary);
+            DemoUnitModel night = controller.Simulation.Units.First(unit =>
+                unit.Team == DemoTeam.Player && unit.Stats.WitchVisionType == DemoWitchVisionType.Night);
+            night.Position = ordinary.Position + Vector3.right;
+            controller.SelectUnits(new[] { ordinary.Id, night.Id });
+            yield return null;
+
+            GameObject overlay = GameObject.Find("Selected Range Overlay");
+            LineRenderer[] lines = overlay.GetComponentsInChildren<LineRenderer>(true);
+            Assert.That(lines.Count(line => line.enabled && line.name.StartsWith("Detection Range")), Is.EqualTo(1));
+            Assert.That(lines.Count(line => line.enabled && line.name.StartsWith("Forced Reveal")), Is.EqualTo(1));
+            Assert.That(ordinary.Stats.WitchVisionType, Is.EqualTo(DemoWitchVisionType.Ordinary));
+            Assert.That(night.Stats.WitchVisionType, Is.EqualTo(DemoWitchVisionType.Night));
 
             Object.Destroy(root);
             yield return null;

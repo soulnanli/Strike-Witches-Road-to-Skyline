@@ -57,14 +57,13 @@ MonoBehaviour:
     LoiterRadius: 1.5
     AccelerationDuration: 8
     TurnSpeedCapAt180: 0.3
-    LoiterMajorRadius: 5
-    LoiterMinorRadius: 2.5
-    LoiterVertexCount: 5
+    LoiterStraightHalfLength: 2.5
+    LoiterTurnRadius: 2.5
+    LoiterArcSegments: 8
     HoverStopSpeed: 0.02
     LockFireThreshold: 25
     LockBaseGrowthPerSecond: 25
     LockDecayPerSecond: 35
-    RangeModifierAtMaximum: 0.45
     MinimumHitChance: 0.05
     MaximumHitChance: 0.95
     MinimumEvasionChance: 0.05

@@ -1,4 +1,5 @@
 using System.Linq;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
 
@@ -37,8 +38,6 @@ namespace SWRTS.Demo1.Tests
                 VisionRadius = 30f,
                 VisionAngle = 120f,
                 WitchVisionType = DemoWitchVisionType.Ordinary,
-                EngagementRadius = 12f,
-                OptimalAttackRange = range * 0.75f,
                 AttackRange = range,
                 BaseAccuracy = 1f,
                 Penetration = 20f,
@@ -66,10 +65,9 @@ namespace SWRTS.Demo1.Tests
             Demo1Simulation simulation = Scenario(out DemoUnitModel player, out DemoUnitModel enemy, 12f, 25f, 3f);
             Assert.That(simulation.RequestAttack(new[] { player.Id }, enemy.Id).Success, Is.True);
 
-            simulation.Advance(6f);
+            simulation.Advance(10f);
 
             Assert.That(player.Position.x, Is.GreaterThan(0f));
-            Assert.That(player.LockQuality, Is.GreaterThanOrEqualTo(25f));
             Assert.That(player.AttacksPerformed, Is.GreaterThan(0));
             Assert.That(enemy.Health, Is.LessThan(enemy.Stats.MaxHealth));
         }
@@ -122,8 +120,16 @@ namespace SWRTS.Demo1.Tests
             Assert.That(unit.HasDestination, Is.False);
             Assert.That(unit.HasLoiter, Is.True);
             Assert.That(unit.FlightMode, Is.EqualTo(DemoFlightMode.Loiter));
-            Assert.That(unit.LoiterWaypoints.Count, Is.EqualTo(5));
+            Assert.That(unit.LoiterWaypoints.Count, Is.EqualTo(18));
             Assert.That(Vector3.Distance(unit.LoiterCenter, new Vector3(4f, 0f, 0f)), Is.LessThan(0.2f));
+            Vector3 longAxis = (unit.LoiterWaypoints[1] - unit.LoiterWaypoints[0]).normalized;
+            Vector3 shortAxis = new Vector3(-longAxis.z, 0f, longAxis.x);
+            float width = unit.LoiterWaypoints.Max(point => Vector3.Dot(point - unit.LoiterCenter, longAxis)) -
+                          unit.LoiterWaypoints.Min(point => Vector3.Dot(point - unit.LoiterCenter, longAxis));
+            float height = unit.LoiterWaypoints.Max(point => Vector3.Dot(point - unit.LoiterCenter, shortAxis)) -
+                           unit.LoiterWaypoints.Min(point => Vector3.Dot(point - unit.LoiterCenter, shortAxis));
+            Assert.That(width, Is.EqualTo(10f).Within(0.2f));
+            Assert.That(height, Is.EqualTo(5f).Within(0.2f));
         }
 
         [Test]
@@ -182,6 +188,93 @@ namespace SWRTS.Demo1.Tests
 
             Assert.That(observedLock, Is.GreaterThan(10f));
             Assert.That(player.LockQuality, Is.LessThan(observedLock));
+        }
+
+        [Test]
+        public void LockAndAccuracy_AreDistanceIndependentInsideAttackRange()
+        {
+            Demo1Simulation nearSimulation = CreateLockedScenario(2f, out DemoUnitModel nearAttacker, out DemoUnitModel nearTarget);
+            Demo1Simulation farSimulation = CreateLockedScenario(9f, out DemoUnitModel farAttacker, out DemoUnitModel farTarget);
+            nearSimulation.Advance(0.5f);
+            farSimulation.Advance(0.5f);
+
+            Assert.That(nearAttacker.LockQuality, Is.EqualTo(farAttacker.LockQuality).Within(0.001f));
+            MethodInfo hitMethod = typeof(Demo1Simulation).GetMethod("CalculateHitChance",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(hitMethod, Is.Not.Null);
+            nearAttacker.LockQuality = 70f;
+            farAttacker.LockQuality = 70f;
+            float nearChance = (float)hitMethod.Invoke(nearSimulation, new object[] { nearAttacker, nearTarget });
+            float farChance = (float)hitMethod.Invoke(farSimulation, new object[] { farAttacker, farTarget });
+            Assert.That(nearChance, Is.EqualTo(farChance).Within(0.0001f));
+        }
+
+        [Test]
+        public void LockDecaysAndAutoTargetingWaitsOutsideAttackRange()
+        {
+            Demo1Simulation simulation = new Demo1Simulation(TestBalance());
+            DemoUnitStats playerStats = Stats(range: 4f);
+            playerStats.WitchVisionType = DemoWitchVisionType.Night;
+            playerStats.ForcedRevealRadius = 24f;
+            DemoUnitModel player = simulation.AddUnit("player", DemoTeam.Player, DemoUnitRole.Witch, playerStats, Vector3.zero);
+            DemoUnitModel enemy = simulation.AddUnit("enemy", DemoTeam.Enemy, DemoUnitRole.Guard, Stats(), new Vector3(6f, 0f, 0f));
+
+            simulation.Advance(0.6f);
+            Assert.That(enemy.PlayerIntelLevel, Is.GreaterThanOrEqualTo(DemoIntelLevel.Identified));
+            Assert.That(player.LockedTargetId, Is.EqualTo(-1));
+
+            player.LockedTargetId = enemy.Id;
+            player.LockQuality = 50f;
+            simulation.Advance(0.5f);
+            Assert.That(player.LockQuality, Is.LessThan(50f));
+
+            player.LockedTargetId = -1;
+            enemy.Position = new Vector3(3f, 0f, 0f);
+            simulation.Advance(0.2f);
+            Assert.That(player.LockedTargetId, Is.EqualTo(enemy.Id));
+        }
+
+        [Test]
+        public void RangeContourBuilder_UnionsOverlapsAndKeepsDisconnectedRegions()
+        {
+            var overlapping = Demo1RangeContourBuilder.BuildUnion(new[]
+            {
+                DemoRangeShape.Circle(Vector3.zero, 5f),
+                DemoRangeShape.Circle(new Vector3(6f, 0f, 0f), 5f)
+            }, 0.25f);
+            var disconnected = Demo1RangeContourBuilder.BuildUnion(new[]
+            {
+                DemoRangeShape.Circle(Vector3.zero, 3f),
+                DemoRangeShape.Circle(new Vector3(10f, 0f, 0f), 3f)
+            }, 0.25f);
+            var mixed = Demo1RangeContourBuilder.BuildUnion(new[]
+            {
+                DemoRangeShape.Circle(Vector3.zero, 4f),
+                DemoRangeShape.Sector(new Vector3(3f, 0f, 0f), Vector3.right, 6f, 100f)
+            }, 0.25f);
+
+            Assert.That(overlapping.Count, Is.EqualTo(1));
+            Assert.That(disconnected.Count, Is.EqualTo(2));
+            Assert.That(mixed.Count, Is.EqualTo(1));
+            Assert.That(overlapping[0].Count, Is.GreaterThan(20));
+        }
+
+        private static Demo1Simulation CreateLockedScenario(float distance, out DemoUnitModel attacker,
+            out DemoUnitModel target)
+        {
+            Demo1Balance balance = TestBalance();
+            balance.MinimumHitChance = 0f;
+            balance.MaximumHitChance = 1f;
+            Demo1Simulation simulation = new Demo1Simulation(balance);
+            DemoUnitStats attackerStats = Stats(range: 10f);
+            attackerStats.WitchVisionType = DemoWitchVisionType.Night;
+            attackerStats.BaseAccuracy = 0.8f;
+            attacker = simulation.AddUnit("attacker", DemoTeam.Player, DemoUnitRole.Fortress, attackerStats, Vector3.zero);
+            target = simulation.AddUnit("target", DemoTeam.Enemy, DemoUnitRole.Guard, Stats(), new Vector3(distance, 0f, 0f));
+            target.PlayerIntelLevel = DemoIntelLevel.Assessed;
+            attacker.LockedTargetId = target.Id;
+            attacker.AttackCooldown = 999f;
+            return simulation;
         }
 
         [Test]
@@ -464,6 +557,7 @@ namespace SWRTS.Demo1.Tests
             Assert.That(sanya.Stats.WitchVisionType, Is.EqualTo(DemoWitchVisionType.Night));
             Assert.That(sanya.Stats.VisionRadius, Is.EqualTo(72f));
             Assert.That(sanya.Stats.AttackRange, Is.EqualTo(72f));
+            Assert.That(sanya.Stats.ReserveAmmo, Is.EqualTo(24));
             Assert.That(sanya.Stats.ProjectileTurnRate, Is.EqualTo(120f));
             Assert.That(sanya.Stats.ProjectileLifetime, Is.EqualTo(10f));
             Assert.That(sanya.Stats.ExplosiveRadius, Is.EqualTo(2.5f));
@@ -472,7 +566,9 @@ namespace SWRTS.Demo1.Tests
             Assert.That(guard.Stats.Mobility, Is.EqualTo(0.65f));
             Assert.That(balance.Values.AccelerationDuration, Is.EqualTo(8f));
             Assert.That(balance.Values.TurnSpeedCapAt180, Is.EqualTo(0.3f));
-            Assert.That(balance.Values.LoiterVertexCount, Is.EqualTo(5));
+            Assert.That(balance.Values.LoiterStraightHalfLength, Is.EqualTo(2.5f));
+            Assert.That(balance.Values.LoiterTurnRadius, Is.EqualTo(2.5f));
+            Assert.That(balance.Values.LoiterArcSegments, Is.EqualTo(8));
             Assert.That(perrine.Stats.SpecialAbility, Is.EqualTo(DemoSpecialAbility.LightningStrike));
             Assert.That(sakamoto.Stats.Traits, Is.EqualTo(DemoUnitTrait.None));
             Assert.That(miyafuji.Stats.Traits, Is.EqualTo(DemoUnitTrait.None));

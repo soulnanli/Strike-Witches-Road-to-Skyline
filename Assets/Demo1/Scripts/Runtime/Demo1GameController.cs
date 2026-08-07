@@ -51,6 +51,7 @@ namespace SWRTS.Demo1
         private Camera _camera;
         private Demo1CameraController _cameraController;
         private Demo1LevelSelector _levelSelector;
+        private Demo1RangeOverlay _rangeOverlay;
         private CommandMode _commandMode;
         private int _abilitySourceId = -1;
         private Vector2 _dragStart;
@@ -141,6 +142,7 @@ namespace SWRTS.Demo1
             _simulation.EventRaised += OnBattleEvent;
             BuildEnvironment();
             BuildCamera();
+            BuildRangeOverlay();
             CreateScenario();
             if (_sortieWitches != null && _sortieWitches.Length > 0)
                 RequestSortie(_sortieWitches);
@@ -288,6 +290,13 @@ namespace SWRTS.Demo1
                 _cameraController.ConfigureFullTheatre();
         }
 
+        private void BuildRangeOverlay()
+        {
+            GameObject overlayObject = new GameObject("Selected Range Overlay");
+            overlayObject.transform.SetParent(transform, false);
+            _rangeOverlay = overlayObject.AddComponent<Demo1RangeOverlay>();
+        }
+
         private Vector3 NormalizedMapPosition(Vector2 normalized)
         {
             return new Vector3(
@@ -371,8 +380,7 @@ namespace SWRTS.Demo1
             witch.MaxMagic = 121f;
             witch.MaxShield = 74f;
             witch.MagicRecovery = 5f;
-            witch.AttackRange = witch.EngagementRadius;
-            witch.OptimalAttackRange = 6f;
+            witch.AttackRange = 8f;
             witch.BaseAccuracy = 0.72f;
             witch.Penetration = 16f;
             witch.MagazineSize = 8;
@@ -426,7 +434,6 @@ namespace SWRTS.Demo1
             artillery.ReserveAmmo = 20;
             artillery.ReloadDuration = 4f;
             artillery.AttackInterval = 2.2f;
-            artillery.OptimalAttackRange = 8f;
             artillery.AttackRange = 12f;
             artillery.Penetration = 24f;
             artillery.SpecialAbility = DemoSpecialAbility.None;
@@ -436,7 +443,6 @@ namespace SWRTS.Demo1
             artillery.PassiveDamageMultiplier = 2f;
             artillery.PassivePenetration = 32f;
             artillery.PassiveMinimumAccuracy = 0.85f;
-            artillery.PassiveIgnoresRangeFalloff = true;
 
             DemoUnitStats nightWitch = witch.Clone();
             nightWitch.MaxHealth = 181f;
@@ -450,11 +456,9 @@ namespace SWRTS.Demo1
             nightWitch.VisionRadius = 72f;
             nightWitch.VisionAngle = 360f;
             nightWitch.MagazineSize = 1;
-            nightWitch.ReserveAmmo = 8;
+            nightWitch.ReserveAmmo = 24;
             nightWitch.ReloadDuration = 5f;
             nightWitch.AttackInterval = 5f;
-            nightWitch.EngagementRadius = 72f;
-            nightWitch.OptimalAttackRange = 8f;
             nightWitch.AttackRange = 72f;
             nightWitch.ExplosiveRadius = 2.5f;
             nightWitch.Penetration = 20f;
@@ -483,9 +487,7 @@ namespace SWRTS.Demo1
             neuroi.MaxShield = 70f;
             neuroi.CoreConcealment = 0.65f;
             neuroi.MoveSpeed = 4.8f;
-            neuroi.EngagementRadius = 7.5f;
             neuroi.AttackRange = 7.5f;
-            neuroi.OptimalAttackRange = 5.5f;
             neuroi.BaseAccuracy = 0.68f;
             neuroi.Penetration = 18f;
             neuroi.Armor = 15f;
@@ -507,7 +509,6 @@ namespace SWRTS.Demo1
             fortress.MaxShield = 260f;
             fortress.CoreConcealment = 0.9f;
             fortress.AttackInterval = 2.2f;
-            fortress.EngagementRadius = 10f;
             fortress.AttackRange = 10f;
             fortress.VisionRadius = 26f;
             fortress.MoveSpeed = 0f;
@@ -945,6 +946,7 @@ namespace SWRTS.Demo1
 
         private void SyncViews()
         {
+            _selection.RemoveWhere(id => _simulation.GetUnit(id)?.IsAlive != true || _simulation.GetUnit(id)?.IsOperational != true);
             foreach (KeyValuePair<int, Demo1UnitView> pair in _unitViews)
             {
                 DemoUnitModel model = _simulation.GetUnit(pair.Key);
@@ -1005,7 +1007,8 @@ namespace SWRTS.Demo1
                 visual.Trail.SetPosition(1, projectile.Position - projectile.Facing * 1.8f + Vector3.up * 0.16f);
             }
 
-            _selection.RemoveWhere(id => _simulation.GetUnit(id)?.IsAlive != true || _simulation.GetUnit(id)?.IsOperational != true);
+            if (_rangeOverlay != null)
+                _rangeOverlay.Sync(_simulation, _selection);
         }
 
         private bool IsHoverEnabledForSelection()
@@ -1212,9 +1215,9 @@ namespace SWRTS.Demo1
             y += 22f;
             DrawDetailStatRow(ref y, contentWidth, "攻击", unit.Stats.Attack.ToString("0.#"), "防御", unit.Stats.Defense.ToString("0.#"));
             DrawDetailStatRow(ref y, contentWidth, "机动", unit.Stats.Mobility.ToString("0.#"), "最大移速", _simulation.GetEffectiveMoveSpeed(unit.Id).ToString("0.#"));
-            DrawDetailStatRow(ref y, contentWidth, "最佳射程", unit.Stats.OptimalAttackRange.ToString("0.#"), "最大射程", _simulation.GetEffectiveAttackRange(unit.Id).ToString("0.#"));
+            DrawDetailStatRow(ref y, contentWidth, "攻击射程", _simulation.GetEffectiveAttackRange(unit.Id).ToString("0.#"), "基础命中", unit.Stats.BaseAccuracy.ToString("P0"));
             DrawDetailStatRow(ref y, contentWidth, "攻击间隔",
-                FormatAdjustedSeconds(unit.Stats.AttackInterval, _simulation.GetEffectiveAttackInterval(unit.Id)), "基础命中", unit.Stats.BaseAccuracy.ToString("P0"));
+                FormatAdjustedSeconds(unit.Stats.AttackInterval, _simulation.GetEffectiveAttackInterval(unit.Id)), "转向率", $"{60f * unit.Stats.Mobility:0.#}°/s");
             DrawDetailStatRow(ref y, contentWidth, "暴击",
                 FormatAdjustedPercent(unit.Stats.CriticalChance, _simulation.GetEffectiveCriticalChance(unit.Id)), "核心发现",
                 FormatAdjustedPercent(unit.Stats.CoreDiscovery, _simulation.GetEffectiveCoreDiscovery(unit.Id)));

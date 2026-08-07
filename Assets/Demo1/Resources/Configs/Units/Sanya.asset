@@ -39,14 +39,12 @@ MonoBehaviour:
     VisionAngle: 360
     WitchVisionType: 2
     ForcedRevealRadius: 24
-    EngagementRadius: 72
     AttackRange: 72
-    OptimalAttackRange: 8
     BaseAccuracy: 0.7
     Penetration: 20
     Armor: 0
     MagazineSize: 1
-    ReserveAmmo: 8
+    ReserveAmmo: 24
     AmmoPerAttack: 1
     ReloadDuration: 5
     UnlimitedReserveAmmo: 0

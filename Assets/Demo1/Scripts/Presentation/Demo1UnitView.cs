@@ -6,12 +6,7 @@ namespace SWRTS.Demo1
     {
         private Renderer _renderer;
         private LineRenderer _selectionCircle;
-        private LineRenderer _visionCircle;
-        private LineRenderer _visionSector;
-        private LineRenderer _forcedRevealCircle;
-        private LineRenderer _engagementCircle;
         private LineRenderer _attackCircle;
-        private LineRenderer _optimalCircle;
         private LineRenderer _abilityCircle;
         private LineRenderer _abilitySector;
         private LineRenderer _routeLine;
@@ -33,12 +28,7 @@ namespace SWRTS.Demo1
                 _renderer.sharedMaterial = _material;
 
             _selectionCircle = Demo1Drawing.CreateCircle(transform, "Selection", new Color(0.2f, 1f, 0.95f, 0.95f), 3f, 48);
-            _visionCircle = Demo1Drawing.CreateCircle(transform, "Night Vision", new Color(0.42f, 0.55f, 1f, 0.48f), 2f, 72);
-            _visionSector = Demo1Drawing.CreateSector(transform, "Ordinary Vision", new Color(0.25f, 0.78f, 1f, 0.5f), 2f, 40);
-            _forcedRevealCircle = Demo1Drawing.CreateCircle(transform, "Forced Reveal", new Color(0.72f, 0.95f, 0.9f, 0.56f), 2f, 72);
-            _engagementCircle = Demo1Drawing.CreateCircle(transform, "Engagement", new Color(1f, 0.72f, 0.18f, 0.55f), 2f, 64);
             _attackCircle = Demo1Drawing.CreateCircle(transform, "Attack Range", new Color(1f, 0.22f, 0.16f, 0.78f), 2.5f, 64);
-            _optimalCircle = Demo1Drawing.CreateCircle(transform, "Optimal Range", new Color(1f, 0.72f, 0.18f, 0.62f), 2f, 64);
             _abilityCircle = Demo1Drawing.CreateCircle(transform, "Ability Range", new Color(0.72f, 0.35f, 1f, 0.82f), 2.5f, 72);
             _abilitySector = Demo1Drawing.CreateSector(transform, "Ability Sector", new Color(0.72f, 0.35f, 1f, 0.82f), 2.5f, 48);
             _routeLine = Demo1Drawing.CreateLine(transform, "Route", new Color(0.2f, 1f, 0.9f, 0.75f), 3f);
@@ -105,15 +95,7 @@ namespace SWRTS.Demo1
         private void SetSelected(bool selected, DemoUnitModel model)
         {
             _selectionCircle.enabled = selected;
-            _visionCircle.enabled = selected && model.Team == DemoTeam.Player &&
-                                    model.Stats.WitchVisionType == DemoWitchVisionType.Night;
-            _visionSector.enabled = selected && model.Team == DemoTeam.Player &&
-                                    model.Stats.WitchVisionType == DemoWitchVisionType.Ordinary;
-            _forcedRevealCircle.enabled = selected && model.Team == DemoTeam.Player &&
-                                          model.Stats.ForcedRevealRadius > 0f;
-            _engagementCircle.enabled = selected;
             _attackCircle.enabled = selected;
-            _optimalCircle.enabled = selected;
             _abilityCircle.enabled = selected && model.Team == DemoTeam.Player &&
                                      model.Stats.SpecialAbility != DemoSpecialAbility.None &&
                                      model.Stats.SpecialAbility != DemoSpecialAbility.MagicEyeSearch;
@@ -125,18 +107,10 @@ namespace SWRTS.Demo1
             float bodyRadius = model.IsFixed ? 2.2f : 1.15f;
             Demo1Drawing.SetCircle(_selectionCircle, model.Position, bodyRadius, 0.09f);
             float rangePenalty = 1f - 0.25f * model.SuppressionRatio;
-            if (_visionCircle.enabled)
-                Demo1Drawing.SetCircle(_visionCircle, model.Position, model.Stats.VisionRadius * rangePenalty, 0.055f);
-            if (_visionSector.enabled)
-                Demo1Drawing.SetSector(_visionSector, model.Position, model.Facing, model.Stats.VisionRadius * rangePenalty, model.Stats.VisionAngle, 0.055f);
-            if (_forcedRevealCircle.enabled)
-                Demo1Drawing.SetCircle(_forcedRevealCircle, model.Position, model.Stats.ForcedRevealRadius, 0.055f);
-            Demo1Drawing.SetCircle(_engagementCircle, model.Position, model.Stats.EngagementRadius, 0.065f);
             float attackRange = model.IsFireControlReady
                 ? Mathf.Max(model.Stats.AttackRange, model.Stats.PassiveAttackRange)
                 : model.Stats.AttackRange;
             Demo1Drawing.SetCircle(_attackCircle, model.Position, attackRange * rangePenalty, 0.075f);
-            Demo1Drawing.SetCircle(_optimalCircle, model.Position, model.Stats.OptimalAttackRange * rangePenalty, 0.06f);
             if (_abilityCircle.enabled)
             {
                 float radius = model.Stats.SpecialAbility == DemoSpecialAbility.LightningStrike

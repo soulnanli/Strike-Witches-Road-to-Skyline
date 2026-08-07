@@ -34,9 +34,7 @@ MonoBehaviour:
     VisionRadius: 26
     VisionAngle: 100
     WitchVisionType: 0
-    EngagementRadius: 10
     AttackRange: 10
-    OptimalAttackRange: 7
     BaseAccuracy: 0.74
     Penetration: 24
     Armor: 32
