@@ -390,7 +390,6 @@ namespace SWRTS.Demo1
             witch.WitchVisionType = DemoWitchVisionType.Ordinary;
             witch.VisionRadius = 24f;
             witch.VisionAngle = 100f;
-            witch.ForcedRevealRadius = 24f;
             DemoUnitStats ace = witch.Clone();
             ace.MaxHealth = 221f;
             ace.Attack = 44f;
@@ -478,7 +477,6 @@ namespace SWRTS.Demo1
 
             DemoUnitStats neuroi = witch.Clone();
             neuroi.WitchVisionType = DemoWitchVisionType.None;
-            neuroi.ForcedRevealRadius = 0f;
             neuroi.Mobility = 0.65f;
             neuroi.MaxHealth = 190f;
             neuroi.Attack = 26f;
@@ -1207,7 +1205,6 @@ namespace SWRTS.Demo1
             string visionShape = unit.Stats.WitchVisionType == DemoWitchVisionType.Night
                 ? $"环形侦测 360°  ·  半径 {unit.Stats.VisionRadius:0.#}"
                 : $"扇形目视 {unit.Stats.VisionAngle:0.#}°  ·  半径 {unit.Stats.VisionRadius:0.#}";
-            visionShape += $"  ·  强制点亮 {unit.Stats.ForcedRevealRadius:0.#}";
             GUI.Label(new Rect(14f, y, contentWidth, 38f), visionShape, _smallStyle);
             y += 42f;
 

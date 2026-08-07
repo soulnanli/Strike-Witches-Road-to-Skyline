@@ -85,10 +85,9 @@ namespace SWRTS.Demo1.PlayModeTests
             Assert.That(overlay, Is.Not.Null);
             LineRenderer detection = overlay.GetComponentsInChildren<LineRenderer>(true)
                 .First(line => line.name.StartsWith("Detection Range"));
-            LineRenderer forcedReveal = overlay.GetComponentsInChildren<LineRenderer>(true)
-                .First(line => line.name.StartsWith("Forced Reveal"));
             Assert.That(detection.enabled, Is.True);
-            Assert.That(forcedReveal.enabled, Is.True);
+            Assert.That(overlay.GetComponentsInChildren<LineRenderer>(true)
+                .Any(line => line.name.StartsWith("Forced Reveal")), Is.False);
             Assert.That(detection.startColor.r, Is.EqualTo(Demo1RangeOverlay.DetectionColor.r).Within(0.005f));
             Assert.That(detection.startColor.g, Is.EqualTo(Demo1RangeOverlay.DetectionColor.g).Within(0.005f));
             Assert.That(detection.startColor.b, Is.EqualTo(Demo1RangeOverlay.DetectionColor.b).Within(0.005f));
@@ -104,7 +103,7 @@ namespace SWRTS.Demo1.PlayModeTests
         }
 
         [UnityTest]
-        public IEnumerator OverlappingSelectedVisionAndForcedRevealUseSingleContourPerLayer()
+        public IEnumerator OverlappingSelectedVisionUsesSingleContourWithoutForcedRevealLayer()
         {
             GameObject root = new GameObject("Demo1 Range Union Test");
             Demo1GameController controller = root.AddComponent<Demo1GameController>();
@@ -122,7 +121,7 @@ namespace SWRTS.Demo1.PlayModeTests
             GameObject overlay = GameObject.Find("Selected Range Overlay");
             LineRenderer[] lines = overlay.GetComponentsInChildren<LineRenderer>(true);
             Assert.That(lines.Count(line => line.enabled && line.name.StartsWith("Detection Range")), Is.EqualTo(1));
-            Assert.That(lines.Count(line => line.enabled && line.name.StartsWith("Forced Reveal")), Is.EqualTo(1));
+            Assert.That(lines.Any(line => line.name.StartsWith("Forced Reveal")), Is.False);
             Assert.That(ordinary.Stats.WitchVisionType, Is.EqualTo(DemoWitchVisionType.Ordinary));
             Assert.That(night.Stats.WitchVisionType, Is.EqualTo(DemoWitchVisionType.Night));
 

@@ -307,16 +307,13 @@ namespace SWRTS.Demo1
     public sealed class Demo1RangeOverlay : MonoBehaviour
     {
         public static readonly Color DetectionColor = new Color(0.25f, 0.78f, 1f, 0.5f);
-        public static readonly Color ForcedRevealColor = new Color(0.72f, 0.95f, 0.9f, 0.56f);
 
         private readonly List<LineRenderer> _detectionLines = new List<LineRenderer>();
-        private readonly List<LineRenderer> _forcedRevealLines = new List<LineRenderer>();
         private int _lastSignature = int.MinValue;
 
         public void Sync(Demo1Simulation simulation, IEnumerable<int> selectedUnitIds)
         {
             List<DemoRangeShape> detectionShapes = new List<DemoRangeShape>();
-            List<DemoRangeShape> forcedRevealShapes = new List<DemoRangeShape>();
             List<DemoUnitModel> selected = simulation == null || selectedUnitIds == null
                 ? new List<DemoUnitModel>()
                 : selectedUnitIds.Select(simulation.GetUnit)
@@ -332,29 +329,22 @@ namespace SWRTS.Demo1
                     detectionShapes.Add(DemoRangeShape.Circle(unit.Position, visionRadius));
                 else if (unit.Stats.WitchVisionType == DemoWitchVisionType.Ordinary)
                     detectionShapes.Add(DemoRangeShape.Sector(unit.Position, unit.Facing, visionRadius, unit.Stats.VisionAngle));
-                if (unit.Stats.ForcedRevealRadius > 0f)
-                    forcedRevealShapes.Add(DemoRangeShape.Circle(unit.Position, unit.Stats.ForcedRevealRadius));
             }
 
-            int signature = BuildSignature(detectionShapes, forcedRevealShapes);
+            int signature = BuildSignature(detectionShapes);
             if (signature == _lastSignature)
                 return;
             _lastSignature = signature;
             RebuildLayer(_detectionLines, Demo1RangeContourBuilder.BuildUnion(detectionShapes),
                 "Detection Range", DetectionColor, 2f, 0.055f);
-            RebuildLayer(_forcedRevealLines, Demo1RangeContourBuilder.BuildUnion(forcedRevealShapes),
-                "Forced Reveal", ForcedRevealColor, 2f, 0.057f);
         }
 
-        private static int BuildSignature(IReadOnlyList<DemoRangeShape> detection,
-            IReadOnlyList<DemoRangeShape> forcedReveal)
+        private static int BuildSignature(IReadOnlyList<DemoRangeShape> detection)
         {
             unchecked
             {
                 int hash = 17;
-                hash = AppendShapes(hash, detection);
-                hash = hash * 31 + 7919;
-                return AppendShapes(hash, forcedReveal);
+                return AppendShapes(hash, detection);
             }
         }
 

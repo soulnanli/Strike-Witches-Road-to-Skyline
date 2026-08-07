@@ -50,7 +50,7 @@ These values remain code-prototype balance and are not additions to Feishu revis
 ### Interface presentation pass
 
 - The strategic HUD uses a unified dark tactical palette with cyan player, red enemy, amber warning and green success semantics. Mission, commands, feedback, selected units and recent events are visually separated instead of relying on Unity's default controls.
-- Strategic map lines use fixed screen-pixel widths. Selection, merged detection and forced-reveal contours, attack range, target lock, route, remote-strike and grid lines remain legible across the complete camera zoom range instead of shrinking with world scale.
+- Strategic map lines use fixed screen-pixel widths. Selection, merged detection, attack range, target lock, route, remote-strike and grid lines remain legible across the complete camera zoom range instead of shrinking with world scale.
 - Selected-unit cards prioritize name, activity and the three live resources. Single selection keeps the detailed character panel on the right; multi-selection remains summarized on the left.
 - Selected units show an amber warning-radius circle, a red attack-range circle and a red line to the current locked target or its last known position.
 
@@ -93,7 +93,7 @@ This visual pass implements the information requirements of Feishu revision 6 wi
 - Lock quality grows from intelligence, turning and suppression, must reach 25 before firing, and decays by 35 per second without observation or outside effective attack range. Distance within range affects neither lock growth nor accuracy; accuracy applies lock and suppression modifiers before a separate evasion roll.
 - Standard witch machine guns use an 8/32 magazine/reserve load and a three-second reload. Empty reserves automatically order a return; the existing 20-second base service restores health, magic, shield and ammunition.
 - Enemy armour uses the 100% / 35% / 10% penetration tiers. Core marks last six seconds, halve effective armour and apply the non-stacking 2.4x core multiplier. Suppression only applies linear combat penalties and never clears orders or forces retreat.
-- This branch implements the target specification in Feishu `Demo1 战斗 个体` revision 385 and intentionally does not create battle instances, formations or a separate battle panel.
+- This branch implements the target specification in Feishu `Demo1 战斗 个体` revision 391 and intentionally does not create battle instances, formations or a separate battle panel.
 
 ## Witch active mechanisms
 
@@ -109,13 +109,13 @@ This visual pass implements the information requirements of Feishu revision 6 wi
 
 - Witch vision is independent from combat role. The original four witches are ordinary witches with a 100-degree forward visual sector and no circular radar.
 - Sanya V. Litvyak is the fifth player unit. She is a night witch with a 72-unit, 360-degree circular detection area and no visual sector.
-- Every active witch also has an unsuppressed 24-unit circular forced-reveal area. Enemies entering it immediately become identified, but do not gain assessment progress from the forced reveal alone.
-- Moving or engaging turns an ordinary witch's sector toward her destination or target. Night radar and ordinary vision use the same cyan line style. Detection shapes from all selected active witches are rendered as one union, while their forced-reveal circles form a separate union; disconnected regions remain separate contours.
+- Every active witch uses her effective attack range as the forced-reveal boundary. Enemies entering it immediately become identified, but do not gain assessment progress from range reveal alone. Suppression therefore reduces attack, auto-targeting and forced-reveal reach together.
+- Moving or engaging turns an ordinary witch's sector toward her destination or target. Night radar and ordinary vision use the same cyan line style, and detection shapes from all selected active witches are rendered as one union. Attack circles remain per unit and are the only visual indicator for attack, auto-targeting and forced reveal; disconnected detection regions remain separate contours.
 - A newly observed enemy starts as an unknown contact, becomes identified after 0.5 seconds of observation, and becomes assessed after another 1.5 seconds. Only assessed intelligence exposes health on the strategic map.
 - When observation is lost, the enemy marker freezes at its last known position. Intelligence degrades from assessed to identified after 3 seconds, to contact after 7 seconds, and disappears after 15 seconds.
 - Stale contacts cannot be directly engaged, but their last known area remains a valid movement or remote-strike destination. Mission-known fixed objectives keep persistent identified intelligence.
 - Strategic unit models and world-space labels stay hidden while the entire witch roster is at base. Standby and servicing witches never render on the theatre map; mobile interception enemies never receive mission-known persistent intelligence.
-- These vision shapes, durations and sharing rules are code-only prototype assumptions and have not been written back to Feishu revision 6.
+- These vision shapes, durations and sharing rules are tracked in Feishu `Demo1 战斗 个体` revision 391.
 
 ## Independent enemy AI prototype
 
@@ -128,7 +128,7 @@ This visual pass implements the information requirements of Feishu revision 6 wi
 
 ## Configurable prototype assumptions
 
-The individual-combat specification revision 385 defines the current prototype formulas. Demo defaults are serialized in the balance and unit ScriptableObject assets described above; `Demo1Balance` and `DemoUnitStats` remain their runtime value types:
+The individual-combat specification revision 391 defines the current prototype formulas. Demo defaults are serialized in the balance and unit ScriptableObject assets described above; `Demo1Balance` and `DemoUnitStats` remain their runtime value types:
 
 - hit, evasion, penetration, armour, core, shield and HP resolve in the documented order;
 - shield absorption consumes one shield capacity and 0.55 magic per absorbed damage;

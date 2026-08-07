@@ -38,7 +38,6 @@ MonoBehaviour:
     VisionRadius: 72
     VisionAngle: 360
     WitchVisionType: 2
-    ForcedRevealRadius: 24
     AttackRange: 72
     BaseAccuracy: 0.7
     Penetration: 20

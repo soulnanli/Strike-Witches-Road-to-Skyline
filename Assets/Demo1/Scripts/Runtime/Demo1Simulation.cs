@@ -219,7 +219,6 @@ namespace SWRTS.Demo1
         public float VisionRadius = 22f;
         public float VisionAngle = 100f;
         public DemoWitchVisionType WitchVisionType = DemoWitchVisionType.None;
-        public float ForcedRevealRadius;
         public float AttackRange = 8f;
         public float BaseAccuracy = 0.72f;
         public float Penetration = 16f;
@@ -638,8 +637,6 @@ namespace SWRTS.Demo1
             if (runtimeStats.ReloadDuration <= 0f) runtimeStats.ReloadDuration = 3f;
             if (runtimeStats.BaseAccuracy <= 0f) runtimeStats.BaseAccuracy = 0.72f;
             if (runtimeStats.Penetration <= 0f) runtimeStats.Penetration = team == DemoTeam.Enemy ? 18f : 16f;
-            if (team == DemoTeam.Player && role == DemoUnitRole.Witch && runtimeStats.ForcedRevealRadius <= 0f)
-                runtimeStats.ForcedRevealRadius = 24f;
             if (team == DemoTeam.Enemy)
             {
                 runtimeStats.UnlimitedReserveAmmo = true;
@@ -1239,20 +1236,21 @@ namespace SWRTS.Demo1
 
         private void TickVisibility(float dt)
         {
-            List<DemoUnitModel> observers = _units.Values
+            List<DemoUnitModel> activeWitches = _units.Values
                 .Where(unit => unit.IsAlive && unit.IsOperational && unit.Team == DemoTeam.Player &&
                                unit.Stats.WitchVisionType != DemoWitchVisionType.None)
                 .ToList();
             foreach (DemoUnitModel enemy in _units.Values.Where(unit => unit.IsAlive && unit.Team == DemoTeam.Enemy))
             {
                 enemy.IsCurrentlyObservedByPlayer = false;
-                DemoUnitModel observer = observers.FirstOrDefault(unit => IsInsideWitchVision(unit, enemy.Position));
+                DemoUnitModel observer = activeWitches.FirstOrDefault(unit => IsInsideWitchVision(unit, enemy.Position));
+                bool insideAttackRange = activeWitches.Any(unit =>
+                    HorizontalDistance(unit.Position, enemy.Position) <= GetEffectiveAttackRange(unit.Id));
+                if (insideAttackRange)
+                    ForceIdentifyEnemy(enemy);
                 if (observer != null)
                     ObserveEnemy(enemy, dt);
-                else if (observers.Any(unit => HorizontalDistance(unit.Position, enemy.Position) <=
-                                               Mathf.Max(0f, unit.Stats.ForcedRevealRadius)))
-                    ForceIdentifyEnemy(enemy);
-                else
+                else if (!insideAttackRange)
                     DecayEnemyIntel(enemy, dt);
             }
         }

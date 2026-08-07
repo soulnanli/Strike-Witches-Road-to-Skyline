@@ -152,21 +152,40 @@ namespace SWRTS.Demo1.Tests
         }
 
         [Test]
-        public void ForcedReveal_IdentifiesInsideCircleWithoutAssessing()
+        public void AttackRangeReveal_IdentifiesInsideEffectiveRangeWithoutAssessing()
         {
             Demo1Simulation simulation = new Demo1Simulation(TestBalance());
-            DemoUnitStats witchStats = Stats();
-            witchStats.VisionRadius = 4f;
-            witchStats.ForcedRevealRadius = 24f;
+            DemoUnitStats witchStats = Stats(range: 8f);
+            witchStats.VisionRadius = 2f;
             DemoUnitModel witch = simulation.AddUnit("witch", DemoTeam.Player, DemoUnitRole.Witch, witchStats, Vector3.zero);
             witch.Facing = Vector3.left;
-            DemoUnitModel enemy = simulation.AddUnit("enemy", DemoTeam.Enemy, DemoUnitRole.Guard, Stats(), new Vector3(20f, 0f, 0f));
+            DemoUnitModel enemy = simulation.AddUnit("enemy", DemoTeam.Enemy, DemoUnitRole.Guard, Stats(), new Vector3(6f, 0f, 0f));
 
             simulation.Advance(0.1f);
 
             Assert.That(enemy.IsCurrentlyObservedByPlayer, Is.True);
             Assert.That(enemy.PlayerIntelLevel, Is.EqualTo(DemoIntelLevel.Identified));
             Assert.That(enemy.AssessmentProgress, Is.Zero);
+
+            witch.Facing = Vector3.right;
+            DemoUnitModel visibleEnemy = simulation.AddUnit("visible enemy", DemoTeam.Enemy, DemoUnitRole.Guard,
+                Stats(), new Vector3(1.5f, 0f, 0f));
+            simulation.Advance(0.1f);
+            Assert.That(visibleEnemy.PlayerIntelLevel, Is.EqualTo(DemoIntelLevel.Identified));
+            Assert.That(visibleEnemy.AssessmentProgress, Is.GreaterThan(0f));
+            witch.Facing = Vector3.left;
+
+            enemy.Position = new Vector3(9f, 0f, 0f);
+            simulation.Advance(0.1f);
+            Assert.That(enemy.IsCurrentlyObservedByPlayer, Is.False);
+
+            enemy.Position = new Vector3(7f, 0f, 0f);
+            witch.Suppression = 100f;
+            simulation.Advance(0.1f);
+            Assert.That(enemy.IsCurrentlyObservedByPlayer, Is.False);
+            witch.Suppression = 0f;
+            simulation.Advance(0.1f);
+            Assert.That(enemy.IsCurrentlyObservedByPlayer, Is.True);
         }
 
         [Test]
@@ -215,7 +234,6 @@ namespace SWRTS.Demo1.Tests
             Demo1Simulation simulation = new Demo1Simulation(TestBalance());
             DemoUnitStats playerStats = Stats(range: 4f);
             playerStats.WitchVisionType = DemoWitchVisionType.Night;
-            playerStats.ForcedRevealRadius = 24f;
             DemoUnitModel player = simulation.AddUnit("player", DemoTeam.Player, DemoUnitRole.Witch, playerStats, Vector3.zero);
             DemoUnitModel enemy = simulation.AddUnit("enemy", DemoTeam.Enemy, DemoUnitRole.Guard, Stats(), new Vector3(6f, 0f, 0f));
 
@@ -561,8 +579,7 @@ namespace SWRTS.Demo1.Tests
             Assert.That(sanya.Stats.ProjectileTurnRate, Is.EqualTo(120f));
             Assert.That(sanya.Stats.ProjectileLifetime, Is.EqualTo(10f));
             Assert.That(sanya.Stats.ExplosiveRadius, Is.EqualTo(2.5f));
-            Assert.That(sakamoto.Stats.ForcedRevealRadius, Is.EqualTo(24f));
-            Assert.That(sanya.Stats.ForcedRevealRadius, Is.EqualTo(24f));
+            Assert.That(typeof(DemoUnitStats).GetField("ForcedRevealRadius"), Is.Null);
             Assert.That(guard.Stats.Mobility, Is.EqualTo(0.65f));
             Assert.That(balance.Values.AccelerationDuration, Is.EqualTo(8f));
             Assert.That(balance.Values.TurnSpeedCapAt180, Is.EqualTo(0.3f));
