@@ -73,10 +73,11 @@ This visual pass implements the information requirements of Feishu revision 6 wi
 - Left click / drag: select one or several witches. Shift modifies the current selection.
 - Single-selecting a witch opens a live character detail panel on the right. It hides for multi-selection.
 - Right click ground: give every selected witch an independent move order into the same small destination area.
-- Right click a discovered enemy, or `A` then left click it: lock the target, pursue it and fire whenever it enters attack range.
+- Right click a discovered enemy, or `A` then left click it: clear the current route/loiter/hover order, lock the target, pursue it and fire whenever it enters attack range.
 - **Auto** toggles automatic acquisition of the nearest identified enemy inside the unit's warning radius. **Stop attack** disables automatic acquisition and clears the current lock.
 - `H`: clear the current target and order selected witches to return to Folkestone.
-- `S` / **Skill**: use the single selected witch's active mechanism. Sakamoto and Perrine resolve immediately; Miyafuji and Lynette then require a map-unit target.
+- `V` / **Hover**: decelerate selected witches to a stationary hover; use it again to resume the five-point loiter route. Moving, returning or manually designating an attack target exits hover.
+- `S` / **Skill**: use the single selected witch's active mechanism. Sakamoto and Perrine resolve immediately; Miyafuji requires a friendly map-unit target. Lynette's fire-control solution is passive.
 - `Space`: pause/resume simulation. Camera, selection and orders remain available while paused.
 - `F`: focus the selected units. WASD/arrow keys, edge scrolling, middle drag and wheel control the camera.
 - `Ctrl+1..9`: save a control group; `1..9`: recall and focus it.
@@ -85,29 +86,30 @@ This visual pass implements the information requirements of Feishu revision 6 wi
 
 - Combat never leaves the operational map and does not create a battle container, formation, reserve queue, reinforcement state, retreat timer, battle bubble or separate battle panel.
 - Every active unit owns its current target, target order type, last-known target position, lock quality, ammunition, reload, suppression, current velocity, attack cooldown and auto-attack stance.
-- A manual attack order keeps pursuing the target while it is observable; the attacker begins firing as soon as it enters attack range and continues moving until it reaches a closer standoff distance. After contact is lost it flies to the last-known position and then clears the order.
+- A manual attack order always clears the previous move, loiter and hover state. It keeps pursuing the target while observable, fires as soon as it enters attack range and settles at 75% of the current effective range. After contact is lost it flies to the last-known position and then clears the order.
 - Movement and firing are independent. A normal move order keeps the current lock, allows automatic target acquisition and preserves the requested route; any locked target inside attack range can be fired on without stopping movement. The move order takes priority over automatic pursuit.
 - With auto attack enabled, a unit acquires the nearest identified enemy inside its warning radius. It fires only inside its independent attack range and automatically chooses another eligible target after the current one is destroyed.
-- Movement uses four-second acceleration to maximum speed, `60 degrees/s x Mobility` turning, turn-dependent speed caps and a 1.5-unit loiter after arrival. Movement and ordinary fire remain independent.
+- Movement uses eight-second acceleration to maximum speed and `60 degrees/s x Mobility` turning. A 180-degree turn now limits speed to 30%. Arrival creates a five-point 5 x 2.5 elliptical loiter route aligned to the arrival heading; units physically fly each edge rather than snapping around a circle. Movement and ordinary fire remain independent.
 - Lock quality grows from intelligence, distance, turning and suppression, must reach 25 before firing, and decays by 35 per second without observation. Accuracy then applies range, lock and suppression modifiers before a separate evasion roll.
 - Standard witch machine guns use an 8/32 magazine/reserve load and a three-second reload. Empty reserves automatically order a return; the existing 20-second base service restores health, magic, shield and ammunition.
 - Enemy armour uses the 100% / 35% / 10% penetration tiers. Core marks last six seconds, halve effective armour and apply the non-stacking 2.4x core multiplier. Suppression only applies linear combat penalties and never clears orders or forces retreat.
-- This branch implements the target specification in Feishu `Demo1 战斗 个体` revision 352 and intentionally does not create battle instances, formations or a separate battle panel.
+- This branch implements the target specification in Feishu `Demo1 战斗 个体` revision 366 and intentionally does not create battle instances, formations or a separate battle panel.
 
 ## Witch active mechanisms
 
 - Active mechanisms are data-driven through `DemoSpecialAbility` and per-unit serialized parameters; the simulation does not branch on display names.
 - Sakamoto's **Magic Eye Search** spends 30 magic to assess and core-mark enemies in a 45-degree, 36-unit forward sector for six seconds.
 - Miyafuji's **Heal** channels on another ally within six units for three seconds, restoring 12% maximum health per second at 15 magic per second. She moves at half speed and cannot fire while channeling; range, magic or a new attack order interrupts it.
-- Lynette has a 5/20 single-shot anti-armour weapon with a 2.2-second interval. **Fire-control Solution** requires three seconds of stable loiter and fires a doubled-damage, penetration-32 shot at an assessed or core-marked target within 24 units.
-- Sanya uses a 1/8 rocket load with a five-second reload. Her 2.5-unit explosion uses a velocity lead point and adds explosive suppression; her 48-unit circular radar remains unchanged.
+- Lynette has a 5/20 single-shot anti-armour weapon with a 2.2-second interval. **Fire-control Solution** is passive: after three seconds of stable hover, every normal attack against an assessed or core-marked target can reach 48 units, ignores range falloff, has at least 85% accuracy, penetration 32 and double damage. Moving cancels the prepared state.
+- Sanya uses a 1/8 rocket load with a five-second reload. Her radar and attack range are both 72 units. Rockets travel at 12 units/s, turn at 120 degrees/s for up to ten seconds, track their target after launch and resolve the 2.5-unit explosion only on contact.
 - Perrine's **Lightning Strike** spends 40 magic to damage enemies within five units, treats armour at half value and adds 35 suppression.
 - These mechanisms replace the old Sakamoto core-discovery aura, Miyafuji shield aura, support pulse and Lynette critical trait.
 
 ## Witch vision and player intelligence prototype
 
 - Witch vision is independent from combat role. The original four witches are ordinary witches with a 100-degree forward visual sector and no circular radar.
-- Sanya V. Litvyak is added as the fifth player unit. She is a night witch with a 48-unit, 360-degree circular detection area and no visual sector.
+- Sanya V. Litvyak is the fifth player unit. She is a night witch with a 72-unit, 360-degree circular detection area and no visual sector.
+- Every active witch also has an unsuppressed 24-unit circular forced-reveal area. Enemies entering it immediately become identified, but do not gain assessment progress from the forced reveal alone.
 - Moving or engaging turns an ordinary witch's sector toward her destination or target. Selecting a witch shows only the area produced by her own vision type.
 - A newly observed enemy starts as an unknown contact, becomes identified after 0.5 seconds of observation, and becomes assessed after another 1.5 seconds. Only assessed intelligence exposes health on the strategic map.
 - When observation is lost, the enemy marker freezes at its last known position. Intelligence degrades from assessed to identified after 3 seconds, to contact after 7 seconds, and disappears after 15 seconds.
@@ -126,7 +128,7 @@ This visual pass implements the information requirements of Feishu revision 6 wi
 
 ## Configurable prototype assumptions
 
-The individual-combat specification revision 352 defines the current prototype formulas. Demo defaults are serialized in the balance and unit ScriptableObject assets described above; `Demo1Balance` and `DemoUnitStats` remain their runtime value types:
+The individual-combat specification revision 366 defines the current prototype formulas. Demo defaults are serialized in the balance and unit ScriptableObject assets described above; `Demo1Balance` and `DemoUnitStats` remain their runtime value types:
 
 - hit, evasion, penetration, armour, core, shield and HP resolve in the documented order;
 - shield absorption consumes one shield capacity and 0.55 magic per absorbed damage;

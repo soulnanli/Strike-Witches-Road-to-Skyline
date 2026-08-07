@@ -38,6 +38,7 @@ MonoBehaviour:
     VisionRadius: 24
     VisionAngle: 100
     WitchVisionType: 1
+    ForcedRevealRadius: 24
     EngagementRadius: 8
     AttackRange: 12
     OptimalAttackRange: 8
@@ -54,7 +55,14 @@ MonoBehaviour:
     SupportRadius: 0
     CanRemoteStrike: 0
     Traits: 0
-    SpecialAbility: 3
+    SpecialAbility: 0
+    PassiveAbility: 1
+    PassiveActivationDelay: 3
+    PassiveAttackRange: 48
+    PassiveDamageMultiplier: 2
+    PassivePenetration: 32
+    PassiveMinimumAccuracy: 0.85
+    PassiveIgnoresRangeFalloff: 1
     AbilityMagicCost: 0
     AbilityCooldown: 8
     AbilityRange: 24

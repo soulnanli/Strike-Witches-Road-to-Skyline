@@ -66,7 +66,7 @@ namespace SWRTS.Demo1.Tests
             Demo1Simulation simulation = Scenario(out DemoUnitModel player, out DemoUnitModel enemy, 12f, 25f, 3f);
             Assert.That(simulation.RequestAttack(new[] { player.Id }, enemy.Id).Success, Is.True);
 
-            simulation.Advance(3f);
+            simulation.Advance(6f);
 
             Assert.That(player.Position.x, Is.GreaterThan(0f));
             Assert.That(player.LockQuality, Is.GreaterThanOrEqualTo(25f));
@@ -75,18 +75,18 @@ namespace SWRTS.Demo1.Tests
         }
 
         [Test]
-        public void MoveThenAttack_PreservesManualRouteAndFires()
+        public void MoveThenManualAttack_ClearsRouteAndStartsPursuit()
         {
-            Demo1Simulation simulation = Scenario(out DemoUnitModel player, out DemoUnitModel enemy, 3f, 10f, 4f);
+            Demo1Simulation simulation = Scenario(out DemoUnitModel player, out DemoUnitModel enemy, 6f, 10f, 4f);
             Vector3 destination = new Vector3(0f, 0f, 10f);
             simulation.IssueMove(new[] { player.Id }, destination);
             simulation.RequestAttack(new[] { player.Id }, enemy.Id);
 
-            simulation.Advance(1.2f);
-
-            Assert.That(player.HasManualMoveOrder, Is.True);
-            Assert.That(player.Destination.z, Is.EqualTo(10f).Within(0.01f));
-            Assert.That(player.AttacksPerformed, Is.GreaterThan(0));
+            Assert.That(player.HasManualMoveOrder, Is.False);
+            Assert.That(player.HasDestination, Is.False);
+            Assert.That(player.Activity, Is.EqualTo(DemoUnitActivity.Pursuing));
+            simulation.Advance(0.2f);
+            Assert.That(player.Destination.x, Is.EqualTo(enemy.Position.x).Within(0.01f));
         }
 
         [Test]
@@ -121,7 +121,46 @@ namespace SWRTS.Demo1.Tests
             simulation.Advance(8f);
             Assert.That(unit.HasDestination, Is.False);
             Assert.That(unit.HasLoiter, Is.True);
+            Assert.That(unit.FlightMode, Is.EqualTo(DemoFlightMode.Loiter));
+            Assert.That(unit.LoiterWaypoints.Count, Is.EqualTo(5));
             Assert.That(Vector3.Distance(unit.LoiterCenter, new Vector3(4f, 0f, 0f)), Is.LessThan(0.2f));
+        }
+
+        [Test]
+        public void Hover_DeceleratesToStopAndMoveOrderExitsHover()
+        {
+            Demo1Simulation simulation = new Demo1Simulation(TestBalance());
+            DemoUnitModel unit = simulation.AddUnit("witch", DemoTeam.Player, DemoUnitRole.Witch, Stats(), Vector3.zero);
+            unit.CurrentSpeed = 4f;
+            unit.CurrentVelocity = Vector3.right * 4f;
+
+            Assert.That(simulation.RequestHover(new[] { unit.Id }, true).Success, Is.True);
+            Assert.That(unit.FlightMode, Is.EqualTo(DemoFlightMode.EnteringHover));
+            simulation.Advance(4f);
+            Assert.That(unit.IsHovering, Is.True);
+            Assert.That(unit.CurrentSpeed, Is.Zero);
+
+            simulation.IssueMove(new[] { unit.Id }, new Vector3(5f, 0f, 0f));
+            Assert.That(unit.FlightMode, Is.EqualTo(DemoFlightMode.Normal));
+            Assert.That(unit.HasDestination, Is.True);
+        }
+
+        [Test]
+        public void ForcedReveal_IdentifiesInsideCircleWithoutAssessing()
+        {
+            Demo1Simulation simulation = new Demo1Simulation(TestBalance());
+            DemoUnitStats witchStats = Stats();
+            witchStats.VisionRadius = 4f;
+            witchStats.ForcedRevealRadius = 24f;
+            DemoUnitModel witch = simulation.AddUnit("witch", DemoTeam.Player, DemoUnitRole.Witch, witchStats, Vector3.zero);
+            witch.Facing = Vector3.left;
+            DemoUnitModel enemy = simulation.AddUnit("enemy", DemoTeam.Enemy, DemoUnitRole.Guard, Stats(), new Vector3(20f, 0f, 0f));
+
+            simulation.Advance(0.1f);
+
+            Assert.That(enemy.IsCurrentlyObservedByPlayer, Is.True);
+            Assert.That(enemy.PlayerIntelLevel, Is.EqualTo(DemoIntelLevel.Identified));
+            Assert.That(enemy.AssessmentProgress, Is.Zero);
         }
 
         [Test]
@@ -329,31 +368,31 @@ namespace SWRTS.Demo1.Tests
         }
 
         [Test]
-        public void LynetteFireControl_RequiresAssessedTargetAndFiresAfterStableLoiter()
+        public void LynetteFireControl_PassiveActivatesAfterStableHoverAndFiresAtLongRange()
         {
             Demo1Simulation simulation = new Demo1Simulation(TestBalance());
             DemoUnitStats stats = Stats(20f, 12f);
-            stats.SpecialAbility = DemoSpecialAbility.FireControlSolution;
+            stats.SpecialAbility = DemoSpecialAbility.None;
+            stats.PassiveAbility = DemoPassiveAbility.FireControlSolution;
             stats.MagazineSize = 5;
             stats.ReserveAmmo = 20;
-            stats.AbilityCooldown = 8f;
-            stats.AbilityRange = 24f;
-            stats.AbilityDuration = 3f;
-            stats.AbilityDamageMultiplier = 2f;
-            stats.AbilityPenetration = 32f;
-            stats.AbilityMinimumAccuracy = 0.85f;
+            stats.PassiveActivationDelay = 3f;
+            stats.PassiveAttackRange = 48f;
+            stats.PassiveDamageMultiplier = 2f;
+            stats.PassivePenetration = 32f;
+            stats.PassiveMinimumAccuracy = 0.85f;
             DemoUnitModel lynette = simulation.AddUnit("Lynette", DemoTeam.Player, DemoUnitRole.Artillery, stats, Vector3.zero);
             DemoUnitStats enemyStats = Stats();
             enemyStats.Armor = 30f;
             DemoUnitModel enemy = simulation.AddUnit("enemy", DemoTeam.Enemy, DemoUnitRole.Guard, enemyStats, new Vector3(20f, 0f, 0f));
             simulation.GrantPersistentPlayerIntel(enemy.Id, DemoIntelLevel.Assessed);
 
-            Assert.That(simulation.RequestSpecialAbility(lynette.Id, enemy.Id).Success, Is.True);
-            simulation.Advance(3.2f);
+            Assert.That(simulation.RequestHover(new[] { lynette.Id }, true).Success, Is.True);
+            simulation.Advance(4.2f);
 
+            Assert.That(lynette.IsFireControlReady, Is.True);
             Assert.That(enemy.Health, Is.LessThan(enemy.Stats.MaxHealth));
-            Assert.That(lynette.MagazineAmmo, Is.EqualTo(4));
-            Assert.That(lynette.AbilityCooldownRemaining, Is.GreaterThan(7f));
+            Assert.That(lynette.MagazineAmmo, Is.LessThan(5));
         }
 
         [Test]
@@ -374,6 +413,9 @@ namespace SWRTS.Demo1.Tests
 
             Assert.That(sanya.MagazineAmmo, Is.Zero);
             Assert.That(sanya.ReloadRemaining, Is.GreaterThan(4.8f));
+            Assert.That(simulation.Projectiles.Count, Is.EqualTo(1));
+            Assert.That(enemy.Suppression, Is.Zero);
+            simulation.Advance(0.5f);
             Assert.That(enemy.Suppression, Is.GreaterThan(8f));
         }
 
@@ -409,15 +451,28 @@ namespace SWRTS.Demo1.Tests
             DemoUnitConfig lynette = Resources.Load<DemoUnitConfig>("Configs/Units/Lynette");
             DemoUnitConfig sanya = Resources.Load<DemoUnitConfig>("Configs/Units/Sanya");
             DemoUnitConfig perrine = Resources.Load<DemoUnitConfig>("Configs/Units/Perrine");
+            DemoUnitConfig guard = Resources.Load<DemoUnitConfig>("Configs/Units/NeuroiGuardA");
+            Demo1BalanceConfig balance = Resources.Load<Demo1BalanceConfig>("Configs/Demo1Balance");
 
             Assert.That(sakamoto.Stats.SpecialAbility, Is.EqualTo(DemoSpecialAbility.MagicEyeSearch));
             Assert.That(miyafuji.Stats.SpecialAbility, Is.EqualTo(DemoSpecialAbility.Heal));
-            Assert.That(lynette.Stats.SpecialAbility, Is.EqualTo(DemoSpecialAbility.FireControlSolution));
+            Assert.That(lynette.Stats.SpecialAbility, Is.EqualTo(DemoSpecialAbility.None));
+            Assert.That(lynette.Stats.PassiveAbility, Is.EqualTo(DemoPassiveAbility.FireControlSolution));
+            Assert.That(lynette.Stats.PassiveAttackRange, Is.EqualTo(48f));
             Assert.That(lynette.Stats.AttackInterval, Is.EqualTo(2.2f));
             Assert.That(lynette.Stats.MagazineSize, Is.EqualTo(5));
             Assert.That(sanya.Stats.WitchVisionType, Is.EqualTo(DemoWitchVisionType.Night));
-            Assert.That(sanya.Stats.VisionRadius, Is.EqualTo(48f));
+            Assert.That(sanya.Stats.VisionRadius, Is.EqualTo(72f));
+            Assert.That(sanya.Stats.AttackRange, Is.EqualTo(72f));
+            Assert.That(sanya.Stats.ProjectileTurnRate, Is.EqualTo(120f));
+            Assert.That(sanya.Stats.ProjectileLifetime, Is.EqualTo(10f));
             Assert.That(sanya.Stats.ExplosiveRadius, Is.EqualTo(2.5f));
+            Assert.That(sakamoto.Stats.ForcedRevealRadius, Is.EqualTo(24f));
+            Assert.That(sanya.Stats.ForcedRevealRadius, Is.EqualTo(24f));
+            Assert.That(guard.Stats.Mobility, Is.EqualTo(0.65f));
+            Assert.That(balance.Values.AccelerationDuration, Is.EqualTo(8f));
+            Assert.That(balance.Values.TurnSpeedCapAt180, Is.EqualTo(0.3f));
+            Assert.That(balance.Values.LoiterVertexCount, Is.EqualTo(5));
             Assert.That(perrine.Stats.SpecialAbility, Is.EqualTo(DemoSpecialAbility.LightningStrike));
             Assert.That(sakamoto.Stats.Traits, Is.EqualTo(DemoUnitTrait.None));
             Assert.That(miyafuji.Stats.Traits, Is.EqualTo(DemoUnitTrait.None));

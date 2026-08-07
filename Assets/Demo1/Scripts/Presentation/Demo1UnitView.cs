@@ -8,6 +8,7 @@ namespace SWRTS.Demo1
         private LineRenderer _selectionCircle;
         private LineRenderer _visionCircle;
         private LineRenderer _visionSector;
+        private LineRenderer _forcedRevealCircle;
         private LineRenderer _engagementCircle;
         private LineRenderer _attackCircle;
         private LineRenderer _optimalCircle;
@@ -34,6 +35,7 @@ namespace SWRTS.Demo1
             _selectionCircle = Demo1Drawing.CreateCircle(transform, "Selection", new Color(0.2f, 1f, 0.95f, 0.95f), 3f, 48);
             _visionCircle = Demo1Drawing.CreateCircle(transform, "Night Vision", new Color(0.42f, 0.55f, 1f, 0.48f), 2f, 72);
             _visionSector = Demo1Drawing.CreateSector(transform, "Ordinary Vision", new Color(0.25f, 0.78f, 1f, 0.5f), 2f, 40);
+            _forcedRevealCircle = Demo1Drawing.CreateCircle(transform, "Forced Reveal", new Color(0.72f, 0.95f, 0.9f, 0.56f), 2f, 72);
             _engagementCircle = Demo1Drawing.CreateCircle(transform, "Engagement", new Color(1f, 0.72f, 0.18f, 0.55f), 2f, 64);
             _attackCircle = Demo1Drawing.CreateCircle(transform, "Attack Range", new Color(1f, 0.22f, 0.16f, 0.78f), 2.5f, 64);
             _optimalCircle = Demo1Drawing.CreateCircle(transform, "Optimal Range", new Color(1f, 0.72f, 0.18f, 0.62f), 2f, 64);
@@ -68,11 +70,26 @@ namespace SWRTS.Demo1
                 _material.color = Color.Lerp(Color.black, activityColor, 0.55f + model.HealthRatio * 0.45f);
             SetSelected(selected, model);
 
-            _routeLine.enabled = selected && model.HasDestination;
+            _routeLine.enabled = selected && (model.HasDestination ||
+                                               model.FlightMode == DemoFlightMode.Loiter && model.LoiterWaypoints.Count > 0);
             if (_routeLine.enabled)
             {
-                _routeLine.SetPosition(0, model.Position + Vector3.up * 0.12f);
-                _routeLine.SetPosition(1, model.Destination + Vector3.up * 0.12f);
+                if (model.FlightMode == DemoFlightMode.Loiter && model.LoiterWaypoints.Count > 0)
+                {
+                    _routeLine.positionCount = model.LoiterWaypoints.Count + 2;
+                    _routeLine.SetPosition(0, model.Position + Vector3.up * 0.12f);
+                    for (int i = 0; i <= model.LoiterWaypoints.Count; i++)
+                    {
+                        int index = (model.LoiterWaypointIndex + i) % model.LoiterWaypoints.Count;
+                        _routeLine.SetPosition(i + 1, model.LoiterWaypoints[index] + Vector3.up * 0.12f);
+                    }
+                }
+                else
+                {
+                    _routeLine.positionCount = 2;
+                    _routeLine.SetPosition(0, model.Position + Vector3.up * 0.12f);
+                    _routeLine.SetPosition(1, model.Destination + Vector3.up * 0.12f);
+                }
             }
             _targetLine.enabled = selected && model.LockedTargetId >= 0 && model.HasTargetLastKnownPosition;
             if (_targetLine.enabled)
@@ -92,6 +109,8 @@ namespace SWRTS.Demo1
                                     model.Stats.WitchVisionType == DemoWitchVisionType.Night;
             _visionSector.enabled = selected && model.Team == DemoTeam.Player &&
                                     model.Stats.WitchVisionType == DemoWitchVisionType.Ordinary;
+            _forcedRevealCircle.enabled = selected && model.Team == DemoTeam.Player &&
+                                          model.Stats.ForcedRevealRadius > 0f;
             _engagementCircle.enabled = selected;
             _attackCircle.enabled = selected;
             _optimalCircle.enabled = selected;
@@ -110,8 +129,13 @@ namespace SWRTS.Demo1
                 Demo1Drawing.SetCircle(_visionCircle, model.Position, model.Stats.VisionRadius * rangePenalty, 0.055f);
             if (_visionSector.enabled)
                 Demo1Drawing.SetSector(_visionSector, model.Position, model.Facing, model.Stats.VisionRadius * rangePenalty, model.Stats.VisionAngle, 0.055f);
+            if (_forcedRevealCircle.enabled)
+                Demo1Drawing.SetCircle(_forcedRevealCircle, model.Position, model.Stats.ForcedRevealRadius, 0.055f);
             Demo1Drawing.SetCircle(_engagementCircle, model.Position, model.Stats.EngagementRadius, 0.065f);
-            Demo1Drawing.SetCircle(_attackCircle, model.Position, model.Stats.AttackRange * rangePenalty, 0.075f);
+            float attackRange = model.IsFireControlReady
+                ? Mathf.Max(model.Stats.AttackRange, model.Stats.PassiveAttackRange)
+                : model.Stats.AttackRange;
+            Demo1Drawing.SetCircle(_attackCircle, model.Position, attackRange * rangePenalty, 0.075f);
             Demo1Drawing.SetCircle(_optimalCircle, model.Position, model.Stats.OptimalAttackRange * rangePenalty, 0.06f);
             if (_abilityCircle.enabled)
             {

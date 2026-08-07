@@ -23,9 +23,16 @@ namespace SWRTS.Demo1
             public LineRenderer Radius;
         }
 
+        private sealed class ProjectileVisual
+        {
+            public GameObject Root;
+            public LineRenderer Trail;
+        }
+
         private readonly Dictionary<int, Demo1UnitView> _unitViews = new Dictionary<int, Demo1UnitView>();
         private readonly Dictionary<DemoUnitConfig, int> _configuredUnitIds = new Dictionary<DemoUnitConfig, int>();
         private readonly Dictionary<int, StrikeVisual> _strikeViews = new Dictionary<int, StrikeVisual>();
+        private readonly Dictionary<int, ProjectileVisual> _projectileViews = new Dictionary<int, ProjectileVisual>();
         private readonly HashSet<int> _selection = new HashSet<int>();
         private readonly Dictionary<int, List<int>> _controlGroups = new Dictionary<int, List<int>>();
         private readonly List<DemoBattleEvent> _events = new List<DemoBattleEvent>();
@@ -375,6 +382,7 @@ namespace SWRTS.Demo1
             witch.WitchVisionType = DemoWitchVisionType.Ordinary;
             witch.VisionRadius = 24f;
             witch.VisionAngle = 100f;
+            witch.ForcedRevealRadius = 24f;
             DemoUnitStats ace = witch.Clone();
             ace.MaxHealth = 221f;
             ace.Attack = 44f;
@@ -421,13 +429,14 @@ namespace SWRTS.Demo1
             artillery.OptimalAttackRange = 8f;
             artillery.AttackRange = 12f;
             artillery.Penetration = 24f;
-            artillery.SpecialAbility = DemoSpecialAbility.FireControlSolution;
-            artillery.AbilityCooldown = 8f;
-            artillery.AbilityRange = 24f;
-            artillery.AbilityDuration = 3f;
-            artillery.AbilityDamageMultiplier = 2f;
-            artillery.AbilityPenetration = 32f;
-            artillery.AbilityMinimumAccuracy = 0.85f;
+            artillery.SpecialAbility = DemoSpecialAbility.None;
+            artillery.PassiveAbility = DemoPassiveAbility.FireControlSolution;
+            artillery.PassiveActivationDelay = 3f;
+            artillery.PassiveAttackRange = 48f;
+            artillery.PassiveDamageMultiplier = 2f;
+            artillery.PassivePenetration = 32f;
+            artillery.PassiveMinimumAccuracy = 0.85f;
+            artillery.PassiveIgnoresRangeFalloff = true;
 
             DemoUnitStats nightWitch = witch.Clone();
             nightWitch.MaxHealth = 181f;
@@ -438,16 +447,21 @@ namespace SWRTS.Demo1
             nightWitch.MagicRecovery = 7f;
             nightWitch.CoreDiscovery = 0.24f;
             nightWitch.WitchVisionType = DemoWitchVisionType.Night;
-            nightWitch.VisionRadius = 48f;
+            nightWitch.VisionRadius = 72f;
             nightWitch.VisionAngle = 360f;
             nightWitch.MagazineSize = 1;
             nightWitch.ReserveAmmo = 8;
             nightWitch.ReloadDuration = 5f;
             nightWitch.AttackInterval = 5f;
+            nightWitch.EngagementRadius = 72f;
             nightWitch.OptimalAttackRange = 8f;
-            nightWitch.AttackRange = 12f;
+            nightWitch.AttackRange = 72f;
             nightWitch.ExplosiveRadius = 2.5f;
             nightWitch.Penetration = 20f;
+            nightWitch.ProjectileSpeed = 12f;
+            nightWitch.ProjectileTurnRate = 120f;
+            nightWitch.ProjectileLifetime = 10f;
+            nightWitch.ProjectileContactRadius = 0.5f;
 
             DemoUnitStats perrine = witch.Clone();
             perrine.SpecialAbility = DemoSpecialAbility.LightningStrike;
@@ -460,6 +474,8 @@ namespace SWRTS.Demo1
 
             DemoUnitStats neuroi = witch.Clone();
             neuroi.WitchVisionType = DemoWitchVisionType.None;
+            neuroi.ForcedRevealRadius = 0f;
+            neuroi.Mobility = 0.65f;
             neuroi.MaxHealth = 190f;
             neuroi.Attack = 26f;
             neuroi.Defense = 10f;
@@ -755,6 +771,8 @@ namespace SWRTS.Demo1
                 EnterSpecialAbilityMode();
             if (Input.GetKeyDown(KeyCode.H))
                 ApplyResult(_simulation.RequestReturnToBase(_selection));
+            if (Input.GetKeyDown(KeyCode.V))
+                ToggleHoverSelection();
             if (Input.GetKeyDown(KeyCode.F))
                 FocusSelection();
             if (Input.GetKeyDown(KeyCode.Return) && _simulation.Outcome != DemoOutcome.Running)
@@ -953,7 +971,52 @@ namespace SWRTS.Demo1
                 Demo1Drawing.SetCircle(visual.Radius, strike.Target, strike.Radius, 0.11f);
             }
 
+            foreach (DemoProjectileModel projectile in _simulation.Projectiles)
+            {
+                if (projectile.Resolved)
+                {
+                    if (_projectileViews.TryGetValue(projectile.Id, out ProjectileVisual resolvedVisual))
+                        resolvedVisual.Root.SetActive(false);
+                    continue;
+                }
+                if (!_projectileViews.TryGetValue(projectile.Id, out ProjectileVisual visual))
+                {
+                    GameObject root = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                    root.name = $"Tracking Rocket #{projectile.Id}";
+                    root.transform.SetParent(transform);
+                    root.transform.localScale = Vector3.one * 0.38f;
+                    Collider collider = root.GetComponent<Collider>();
+                    if (collider != null)
+                        Destroy(collider);
+                    root.GetComponent<Renderer>().sharedMaterial =
+                        Demo1Drawing.CreateMaterial(new Color(1f, 0.58f, 0.12f));
+                    visual = new ProjectileVisual
+                    {
+                        Root = root,
+                        Trail = Demo1Drawing.CreateLine(root.transform, "Rocket Trail",
+                            new Color(1f, 0.38f, 0.08f, 0.85f), 3f)
+                    };
+                    _projectileViews.Add(projectile.Id, visual);
+                }
+                visual.Root.SetActive(true);
+                visual.Root.transform.position = projectile.Position + Vector3.up * 0.55f;
+                visual.Trail.positionCount = 2;
+                visual.Trail.SetPosition(0, projectile.Position + Vector3.up * 0.16f);
+                visual.Trail.SetPosition(1, projectile.Position - projectile.Facing * 1.8f + Vector3.up * 0.16f);
+            }
+
             _selection.RemoveWhere(id => _simulation.GetUnit(id)?.IsAlive != true || _simulation.GetUnit(id)?.IsOperational != true);
+        }
+
+        private bool IsHoverEnabledForSelection()
+        {
+            return _selection.Select(_simulation.GetUnit)
+                .Any(unit => unit != null && (unit.IsHovering || unit.IsEnteringHover));
+        }
+
+        private void ToggleHoverSelection()
+        {
+            ApplyResult(_simulation.RequestHover(_selection, !IsHoverEnabledForSelection()));
         }
 
         private void OnGUI()
@@ -1018,7 +1081,11 @@ namespace SWRTS.Demo1
             if (DrawHudButton(new Rect(226f, y, 98f, 34f), "技能  S", _hudPrimaryButtonStyle, new Color(0.07f, 0.31f, 0.4f), new Color(0.08f, 0.46f, 0.58f)))
                 EnterSpecialAbilityMode();
             y += 42f;
-            if (DrawHudButton(new Rect(14f, y, PanelWidth - 28f, 34f), "返航基地  H", _hudButtonStyle,
+            bool hovering = IsHoverEnabledForSelection();
+            if (DrawHudButton(new Rect(14f, y, 151f, 34f), hovering ? "退出悬停  V" : "悬停  V", _hudPrimaryButtonStyle,
+                    new Color(0.07f, 0.31f, 0.4f), new Color(0.08f, 0.46f, 0.58f)))
+                ToggleHoverSelection();
+            if (DrawHudButton(new Rect(173f, y, 151f, 34f), "返航基地  H", _hudButtonStyle,
                     new Color(0.09f, 0.16f, 0.2f), new Color(0.13f, 0.25f, 0.3f)))
                 ApplyResult(_simulation.RequestReturnToBase(_selection));
             y += 46f;
@@ -1137,6 +1204,7 @@ namespace SWRTS.Demo1
             string visionShape = unit.Stats.WitchVisionType == DemoWitchVisionType.Night
                 ? $"环形侦测 360°  ·  半径 {unit.Stats.VisionRadius:0.#}"
                 : $"扇形目视 {unit.Stats.VisionAngle:0.#}°  ·  半径 {unit.Stats.VisionRadius:0.#}";
+            visionShape += $"  ·  强制点亮 {unit.Stats.ForcedRevealRadius:0.#}";
             GUI.Label(new Rect(14f, y, contentWidth, 38f), visionShape, _smallStyle);
             y += 42f;
 
@@ -1154,7 +1222,10 @@ namespace SWRTS.Demo1
             string reserve = unit.Stats.UnlimitedReserveAmmo ? "∞" : unit.ReserveAmmo.ToString();
             DrawDetailStatRow(ref y, contentWidth, "弹匣/备弹", $"{unit.MagazineAmmo}/{reserve}", "装填", unit.IsReloading ? $"{unit.ReloadRemaining:0.0}s" : "就绪");
             y += 4f;
-            GUI.Label(new Rect(14f, y, contentWidth, 20f), $"主动机制 · {AbilityName(unit.Stats.SpecialAbility)}", _detailHeaderStyle);
+            string mechanismTitle = unit.Stats.PassiveAbility == DemoPassiveAbility.FireControlSolution
+                ? "被动机制 · 射击诸元装订"
+                : $"主动机制 · {AbilityName(unit.Stats.SpecialAbility)}";
+            GUI.Label(new Rect(14f, y, contentWidth, 20f), mechanismTitle, _detailHeaderStyle);
             y += 22f;
             GUI.Label(new Rect(14f, y, contentWidth, 55f), AbilityDescription(unit), _detailMutedStyle);
             y += 58f;
@@ -1202,6 +1273,14 @@ namespace SWRTS.Demo1
         private string BuildCurrentActionText(DemoUnitModel unit)
         {
             DemoUnitModel target = unit.LockedTargetId >= 0 ? _simulation.GetUnit(unit.LockedTargetId) : null;
+            if (unit.IsEnteringHover)
+                return $"减速悬停中  ·  当前速度 {unit.CurrentSpeed:0.00}";
+            if (unit.IsHovering)
+                return unit.Stats.PassiveAbility != DemoPassiveAbility.FireControlSolution
+                    ? "悬停中"
+                    : unit.IsFireControlReady
+                        ? "悬停稳定  ·  射击诸元已装订"
+                        : $"悬停稳定中  ·  {unit.HoverStableTime:0.0}/{unit.Stats.PassiveActivationDelay:0.0}s";
             if (unit.HasDestination && target != null &&
                 Vector3.Distance(unit.Position, target.Position) <= unit.Stats.AttackRange)
                 return $"移动射击：{target.DisplayName}  ·  前往 ({unit.Destination.x:0.0}, {unit.Destination.z:0.0})";
@@ -1577,7 +1656,7 @@ namespace SWRTS.Demo1
         private static string RoleDescription(DemoUnitModel unit)
         {
             if (unit.Stats.ExplosiveRadius > 0f)
-                return $"作战方式：火箭齐射，按目标速度计算提前量，爆炸半径 {unit.Stats.ExplosiveRadius:0.#}。";
+                return $"作战方式：发射追踪火箭，飞行中持续转向目标，爆炸半径 {unit.Stats.ExplosiveRadius:0.#}。";
             switch (unit.Role)
             {
                 case DemoUnitRole.Witch: return "角色特性：在警戒半径内自动锁定目标，进入射程后直接攻击。";
@@ -1615,6 +1694,15 @@ namespace SWRTS.Demo1
 
         private static string AbilityDescription(DemoUnitModel unit)
         {
+            if (unit.Stats.PassiveAbility == DemoPassiveAbility.FireControlSolution)
+            {
+                string state = unit.IsFireControlReady
+                    ? "已生效"
+                    : unit.IsHovering
+                        ? $"稳定中 {unit.HoverStableTime:0.0}/{unit.Stats.PassiveActivationDelay:0.0}s"
+                        : "需要悬停";
+                return $"悬停稳定 {unit.Stats.PassiveActivationDelay:0.#}s 后自动生效；对已评估或核心标记目标获得 {unit.Stats.PassiveAttackRange:0.#} 射程、最低 {unit.Stats.PassiveMinimumAccuracy:P0} 命中、{unit.Stats.PassiveDamageMultiplier:0.#} 倍伤害和 {unit.Stats.PassivePenetration:0.#} 穿透。当前：{state}。";
+            }
             switch (unit.Stats.SpecialAbility)
             {
                 case DemoSpecialAbility.MagicEyeSearch:
@@ -1627,7 +1715,7 @@ namespace SWRTS.Demo1
                     return $"消耗 {unit.Stats.AbilityMagicCost:0} 魔力，对半径 {unit.Stats.AbilityRadius:0.#} 内敌人造成范围雷击并增加压制。";
                 default:
                     return unit.Stats.ExplosiveRadius > 0f
-                        ? $"火箭爆炸半径 {unit.Stats.ExplosiveRadius:0.#}，按目标当前位置与速度计算提前量。"
+                        ? $"追踪火箭速度 {unit.Stats.ProjectileSpeed:0.#}，转向 {unit.Stats.ProjectileTurnRate:0.#}°/s，爆炸半径 {unit.Stats.ExplosiveRadius:0.#}。"
                         : "该单位没有主动技能。";
             }
         }

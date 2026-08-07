@@ -63,6 +63,20 @@ namespace SWRTS.Demo1
         Destroyed
     }
 
+    public enum DemoFlightMode
+    {
+        Normal,
+        Loiter,
+        EnteringHover,
+        Hovering
+    }
+
+    public enum DemoPassiveAbility
+    {
+        None,
+        FireControlSolution
+    }
+
     public enum DemoUnitDeploymentState
     {
         Standby,
@@ -149,6 +163,12 @@ namespace SWRTS.Demo1
         public float BaseLaunchSpread = 1.5f;
         public float BaseTurnaroundDuration = 20f;
         public float LoiterRadius = 1.5f;
+        public float AccelerationDuration = 8f;
+        public float TurnSpeedCapAt180 = 0.3f;
+        public float LoiterMajorRadius = 5f;
+        public float LoiterMinorRadius = 2.5f;
+        public int LoiterVertexCount = 5;
+        public float HoverStopSpeed = 0.02f;
         public float LockFireThreshold = 25f;
         public float LockBaseGrowthPerSecond = 25f;
         public float LockDecayPerSecond = 35f;
@@ -200,6 +220,7 @@ namespace SWRTS.Demo1
         public float VisionRadius = 22f;
         public float VisionAngle = 100f;
         public DemoWitchVisionType WitchVisionType = DemoWitchVisionType.None;
+        public float ForcedRevealRadius;
         public float EngagementRadius = 8f;
         public float AttackRange = 8f;
         public float OptimalAttackRange = 6f;
@@ -213,10 +234,20 @@ namespace SWRTS.Demo1
         public bool UnlimitedReserveAmmo;
         public float ExplosiveRadius;
         public float ProjectileSpeed = 12f;
+        public float ProjectileTurnRate = 120f;
+        public float ProjectileLifetime = 10f;
+        public float ProjectileContactRadius = 0.5f;
         public float SupportRadius;
         public bool CanRemoteStrike;
         public DemoUnitTrait Traits = DemoUnitTrait.None;
         public DemoSpecialAbility SpecialAbility;
+        public DemoPassiveAbility PassiveAbility;
+        public float PassiveActivationDelay = 3f;
+        public float PassiveAttackRange = 48f;
+        public float PassiveDamageMultiplier = 2f;
+        public float PassivePenetration = 32f;
+        public float PassiveMinimumAccuracy = 0.85f;
+        public bool PassiveIgnoresRangeFalloff = true;
         public float AbilityMagicCost;
         public float AbilityCooldown;
         public float AbilityRange;
@@ -326,6 +357,9 @@ namespace SWRTS.Demo1
         public Vector3 LoiterCenter;
         public float LoiterAngle;
         public float StableLoiterTime;
+        public DemoFlightMode FlightMode;
+        public float HoverStableTime;
+        public int LoiterWaypointIndex;
         public DemoUnitActivity Activity = DemoUnitActivity.Idle;
         public DemoUnitDeploymentState DeploymentState;
         public float TurnaroundRemaining;
@@ -371,6 +405,7 @@ namespace SWRTS.Demo1
         public float EnemyAiDecisionRemaining;
         public int EnemyAiPatrolIndex;
         private readonly List<Vector3> _enemyAiPatrolPoints = new List<Vector3>();
+        private readonly List<Vector3> _loiterWaypoints = new List<Vector3>();
 
         public bool IsFixed => Role == DemoUnitRole.Fortress;
         public bool IsAlive => Activity != DemoUnitActivity.Destroyed && Health > 0f;
@@ -396,6 +431,11 @@ namespace SWRTS.Demo1
             ? Position
             : LastKnownPosition;
         public IReadOnlyList<Vector3> EnemyAiPatrolPoints => _enemyAiPatrolPoints;
+        public IReadOnlyList<Vector3> LoiterWaypoints => _loiterWaypoints;
+        public bool IsHovering => FlightMode == DemoFlightMode.Hovering;
+        public bool IsEnteringHover => FlightMode == DemoFlightMode.EnteringHover;
+        public bool IsFireControlReady => Stats.PassiveAbility == DemoPassiveAbility.FireControlSolution &&
+                                          IsHovering && HoverStableTime >= Mathf.Max(0f, Stats.PassiveActivationDelay);
 
         public DemoUnitModel(int id, string displayName, DemoTeam team, DemoUnitRole role, DemoUnitStats stats, Vector3 position)
         {
@@ -429,6 +469,13 @@ namespace SWRTS.Demo1
             _enemyAiPatrolPoints.Clear();
             _enemyAiPatrolPoints.AddRange(patrolPoints);
         }
+
+        internal void SetLoiterWaypoints(IEnumerable<Vector3> waypoints)
+        {
+            _loiterWaypoints.Clear();
+            _loiterWaypoints.AddRange(waypoints);
+            LoiterWaypointIndex = 0;
+        }
     }
 
     public sealed class DemoRemoteStrikeModel
@@ -447,6 +494,38 @@ namespace SWRTS.Demo1
             Target = target;
             Radius = radius;
             Remaining = remaining;
+        }
+    }
+
+    public sealed class DemoProjectileModel
+    {
+        public int Id { get; }
+        public int AttackerId { get; }
+        public int TargetId { get; }
+        public Vector3 Position;
+        public Vector3 Facing;
+        public float Speed { get; }
+        public float TurnRate { get; }
+        public float ContactRadius { get; }
+        public float ExplosionRadius { get; }
+        public float LaunchHitChance { get; }
+        public float RemainingLifetime;
+        public bool Resolved;
+
+        public DemoProjectileModel(int id, int attackerId, int targetId, Vector3 position, Vector3 facing,
+            float speed, float turnRate, float lifetime, float contactRadius, float explosionRadius, float launchHitChance)
+        {
+            Id = id;
+            AttackerId = attackerId;
+            TargetId = targetId;
+            Position = position;
+            Facing = facing.sqrMagnitude > 0.001f ? facing.normalized : Vector3.right;
+            Speed = speed;
+            TurnRate = turnRate;
+            RemainingLifetime = lifetime;
+            ContactRadius = contactRadius;
+            ExplosionRadius = explosionRadius;
+            LaunchHitChance = launchHitChance;
         }
     }
 
@@ -527,13 +606,16 @@ namespace SWRTS.Demo1
     {
         private readonly Dictionary<int, DemoUnitModel> _units = new Dictionary<int, DemoUnitModel>();
         private readonly List<DemoRemoteStrikeModel> _remoteStrikes = new List<DemoRemoteStrikeModel>();
+        private readonly List<DemoProjectileModel> _projectiles = new List<DemoProjectileModel>();
         private readonly System.Random _random;
         private int _nextUnitId = 1;
         private int _nextStrikeId = 1;
+        private int _nextProjectileId = 1;
 
         public Demo1Balance Balance { get; }
         public IReadOnlyCollection<DemoUnitModel> Units => _units.Values;
         public IReadOnlyList<DemoRemoteStrikeModel> RemoteStrikes => _remoteStrikes;
+        public IReadOnlyList<DemoProjectileModel> Projectiles => _projectiles;
         public float SimulationTime { get; private set; }
         public DemoOutcome Outcome { get; private set; } = DemoOutcome.Running;
         public DemoMissionObjective MissionObjective { get; private set; } = DemoMissionObjective.DestroyFortress;
@@ -561,6 +643,8 @@ namespace SWRTS.Demo1
             if (runtimeStats.BaseAccuracy <= 0f) runtimeStats.BaseAccuracy = 0.72f;
             if (runtimeStats.OptimalAttackRange <= 0f) runtimeStats.OptimalAttackRange = runtimeStats.AttackRange * 0.75f;
             if (runtimeStats.Penetration <= 0f) runtimeStats.Penetration = team == DemoTeam.Enemy ? 18f : 16f;
+            if (team == DemoTeam.Player && role == DemoUnitRole.Witch && runtimeStats.ForcedRevealRadius <= 0f)
+                runtimeStats.ForcedRevealRadius = 24f;
             if (team == DemoTeam.Enemy)
             {
                 runtimeStats.UnlimitedReserveAmmo = true;
@@ -616,6 +700,9 @@ namespace SWRTS.Demo1
                 unit.CurrentVelocity = Vector3.zero;
                 unit.HasLoiter = false;
                 unit.StableLoiterTime = 0f;
+                unit.FlightMode = DemoFlightMode.Normal;
+                unit.HoverStableTime = 0f;
+                unit.SetLoiterWaypoints(Enumerable.Empty<Vector3>());
                 unit.MagazineAmmo = Mathf.Max(1, unit.Stats.MagazineSize);
                 unit.ReserveAmmo = Mathf.Max(0, unit.Stats.ReserveAmmo);
                 unit.ReloadRemaining = 0f;
@@ -760,8 +847,46 @@ namespace SWRTS.Demo1
         public float GetEffectiveAttackRange(int unitId)
         {
             DemoUnitModel unit = GetUnit(unitId);
-            return unit == null ? 0f : Mathf.Max(0.1f,
-                unit.Stats.AttackRange * (1f - Balance.FullSuppressionVisionRangePenalty * unit.SuppressionRatio));
+            if (unit == null)
+                return 0f;
+            float baseRange = unit.IsFireControlReady
+                ? Mathf.Max(unit.Stats.AttackRange, unit.Stats.PassiveAttackRange)
+                : unit.Stats.AttackRange;
+            return Mathf.Max(0.1f, baseRange *
+                (1f - Balance.FullSuppressionVisionRangePenalty * unit.SuppressionRatio));
+        }
+
+        public DemoCommandResult RequestHover(IEnumerable<int> unitIds, bool enabled)
+        {
+            List<DemoUnitModel> candidates = (unitIds ?? Enumerable.Empty<int>())
+                .Select(GetUnit)
+                .Where(unit => unit != null && unit.Team == DemoTeam.Player && CanMove(unit))
+                .Distinct()
+                .ToList();
+            if (candidates.Count == 0)
+                return DemoCommandResult.Fail("No selected witch can change hover state.");
+
+            foreach (DemoUnitModel unit in candidates)
+            {
+                if (enabled)
+                {
+                    unit.HasDestination = false;
+                    unit.HasManualMoveOrder = false;
+                    unit.HasLoiter = false;
+                    unit.SetLoiterWaypoints(Enumerable.Empty<Vector3>());
+                    unit.FlightMode = unit.CurrentSpeed <= Balance.HoverStopSpeed
+                        ? DemoFlightMode.Hovering
+                        : DemoFlightMode.EnteringHover;
+                    unit.HoverStableTime = 0f;
+                    if (unit.Activity == DemoUnitActivity.Moving)
+                        unit.Activity = DemoUnitActivity.Idle;
+                }
+                else if (unit.IsEnteringHover || unit.IsHovering)
+                    BeginLoiter(unit, unit.Position);
+            }
+            return DemoCommandResult.Ok(enabled
+                ? $"{candidates.Count} witches are decelerating to hover."
+                : $"{candidates.Count} witches resumed loiter flight.");
         }
 
         public float GetMarkRemaining(int unitId)
@@ -847,14 +972,13 @@ namespace SWRTS.Demo1
                 unit.HasTargetLastKnownPosition = true;
                 if (changedTarget)
                     unit.LockQuality = 0f;
-                if (unit.HasManualMoveOrder && unit.HasDestination)
-                    unit.Activity = DemoUnitActivity.Moving;
-                else
-                {
-                    unit.HasDestination = false;
-                    unit.HasManualMoveOrder = false;
-                    unit.Activity = DemoUnitActivity.Pursuing;
-                }
+                unit.HasDestination = false;
+                unit.HasManualMoveOrder = false;
+                unit.HasLoiter = false;
+                unit.FlightMode = DemoFlightMode.Normal;
+                unit.HoverStableTime = 0f;
+                unit.SetLoiterWaypoints(Enumerable.Empty<Vector3>());
+                unit.Activity = DemoUnitActivity.Pursuing;
             }
             Raise($"{candidates.Count} units locked {target.DisplayName}.", target.PlayerVisiblePosition, true);
             return DemoCommandResult.Ok($"Attack order assigned to {candidates.Count} units.");
@@ -922,6 +1046,7 @@ namespace SWRTS.Demo1
                 TickTargetNavigation();
                 TickMovement(dt);
                 TickIndividualCombat(dt);
+                TickProjectiles(dt);
                 TickRemoteStrikes(dt);
                 EvaluateOutcome();
                 remaining -= dt;
@@ -996,22 +1121,29 @@ namespace SWRTS.Demo1
         {
             foreach (DemoUnitModel unit in _units.Values.Where(unit => unit.IsAlive && unit.IsOperational && !unit.IsFixed))
             {
-                if (unit.HasLoiter && !unit.HasDestination)
+                float acceleration = Mathf.Max(0.01f,
+                    unit.Stats.MoveSpeed / Mathf.Max(0.1f, Balance.AccelerationDuration));
+                if (unit.FlightMode == DemoFlightMode.EnteringHover)
                 {
-                    float radius = Mathf.Max(0.1f, Balance.LoiterRadius);
-                    float maximumSpeed = GetEffectiveMoveSpeed(unit.Id);
-                    float loiterAcceleration = Mathf.Max(0.01f, unit.Stats.MoveSpeed / 4f);
-                    unit.CurrentSpeed = Mathf.MoveTowards(unit.CurrentSpeed, maximumSpeed, loiterAcceleration * dt);
-                    unit.LoiterAngle += unit.CurrentSpeed / radius * dt;
-                    Vector3 radial = new Vector3(Mathf.Cos(unit.LoiterAngle), 0f, Mathf.Sin(unit.LoiterAngle));
-                    Vector3 tangent = new Vector3(-radial.z, 0f, radial.x);
-                    unit.Position = ClampToMap(unit.LoiterCenter + radial * radius);
-                    unit.Facing = tangent;
-                    unit.CurrentVelocity = tangent * unit.CurrentSpeed;
-                    float requestedTurnRate = unit.CurrentSpeed / radius;
-                    float availableTurnRate = 60f * Mathf.Deg2Rad * Mathf.Max(0.01f, unit.Stats.Mobility);
-                    unit.TurnRatio = Mathf.Clamp01(requestedTurnRate / availableTurnRate);
-                    unit.StableLoiterTime += dt;
+                    unit.TurnRatio = 0f;
+                    unit.CurrentSpeed = Mathf.MoveTowards(unit.CurrentSpeed, 0f, acceleration * dt);
+                    unit.CurrentVelocity = unit.Facing.normalized * unit.CurrentSpeed;
+                    unit.Position = ClampToMap(unit.Position + unit.CurrentVelocity * dt);
+                    unit.HoverStableTime = 0f;
+                    if (unit.CurrentSpeed <= Balance.HoverStopSpeed)
+                    {
+                        unit.CurrentSpeed = 0f;
+                        unit.CurrentVelocity = Vector3.zero;
+                        unit.FlightMode = DemoFlightMode.Hovering;
+                    }
+                    continue;
+                }
+                if (unit.FlightMode == DemoFlightMode.Hovering)
+                {
+                    unit.CurrentSpeed = 0f;
+                    unit.CurrentVelocity = Vector3.zero;
+                    unit.TurnRatio = 0f;
+                    unit.HoverStableTime += dt;
                     continue;
                 }
 
@@ -1026,6 +1158,23 @@ namespace SWRTS.Demo1
                         desiredDirection = toDestination / distanceToDestination;
                     unit.StableLoiterTime = 0f;
                 }
+                else if (unit.FlightMode == DemoFlightMode.Loiter && unit.LoiterWaypoints.Count > 0)
+                {
+                    int index = Mathf.Clamp(unit.LoiterWaypointIndex, 0, unit.LoiterWaypoints.Count - 1);
+                    Vector3 toWaypoint = unit.LoiterWaypoints[index] - unit.Position;
+                    toWaypoint.y = 0f;
+                    distanceToDestination = toWaypoint.magnitude;
+                    if (distanceToDestination <= Mathf.Max(0.2f, Balance.DestinationRadius * 0.2f))
+                    {
+                        unit.LoiterWaypointIndex = (index + 1) % unit.LoiterWaypoints.Count;
+                        toWaypoint = unit.LoiterWaypoints[unit.LoiterWaypointIndex] - unit.Position;
+                        toWaypoint.y = 0f;
+                        distanceToDestination = toWaypoint.magnitude;
+                    }
+                    if (distanceToDestination > 0.001f)
+                        desiredDirection = toWaypoint / distanceToDestination;
+                    unit.StableLoiterTime += dt;
+                }
 
                 float effectiveMaximumSpeed = GetEffectiveMoveSpeed(unit.Id);
                 if (desiredDirection.sqrMagnitude > 0.001f)
@@ -1035,14 +1184,13 @@ namespace SWRTS.Demo1
                     unit.TurnRatio = Mathf.Clamp01(headingDelta / 180f);
                     float turnRate = 60f * Mathf.Max(0f, unit.Stats.Mobility);
                     unit.Facing = Vector3.RotateTowards(facing, desiredDirection, turnRate * Mathf.Deg2Rad * dt, 0f).normalized;
-                    effectiveMaximumSpeed *= Mathf.Lerp(1f, 0.55f, unit.TurnRatio);
+                    effectiveMaximumSpeed *= Mathf.Lerp(1f, Balance.TurnSpeedCapAt180, unit.TurnRatio);
                 }
                 else
                     unit.TurnRatio = 0f;
 
-                float acceleration = Mathf.Max(0.01f, unit.Stats.MoveSpeed / 4f);
                 float targetSpeed = desiredDirection.sqrMagnitude > 0.001f ? effectiveMaximumSpeed : 0f;
-                if (unit.HasDestination && !float.IsInfinity(distanceToDestination))
+                if (unit.HasDestination && unit.FlightMode != DemoFlightMode.Loiter && !float.IsInfinity(distanceToDestination))
                     targetSpeed = Mathf.Min(targetSpeed, Mathf.Max(0.5f, distanceToDestination * 0.75f));
                 unit.CurrentSpeed = Mathf.MoveTowards(unit.CurrentSpeed, targetSpeed, acceleration * dt);
                 unit.CurrentVelocity = unit.Facing * unit.CurrentSpeed;
@@ -1057,6 +1205,7 @@ namespace SWRTS.Demo1
                     {
                         unit.Position = BasePosition;
                         unit.HasLoiter = false;
+                        unit.FlightMode = DemoFlightMode.Normal;
                         unit.CurrentSpeed = 0f;
                         unit.CurrentVelocity = Vector3.zero;
                         unit.Activity = DemoUnitActivity.Idle;
@@ -1080,6 +1229,7 @@ namespace SWRTS.Demo1
                     unit.HasDestination = false;
                     unit.HasManualMoveOrder = false;
                     unit.HasLoiter = false;
+                    unit.FlightMode = DemoFlightMode.Normal;
                     unit.CurrentSpeed = 0f;
                     unit.CurrentVelocity = Vector3.zero;
                     unit.Activity = DemoUnitActivity.Idle;
@@ -1104,9 +1254,26 @@ namespace SWRTS.Demo1
                 DemoUnitModel observer = observers.FirstOrDefault(unit => IsInsideWitchVision(unit, enemy.Position));
                 if (observer != null)
                     ObserveEnemy(enemy, dt);
+                else if (observers.Any(unit => HorizontalDistance(unit.Position, enemy.Position) <=
+                                               Mathf.Max(0f, unit.Stats.ForcedRevealRadius)))
+                    ForceIdentifyEnemy(enemy);
                 else
                     DecayEnemyIntel(enemy, dt);
             }
+        }
+
+        private void ForceIdentifyEnemy(DemoUnitModel enemy)
+        {
+            DemoIntelLevel previous = enemy.PlayerIntelLevel;
+            enemy.IsCurrentlyObservedByPlayer = true;
+            enemy.IsRevealedToPlayer = true;
+            enemy.LastKnownPosition = enemy.Position;
+            enemy.LastObservedAt = SimulationTime;
+            if (enemy.PlayerIntelLevel < DemoIntelLevel.Identified)
+                enemy.PlayerIntelLevel = DemoIntelLevel.Identified;
+            enemy.IdentificationProgress = 1f;
+            if (previous < DemoIntelLevel.Identified)
+                Raise($"Enemy force-identified: {enemy.DisplayName}.", enemy.Position, true);
         }
 
         private bool IsInsideWitchVision(DemoUnitModel observer, Vector3 targetPosition)
@@ -1198,7 +1365,7 @@ namespace SWRTS.Demo1
                 }
 
                 float intelFactor = attacker.Team == DemoTeam.Player && target.PlayerIntelLevel >= DemoIntelLevel.Assessed ? 1.25f : 1f;
-                float maximumRange = GetEffectiveAttackRange(attacker.Id);
+                float maximumRange = GetEffectiveAttackRange(attacker, target);
                 float rangeScale = 1f - Balance.FullSuppressionVisionRangePenalty * attacker.SuppressionRatio;
                 float optimalRange = Mathf.Min(maximumRange, Mathf.Max(0.1f, attacker.Stats.OptimalAttackRange * rangeScale));
                 float distance = HorizontalDistance(attacker.Position, target.Position);
@@ -1500,8 +1667,7 @@ namespace SWRTS.Demo1
                     DemoUnitModel target = _units.Values
                         .Where(candidate => candidate.IsAlive && candidate.IsOperational && candidate.Team == DemoTeam.Enemy &&
                                             candidate.IsCurrentlyObservedByPlayer && candidate.PlayerIntelLevel >= DemoIntelLevel.Identified &&
-                                            HorizontalDistance(unit.Position, candidate.Position) <=
-                                            unit.Stats.EngagementRadius * (1f - Balance.FullSuppressionVisionRangePenalty * unit.SuppressionRatio))
+                                            HorizontalDistance(unit.Position, candidate.Position) <= GetAutomaticTargetingRange(unit, candidate))
                         .OrderBy(candidate => HorizontalDistance(unit.Position, candidate.Position))
                         .ThenBy(candidate => candidate.Id)
                         .FirstOrDefault();
@@ -1544,9 +1710,21 @@ namespace SWRTS.Demo1
                     unit.Activity = DemoUnitActivity.Moving;
                     continue;
                 }
+                if ((unit.IsHovering || unit.IsEnteringHover) && !unit.HasExplicitAttackOrder)
+                {
+                    if (targetVisible)
+                    {
+                        unit.TargetLastKnownPosition = target.Position;
+                        unit.HasTargetLastKnownPosition = true;
+                        unit.Activity = HorizontalDistance(unit.Position, target.Position) <= GetEffectiveAttackRange(unit, target)
+                            ? DemoUnitActivity.Attacking
+                            : DemoUnitActivity.Idle;
+                    }
+                    continue;
+                }
                 if (unit.Team == DemoTeam.Player && !unit.HasExplicitAttackOrder &&
                     ((!targetVisible && unit.LockQuality <= 0f) ||
-                     HorizontalDistance(unit.Position, target.Position) > unit.Stats.EngagementRadius))
+                     HorizontalDistance(unit.Position, target.Position) > GetAutomaticTargetingRange(unit, target)))
                 {
                     ClearTarget(unit);
                     continue;
@@ -1557,7 +1735,7 @@ namespace SWRTS.Demo1
                     unit.TargetLastKnownPosition = target.Position;
                     unit.HasTargetLastKnownPosition = true;
                     float distance = HorizontalDistance(unit.Position, target.Position);
-                    float attackRange = GetEffectiveAttackRange(unit.Id);
+                    float attackRange = GetEffectiveAttackRange(unit, target);
                     float pursuitStopRange = attackRange * 0.75f;
                     if (unit.IsFixed)
                         unit.Activity = distance <= attackRange ? DemoUnitActivity.Attacking : DemoUnitActivity.Idle;
@@ -1592,7 +1770,7 @@ namespace SWRTS.Demo1
             {
                 DemoUnitModel target = GetUnit(attacker.LockedTargetId);
                 if (target == null || !target.IsAlive || !IsTargetVisibleToAttacker(attacker, target) ||
-                    HorizontalDistance(attacker.Position, target.Position) > GetEffectiveAttackRange(attacker.Id) ||
+                    HorizontalDistance(attacker.Position, target.Position) > GetEffectiveAttackRange(attacker, target) ||
                     attacker.LockQuality < Balance.LockFireThreshold)
                     continue;
                 if (attacker.AttackCooldown > 0f || attacker.IsChannelingAbility || !CanFireWeapon(attacker))
@@ -1612,32 +1790,27 @@ namespace SWRTS.Demo1
                     }
                 }
 
-                List<DemoUnitModel> impactedTargets;
-                Vector3 impactPosition;
                 if (attacker.Stats.ExplosiveRadius > 0f)
                 {
-                    impactPosition = CalculateLeadPoint(attacker, target);
-                    attacker.LastAimPoint = impactPosition;
-                    impactedTargets = _units.Values.Where(unit => unit.IsAlive && unit.IsOperational && unit.Team != attacker.Team &&
-                        HorizontalDistance(unit.Position, impactPosition) <= attacker.Stats.ExplosiveRadius).ToList();
+                    LaunchProjectile(attacker, target);
                 }
                 else
                 {
-                    impactPosition = target.Position;
-                    impactedTargets = new List<DemoUnitModel> { target };
-                }
-
-                foreach (DemoUnitModel impacted in impactedTargets)
-                {
-                    float hitChance = CalculateHitChance(attacker, impacted, false);
-                    float evasionChance = CalculateEvasionChance(impacted);
-                    DemoDamageResult result = DemoDamageResolver.Resolve(attacker, impacted, Balance, _random, 0f,
-                        attackMultiplier, 1f, 1f, 0f, hitChance, evasionChance, -1f,
-                        impacted.MarkedUntil > SimulationTime);
-                    ApplySuppression(impacted, result, attacker.Stats.ExplosiveRadius > 0f);
-                    ReportDamage(attacker, impacted, result, impactPosition, false);
+                    bool fireControl = CanUseFireControl(attacker, target);
+                    float hitChance = CalculateHitChance(attacker, target,
+                        fireControl && attacker.Stats.PassiveIgnoresRangeFalloff);
+                    if (fireControl)
+                        hitChance = Mathf.Max(attacker.Stats.PassiveMinimumAccuracy, hitChance);
+                    float evasionChance = CalculateEvasionChance(target);
+                    DemoDamageResult result = DemoDamageResolver.Resolve(attacker, target, Balance, _random, 0f,
+                        attackMultiplier * (fireControl ? attacker.Stats.PassiveDamageMultiplier : 1f),
+                        1f, 1f, 0f, hitChance, evasionChance,
+                        fireControl ? attacker.Stats.PassivePenetration : -1f,
+                        target.MarkedUntil > SimulationTime);
+                    ApplySuppression(target, result, false);
+                    ReportDamage(attacker, target, result, target.Position, false);
                     if (result.Destroyed)
-                        ClearDestroyedTarget(impacted.Id);
+                        ClearDestroyedTarget(target.Id);
                 }
                 ConsumeAmmo(attacker);
                 attacker.AttacksPerformed = nextAttack;
@@ -1695,6 +1868,81 @@ namespace SWRTS.Demo1
                 }
                 Raise($"Remote strike hit {targets.Count} targets.", strike.Target, true);
             }
+        }
+
+        private void LaunchProjectile(DemoUnitModel attacker, DemoUnitModel target)
+        {
+            Vector3 direction = target.Position - attacker.Position;
+            direction.y = 0f;
+            if (direction.sqrMagnitude < 0.001f)
+                direction = attacker.Facing;
+            DemoProjectileModel projectile = new DemoProjectileModel(
+                _nextProjectileId++, attacker.Id, target.Id, attacker.Position, direction,
+                Mathf.Max(0.1f, attacker.Stats.ProjectileSpeed),
+                Mathf.Max(0f, attacker.Stats.ProjectileTurnRate),
+                Mathf.Max(0.1f, attacker.Stats.ProjectileLifetime),
+                Mathf.Max(0.05f, attacker.Stats.ProjectileContactRadius),
+                Mathf.Max(0f, attacker.Stats.ExplosiveRadius),
+                CalculateHitChance(attacker, target, false));
+            _projectiles.Add(projectile);
+            attacker.LastAimPoint = target.Position;
+            Raise($"{attacker.DisplayName} launched a tracking rocket at {target.DisplayName}.", attacker.Position, false);
+        }
+
+        private void TickProjectiles(float dt)
+        {
+            foreach (DemoProjectileModel projectile in _projectiles.Where(item => !item.Resolved).ToList())
+            {
+                projectile.RemainingLifetime -= dt;
+                DemoUnitModel target = GetUnit(projectile.TargetId);
+                if (projectile.RemainingLifetime <= 0f || target == null || !target.IsAlive || !target.IsOperational)
+                {
+                    projectile.Resolved = true;
+                    continue;
+                }
+
+                Vector3 desired = target.Position - projectile.Position;
+                desired.y = 0f;
+                if (desired.sqrMagnitude > 0.001f)
+                    projectile.Facing = Vector3.RotateTowards(projectile.Facing, desired.normalized,
+                        projectile.TurnRate * Mathf.Deg2Rad * dt, 0f).normalized;
+                Vector3 previous = projectile.Position;
+                projectile.Position = ClampToMap(projectile.Position + projectile.Facing * projectile.Speed * dt);
+                if (DistanceToSegment(target.Position, previous, projectile.Position) > projectile.ContactRadius)
+                    continue;
+
+                projectile.Resolved = true;
+                ResolveProjectileImpact(projectile);
+            }
+        }
+
+        private void ResolveProjectileImpact(DemoProjectileModel projectile)
+        {
+            DemoUnitModel attacker = GetUnit(projectile.AttackerId);
+            if (attacker == null)
+                return;
+            List<DemoUnitModel> impacted = _units.Values
+                .Where(unit => unit.IsAlive && unit.IsOperational && unit.Team != attacker.Team &&
+                               HorizontalDistance(unit.Position, projectile.Position) <= projectile.ExplosionRadius)
+                .ToList();
+            foreach (DemoUnitModel unit in impacted)
+            {
+                DemoDamageResult result = DemoDamageResolver.Resolve(attacker, unit, Balance, _random, 0f,
+                    1f, 1f, 1f, 0f, projectile.LaunchHitChance, CalculateEvasionChance(unit), -1f,
+                    unit.MarkedUntil > SimulationTime);
+                ApplySuppression(unit, result, true);
+                ReportDamage(attacker, unit, result, projectile.Position, false);
+                if (result.Destroyed)
+                    ClearDestroyedTarget(unit.Id);
+            }
+            Raise($"Tracking rocket impacted near {targetName(projectile.TargetId)}; {impacted.Count} targets in blast.",
+                projectile.Position, impacted.Count > 0);
+        }
+
+        private string targetName(int targetId)
+        {
+            DemoUnitModel target = GetUnit(targetId);
+            return target == null ? "lost target" : target.DisplayName;
         }
 
         private float GetCoreDiscoveryMultiplier(DemoUnitModel attacker)
@@ -1788,6 +2036,9 @@ namespace SWRTS.Demo1
             unit.HasDestination = true;
             unit.HasManualMoveOrder = manualMoveOrder;
             unit.HasLoiter = false;
+            unit.FlightMode = DemoFlightMode.Normal;
+            unit.HoverStableTime = 0f;
+            unit.SetLoiterWaypoints(Enumerable.Empty<Vector3>());
             unit.StableLoiterTime = 0f;
             unit.Activity = activity;
         }
@@ -1799,7 +2050,7 @@ namespace SWRTS.Demo1
             unit.Destination = unit.Position;
             unit.HasDestination = false;
             unit.HasManualMoveOrder = false;
-            if (!unit.HasLoiter)
+            if (!unit.HasLoiter && !unit.IsHovering && !unit.IsEnteringHover)
                 BeginLoiter(unit, unit.Position);
             if (unit.Activity == DemoUnitActivity.Moving || unit.Activity == DemoUnitActivity.Pursuing)
                 unit.Activity = DemoUnitActivity.Idle;
@@ -1811,12 +2062,22 @@ namespace SWRTS.Demo1
                 return;
             unit.LoiterCenter = ClampToMap(center);
             unit.HasLoiter = true;
-            Vector3 radial = unit.Position - unit.LoiterCenter;
-            radial.y = 0f;
-            if (radial.sqrMagnitude < 0.001f)
-                radial = unit.Facing.sqrMagnitude > 0.001f ? unit.Facing.normalized : Vector3.right;
-            unit.LoiterAngle = Mathf.Atan2(radial.z, radial.x);
-            unit.Position = ClampToMap(unit.LoiterCenter + radial.normalized * Mathf.Max(0.1f, Balance.LoiterRadius));
+            unit.HasDestination = false;
+            unit.HasManualMoveOrder = false;
+            unit.FlightMode = DemoFlightMode.Loiter;
+            unit.HoverStableTime = 0f;
+            Vector3 longAxis = unit.Facing.sqrMagnitude > 0.001f ? unit.Facing.normalized : Vector3.right;
+            Vector3 shortAxis = new Vector3(-longAxis.z, 0f, longAxis.x);
+            int vertexCount = Mathf.Max(3, Balance.LoiterVertexCount);
+            List<Vector3> waypoints = new List<Vector3>(vertexCount);
+            for (int i = 0; i < vertexCount; i++)
+            {
+                float angle = i * Mathf.PI * 2f / vertexCount;
+                waypoints.Add(ClampToMap(unit.LoiterCenter +
+                    longAxis * (Mathf.Cos(angle) * Mathf.Max(0.1f, Balance.LoiterMajorRadius)) +
+                    shortAxis * (Mathf.Sin(angle) * Mathf.Max(0.1f, Balance.LoiterMinorRadius))));
+            }
+            unit.SetLoiterWaypoints(waypoints);
             unit.StableLoiterTime = 0f;
         }
 
@@ -1861,7 +2122,7 @@ namespace SWRTS.Demo1
 
         private float CalculateHitChance(DemoUnitModel attacker, DemoUnitModel target, bool ignoreRangeFalloff)
         {
-            float maximumRange = GetEffectiveAttackRange(attacker.Id);
+            float maximumRange = GetEffectiveAttackRange(attacker, target);
             float rangeScale = 1f - Balance.FullSuppressionVisionRangePenalty * attacker.SuppressionRatio;
             float optimalRange = Mathf.Min(maximumRange, Mathf.Max(0.1f, attacker.Stats.OptimalAttackRange * rangeScale));
             float distance = HorizontalDistance(attacker.Position, target.Position);
@@ -1887,6 +2148,43 @@ namespace SWRTS.Demo1
             float projectileSpeed = Mathf.Max(0.1f, attacker.Stats.ProjectileSpeed);
             float travelTime = HorizontalDistance(attacker.Position, target.Position) / projectileSpeed;
             return ClampToMap(target.Position + target.CurrentVelocity * travelTime);
+        }
+
+        private bool CanUseFireControl(DemoUnitModel attacker, DemoUnitModel target)
+        {
+            return attacker != null && target != null && attacker.IsFireControlReady &&
+                   (target.PlayerIntelLevel >= DemoIntelLevel.Assessed || target.MarkedUntil > SimulationTime);
+        }
+
+        private float GetEffectiveAttackRange(DemoUnitModel attacker, DemoUnitModel target)
+        {
+            if (attacker == null)
+                return 0f;
+            float baseRange = CanUseFireControl(attacker, target)
+                ? Mathf.Max(attacker.Stats.AttackRange, attacker.Stats.PassiveAttackRange)
+                : attacker.Stats.AttackRange;
+            return Mathf.Max(0.1f, baseRange *
+                (1f - Balance.FullSuppressionVisionRangePenalty * attacker.SuppressionRatio));
+        }
+
+        private float GetAutomaticTargetingRange(DemoUnitModel attacker, DemoUnitModel target)
+        {
+            float engagement = attacker.Stats.EngagementRadius *
+                               (1f - Balance.FullSuppressionVisionRangePenalty * attacker.SuppressionRatio);
+            return Mathf.Max(engagement, GetEffectiveAttackRange(attacker, target));
+        }
+
+        private static float DistanceToSegment(Vector3 point, Vector3 start, Vector3 end)
+        {
+            Vector3 segment = end - start;
+            segment.y = 0f;
+            Vector3 offset = point - start;
+            offset.y = 0f;
+            float lengthSquared = segment.sqrMagnitude;
+            if (lengthSquared < 0.0001f)
+                return offset.magnitude;
+            float t = Mathf.Clamp01(Vector3.Dot(offset, segment) / lengthSquared);
+            return (offset - segment * t).magnitude;
         }
 
         private void ApplySuppression(DemoUnitModel target, DemoDamageResult result, bool explosive, float additional = 0f)

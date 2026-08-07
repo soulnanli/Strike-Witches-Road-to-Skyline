@@ -35,11 +35,12 @@ MonoBehaviour:
     MagicRecovery: 7
     Mobility: 1
     MoveSpeed: 2.42
-    VisionRadius: 48
+    VisionRadius: 72
     VisionAngle: 360
     WitchVisionType: 2
-    EngagementRadius: 8
-    AttackRange: 12
+    ForcedRevealRadius: 24
+    EngagementRadius: 72
+    AttackRange: 72
     OptimalAttackRange: 8
     BaseAccuracy: 0.7
     Penetration: 20
@@ -51,6 +52,9 @@ MonoBehaviour:
     UnlimitedReserveAmmo: 0
     ExplosiveRadius: 2.5
     ProjectileSpeed: 12
+    ProjectileTurnRate: 120
+    ProjectileLifetime: 10
+    ProjectileContactRadius: 0.5
     SupportRadius: 0
     CanRemoteStrike: 0
     Traits: 0

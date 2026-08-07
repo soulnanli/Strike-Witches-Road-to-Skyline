@@ -29,7 +29,7 @@ MonoBehaviour:
     CoreConcealment: 0.65
     AttackInterval: 1.6
     MagicRecovery: 4
-    Mobility: 1
+    Mobility: 0.65
     MoveSpeed: 4.8
     VisionRadius: 24
     VisionAngle: 100
