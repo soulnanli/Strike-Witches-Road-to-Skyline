@@ -27,12 +27,18 @@ namespace SWRTS.Demo1
             if (_material != null)
                 _renderer.sharedMaterial = _material;
 
-            _selectionCircle = Demo1Drawing.CreateCircle(transform, "Selection", new Color(0.2f, 1f, 0.95f, 0.95f), 3f, 48);
-            _attackCircle = Demo1Drawing.CreateCircle(transform, "Attack Range", new Color(1f, 0.22f, 0.16f, 0.78f), 2.5f, 64);
-            _abilityCircle = Demo1Drawing.CreateCircle(transform, "Ability Range", new Color(0.72f, 0.35f, 1f, 0.82f), 2.5f, 72);
-            _abilitySector = Demo1Drawing.CreateSector(transform, "Ability Sector", new Color(0.72f, 0.35f, 1f, 0.82f), 2.5f, 48);
-            _routeLine = Demo1Drawing.CreateLine(transform, "Route", new Color(0.2f, 1f, 0.9f, 0.75f), 3f);
-            _targetLine = Demo1Drawing.CreateLine(transform, "Target Lock", new Color(1f, 0.24f, 0.16f, 0.9f), 3.5f);
+            _selectionCircle = Demo1Drawing.CreateCircle(transform, "Selection", new Color(0.2f, 1f, 0.95f, 0.98f),
+                Demo1Drawing.OperationalLinePixelWidth, 64);
+            _attackCircle = Demo1Drawing.CreateCircle(transform, "Attack Range", new Color(1f, 0.22f, 0.16f, 0.92f),
+                Demo1Drawing.OperationalLinePixelWidth, 96);
+            _abilityCircle = Demo1Drawing.CreateCircle(transform, "Ability Range", new Color(0.72f, 0.35f, 1f, 0.92f),
+                Demo1Drawing.OperationalLinePixelWidth, 96);
+            _abilitySector = Demo1Drawing.CreateSector(transform, "Ability Sector", new Color(0.72f, 0.35f, 1f, 0.92f),
+                Demo1Drawing.OperationalLinePixelWidth, 72);
+            _routeLine = Demo1Drawing.CreateLine(transform, "Route", new Color(0.2f, 1f, 0.9f, 0.75f),
+                Demo1Drawing.RouteLinePixelWidth);
+            _targetLine = Demo1Drawing.CreateLine(transform, "Target Lock", new Color(1f, 0.24f, 0.16f, 0.96f),
+                Demo1Drawing.EmphasizedLinePixelWidth);
             _routeLine.enabled = false;
             _targetLine.enabled = false;
             SetSelected(false, model);
@@ -84,7 +90,7 @@ namespace SWRTS.Demo1
             _targetLine.enabled = selected && model.LockedTargetId >= 0 && model.HasTargetLastKnownPosition;
             if (_targetLine.enabled)
             {
-                Color lockColor = Color.Lerp(new Color(1f, 0.7f, 0.16f, 0.75f), new Color(1f, 0.16f, 0.12f, 1f), model.LockQualityRatio);
+                Color lockColor = Color.Lerp(new Color(1f, 0.7f, 0.16f, 0.9f), new Color(1f, 0.16f, 0.12f, 1f), model.LockQualityRatio);
                 _targetLine.startColor = lockColor;
                 _targetLine.endColor = lockColor;
                 _targetLine.SetPosition(0, model.Position + Vector3.up * 0.18f);

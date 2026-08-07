@@ -275,6 +275,14 @@ namespace SWRTS.Demo1.Tests
             Assert.That(disconnected.Count, Is.EqualTo(2));
             Assert.That(mixed.Count, Is.EqualTo(1));
             Assert.That(overlapping[0].Count, Is.GreaterThan(20));
+
+            var interpolatedCircle = Demo1RangeContourBuilder.BuildUnion(new[]
+            {
+                DemoRangeShape.Circle(Vector3.zero, 5f)
+            }, 0.5f);
+            float maximumRadiusError = interpolatedCircle[0]
+                .Max(point => Mathf.Abs(point.magnitude - 5f));
+            Assert.That(maximumRadiusError, Is.LessThan(0.08f));
         }
 
         private static Demo1Simulation CreateLockedScenario(float distance, out DemoUnitModel attacker,

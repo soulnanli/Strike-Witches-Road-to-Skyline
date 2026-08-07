@@ -74,12 +74,20 @@ namespace SWRTS.Demo1.PlayModeTests
             Transform optimalRange = view.transform.Find("Optimal Range");
             Transform engagementRange = view.transform.Find("Engagement");
             Transform targetLock = view.transform.Find("Target Lock");
+            Transform route = view.transform.Find("Route");
             Assert.That(attackRange, Is.Not.Null);
             Assert.That(optimalRange, Is.Null);
             Assert.That(engagementRange, Is.Null);
             Assert.That(targetLock, Is.Not.Null);
             Assert.That(attackRange.GetComponent<LineRenderer>().enabled, Is.True);
             Assert.That(targetLock.GetComponent<LineRenderer>().enabled, Is.True);
+            Assert.That(attackRange.GetComponent<Demo1ScreenSpaceLineWidth>().PixelWidth,
+                Is.GreaterThanOrEqualTo(Demo1Drawing.OperationalLinePixelWidth));
+            Assert.That(attackRange.GetComponent<LineRenderer>().startColor.a, Is.GreaterThanOrEqualTo(0.85f));
+            Assert.That(targetLock.GetComponent<Demo1ScreenSpaceLineWidth>().PixelWidth,
+                Is.GreaterThanOrEqualTo(Demo1Drawing.OperationalLinePixelWidth));
+            Assert.That(route.GetComponent<Demo1ScreenSpaceLineWidth>().PixelWidth,
+                Is.EqualTo(Demo1Drawing.RouteLinePixelWidth));
 
             GameObject overlay = GameObject.Find("Selected Range Overlay");
             Assert.That(overlay, Is.Not.Null);
@@ -92,6 +100,16 @@ namespace SWRTS.Demo1.PlayModeTests
             Assert.That(detection.startColor.g, Is.EqualTo(Demo1RangeOverlay.DetectionColor.g).Within(0.005f));
             Assert.That(detection.startColor.b, Is.EqualTo(Demo1RangeOverlay.DetectionColor.b).Within(0.005f));
             Assert.That(detection.startColor.a, Is.EqualTo(Demo1RangeOverlay.DetectionColor.a).Within(0.005f));
+            Assert.That(detection.startColor.a, Is.GreaterThanOrEqualTo(0.85f));
+            Assert.That(detection.GetComponent<Demo1ScreenSpaceLineWidth>().PixelWidth,
+                Is.GreaterThanOrEqualTo(Demo1Drawing.OperationalLinePixelWidth));
+            Assert.That(detection.numCornerVertices, Is.GreaterThanOrEqualTo(4));
+
+            LineRenderer gridLine = Object.FindObjectsByType<LineRenderer>(FindObjectsSortMode.None)
+                .First(line => line.name == "Grid Line");
+            Assert.That(gridLine.GetComponent<Demo1ScreenSpaceLineWidth>().PixelWidth,
+                Is.EqualTo(Demo1Drawing.BackgroundGridPixelWidth));
+            Assert.That(gridLine.startColor.a, Is.EqualTo(0.55f).Within(0.005f));
 
             Assert.That(controller.CommandSetAutoAttack(false).Success, Is.True);
             yield return null;

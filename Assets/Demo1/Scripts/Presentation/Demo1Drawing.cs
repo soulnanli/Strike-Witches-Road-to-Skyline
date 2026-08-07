@@ -4,6 +4,11 @@ namespace SWRTS.Demo1
 {
     public static class Demo1Drawing
     {
+        public const float RouteLinePixelWidth = 3f;
+        public const float OperationalLinePixelWidth = 4f;
+        public const float EmphasizedLinePixelWidth = 4.5f;
+        public const float BackgroundGridPixelWidth = 2f;
+
         private static Shader _flatColorShader;
         private static Shader _lineColorShader;
 
@@ -16,7 +21,7 @@ namespace SWRTS.Demo1
             line.loop = true;
             line.positionCount = segments;
             ConfigureScreenSpaceWidth(line, pixelWidth);
-            line.numCornerVertices = 2;
+            line.numCornerVertices = 4;
             Material material = CreateLineMaterial(color);
             if (material != null)
                 line.material = material;
@@ -46,6 +51,8 @@ namespace SWRTS.Demo1
             LineRenderer line = CreateLine(parent, name, color, pixelWidth);
             line.loop = false;
             line.positionCount = Mathf.Max(4, segments + 3);
+            line.numCornerVertices = 4;
+            line.numCapVertices = 4;
             return line;
         }
 

@@ -50,7 +50,7 @@ These values remain code-prototype balance and are not additions to Feishu revis
 ### Interface presentation pass
 
 - The strategic HUD uses a unified dark tactical palette with cyan player, red enemy, amber warning and green success semantics. Mission, commands, feedback, selected units and recent events are visually separated instead of relying on Unity's default controls.
-- Strategic map lines use fixed screen-pixel widths. Selection, merged detection, attack range, target lock, route, remote-strike and grid lines remain legible across the complete camera zoom range instead of shrinking with world scale.
+- Strategic map lines use fixed screen-pixel widths. Routes remain at 3 px; the background grid uses 2 px at 55% opacity; selection, merged detection, attack range, ability, target lock, remote-strike and projectile lines use at least 4 px and 85% opacity. Merged detection contours interpolate their signed-distance boundary and use rounded joins to avoid grid-step aliasing.
 - Selected-unit cards prioritize name, activity and the three live resources. Single selection keeps the detailed character panel on the right; multi-selection remains summarized on the left.
 - Selected units show an amber warning-radius circle, a red attack-range circle and a red line to the current locked target or its last known position.
 
@@ -93,7 +93,7 @@ This visual pass implements the information requirements of Feishu revision 6 wi
 - Lock quality grows from intelligence, turning and suppression, must reach 25 before firing, and decays by 35 per second without observation or outside effective attack range. Distance within range affects neither lock growth nor accuracy; accuracy applies lock and suppression modifiers before a separate evasion roll.
 - Standard witch machine guns use an 8/32 magazine/reserve load and a three-second reload. Empty reserves automatically order a return; the existing 20-second base service restores health, magic, shield and ammunition.
 - Enemy armour uses the 100% / 35% / 10% penetration tiers. Core marks last six seconds, halve effective armour and apply the non-stacking 2.4x core multiplier. Suppression only applies linear combat penalties and never clears orders or forces retreat.
-- This branch implements the target specification in Feishu `Demo1 战斗 个体` revision 391 and intentionally does not create battle instances, formations or a separate battle panel.
+- This branch implements the target specification in Feishu `Demo1 战斗 个体` revision 393 and intentionally does not create battle instances, formations or a separate battle panel.
 
 ## Witch active mechanisms
 
@@ -115,7 +115,7 @@ This visual pass implements the information requirements of Feishu revision 6 wi
 - When observation is lost, the enemy marker freezes at its last known position. Intelligence degrades from assessed to identified after 3 seconds, to contact after 7 seconds, and disappears after 15 seconds.
 - Stale contacts cannot be directly engaged, but their last known area remains a valid movement or remote-strike destination. Mission-known fixed objectives keep persistent identified intelligence.
 - Strategic unit models and world-space labels stay hidden while the entire witch roster is at base. Standby and servicing witches never render on the theatre map; mobile interception enemies never receive mission-known persistent intelligence.
-- These vision shapes, durations and sharing rules are tracked in Feishu `Demo1 战斗 个体` revision 391.
+- These vision shapes, durations and sharing rules are tracked in Feishu `Demo1 战斗 个体` revision 393.
 
 ## Independent enemy AI prototype
 
@@ -128,7 +128,7 @@ This visual pass implements the information requirements of Feishu revision 6 wi
 
 ## Configurable prototype assumptions
 
-The individual-combat specification revision 391 defines the current prototype formulas. Demo defaults are serialized in the balance and unit ScriptableObject assets described above; `Demo1Balance` and `DemoUnitStats` remain their runtime value types:
+The individual-combat specification revision 393 defines the current prototype formulas. Demo defaults are serialized in the balance and unit ScriptableObject assets described above; `Demo1Balance` and `DemoUnitStats` remain their runtime value types:
 
 - hit, evasion, penetration, armour, core, shield and HP resolve in the documented order;
 - shield absorption consumes one shield capacity and 0.55 magic per absorbed damage;

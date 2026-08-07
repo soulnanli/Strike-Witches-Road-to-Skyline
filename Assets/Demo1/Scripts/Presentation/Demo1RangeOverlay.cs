@@ -42,13 +42,24 @@ namespace SWRTS.Demo1
 
         public bool Contains(Vector2 point)
         {
+            return SignedDistance(point) >= 0f;
+        }
+
+        public float SignedDistance(Vector2 point)
+        {
             Vector2 offset = point - Center;
-            if (offset.sqrMagnitude > Radius * Radius)
-                return false;
-            if (Kind == DemoRangeShapeKind.Circle || AngleDegrees >= 359.9f || offset.sqrMagnitude < 0.0001f)
-                return true;
-            float cosine = Mathf.Cos(AngleDegrees * 0.5f * Mathf.Deg2Rad);
-            return Vector2.Dot(Facing, offset.normalized) >= cosine;
+            float distance = offset.magnitude;
+            float radialMargin = Radius - distance;
+            if (Kind == DemoRangeShapeKind.Circle || AngleDegrees >= 359.9f)
+                return radialMargin;
+            if (distance < 0.0001f)
+                return 0f;
+
+            float facingAngle = Mathf.Atan2(Facing.y, Facing.x) * Mathf.Rad2Deg;
+            float pointAngle = Mathf.Atan2(offset.y, offset.x) * Mathf.Rad2Deg;
+            float angularDelta = Mathf.Abs(Mathf.DeltaAngle(facingAngle, pointAngle)) * Mathf.Deg2Rad;
+            float angularMargin = (AngleDegrees * 0.5f * Mathf.Deg2Rad - angularDelta) * distance;
+            return Mathf.Min(radialMargin, angularMargin);
         }
     }
 
@@ -144,11 +155,12 @@ namespace SWRTS.Demo1
             int cellsX = Mathf.Max(1, Mathf.CeilToInt((maxX - minX + cellSize * 2f) / cellSize));
             int cellsZ = Mathf.Max(1, Mathf.CeilToInt((maxZ - minZ + cellSize * 2f) / cellSize));
 
-            bool[,] samples = new bool[cellsX + 1, cellsZ + 1];
+            float[,] samples = new float[cellsX + 1, cellsZ + 1];
             for (int z = 0; z <= cellsZ; z++)
             {
                 for (int x = 0; x <= cellsX; x++)
-                    samples[x, z] = ContainsAny(shapes, new Vector2(minX + x * cellSize, minZ + z * cellSize));
+                    samples[x, z] = SignedDistanceToUnion(shapes,
+                        new Vector2(minX + x * cellSize, minZ + z * cellSize));
             }
 
             Dictionary<GridPoint, List<GridPoint>> adjacency = new Dictionary<GridPoint, List<GridPoint>>();
@@ -156,29 +168,27 @@ namespace SWRTS.Demo1
             {
                 for (int x = 0; x < cellsX; x++)
                 {
-                    int mask = (samples[x, z] ? 1 : 0) |
-                               (samples[x + 1, z] ? 2 : 0) |
-                               (samples[x + 1, z + 1] ? 4 : 0) |
-                               (samples[x, z + 1] ? 8 : 0);
+                    int mask = (samples[x, z] >= 0f ? 1 : 0) |
+                               (samples[x + 1, z] >= 0f ? 2 : 0) |
+                               (samples[x + 1, z + 1] >= 0f ? 4 : 0) |
+                               (samples[x, z + 1] >= 0f ? 8 : 0);
                     if (mask == 0 || mask == 15)
                         continue;
-                    bool centerInside = ContainsAny(shapes,
-                        new Vector2(minX + (x + 0.5f) * cellSize, minZ + (z + 0.5f) * cellSize));
+                    bool centerInside = SignedDistanceToUnion(shapes,
+                        new Vector2(minX + (x + 0.5f) * cellSize, minZ + (z + 0.5f) * cellSize)) >= 0f;
                     AddMarchingSquare(adjacency, x, z, mask, centerInside);
                 }
             }
 
-            return StitchContours(adjacency, minX, minZ, cellSize);
+            return StitchContours(adjacency, samples, minX, minZ, cellSize);
         }
 
-        private static bool ContainsAny(IReadOnlyList<DemoRangeShape> shapes, Vector2 point)
+        private static float SignedDistanceToUnion(IReadOnlyList<DemoRangeShape> shapes, Vector2 point)
         {
+            float distance = float.NegativeInfinity;
             for (int i = 0; i < shapes.Count; i++)
-            {
-                if (shapes[i].Contains(point))
-                    return true;
-            }
-            return false;
+                distance = Mathf.Max(distance, shapes[i].SignedDistance(point));
+            return distance;
         }
 
         private static void AddMarchingSquare(Dictionary<GridPoint, List<GridPoint>> adjacency,
@@ -249,7 +259,7 @@ namespace SWRTS.Demo1
         }
 
         private static List<List<Vector2>> StitchContours(Dictionary<GridPoint, List<GridPoint>> adjacency,
-            float minX, float minZ, float cellSize)
+            float[,] samples, float minX, float minZ, float cellSize)
         {
             List<List<Vector2>> contours = new List<List<Vector2>>();
             HashSet<GridEdge> visited = new HashSet<GridEdge>();
@@ -292,21 +302,58 @@ namespace SWRTS.Demo1
                         continue;
                     List<Vector2> contour = new List<Vector2>(gridContour.Count);
                     for (int i = 0; i < gridContour.Count; i++)
-                    {
-                        GridPoint point = gridContour[i];
-                        contour.Add(new Vector2(minX + point.X * 0.5f * cellSize,
-                            minZ + point.Z * 0.5f * cellSize));
-                    }
-                    contours.Add(contour);
+                        contour.Add(InterpolateGridEdge(gridContour[i], samples, minX, minZ, cellSize));
+                    contours.Add(SmoothClosedContour(contour, 2));
                 }
             }
             return contours;
+        }
+
+        private static List<Vector2> SmoothClosedContour(IReadOnlyList<Vector2> source, int iterations)
+        {
+            List<Vector2> current = source == null ? new List<Vector2>() : new List<Vector2>(source);
+            for (int iteration = 0; iteration < iterations && current.Count >= 3; iteration++)
+            {
+                List<Vector2> smoothed = new List<Vector2>(current.Count * 2);
+                for (int i = 0; i < current.Count; i++)
+                {
+                    Vector2 first = current[i];
+                    Vector2 second = current[(i + 1) % current.Count];
+                    smoothed.Add(Vector2.Lerp(first, second, 0.25f));
+                    smoothed.Add(Vector2.Lerp(first, second, 0.75f));
+                }
+                current = smoothed;
+            }
+            return current;
+        }
+
+        private static Vector2 InterpolateGridEdge(GridPoint point, float[,] samples,
+            float minX, float minZ, float cellSize)
+        {
+            if ((point.X & 1) == 1)
+            {
+                int x = (point.X - 1) / 2;
+                int z = point.Z / 2;
+                float t = ZeroCrossing(samples[x, z], samples[x + 1, z]);
+                return new Vector2(minX + (x + t) * cellSize, minZ + z * cellSize);
+            }
+
+            int verticalX = point.X / 2;
+            int verticalZ = (point.Z - 1) / 2;
+            float verticalT = ZeroCrossing(samples[verticalX, verticalZ], samples[verticalX, verticalZ + 1]);
+            return new Vector2(minX + verticalX * cellSize, minZ + (verticalZ + verticalT) * cellSize);
+        }
+
+        private static float ZeroCrossing(float first, float second)
+        {
+            float denominator = first - second;
+            return Mathf.Abs(denominator) < 0.000001f ? 0.5f : Mathf.Clamp01(first / denominator);
         }
     }
 
     public sealed class Demo1RangeOverlay : MonoBehaviour
     {
-        public static readonly Color DetectionColor = new Color(0.25f, 0.78f, 1f, 0.5f);
+        public static readonly Color DetectionColor = new Color(0.25f, 0.78f, 1f, 0.88f);
 
         private readonly List<LineRenderer> _detectionLines = new List<LineRenderer>();
         private int _lastSignature = int.MinValue;
@@ -336,7 +383,7 @@ namespace SWRTS.Demo1
                 return;
             _lastSignature = signature;
             RebuildLayer(_detectionLines, Demo1RangeContourBuilder.BuildUnion(detectionShapes),
-                "Detection Range", DetectionColor, 2f, 0.055f);
+                "Detection Range", DetectionColor, Demo1Drawing.OperationalLinePixelWidth, 0.055f);
         }
 
         private static int BuildSignature(IReadOnlyList<DemoRangeShape> detection)
@@ -374,6 +421,7 @@ namespace SWRTS.Demo1
             {
                 LineRenderer line = Demo1Drawing.CreateLine(transform, $"{namePrefix} {pool.Count + 1}", color, pixelWidth);
                 line.loop = true;
+                line.numCornerVertices = 4;
                 line.enabled = false;
                 pool.Add(line);
             }

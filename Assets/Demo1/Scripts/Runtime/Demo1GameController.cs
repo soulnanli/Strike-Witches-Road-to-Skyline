@@ -963,7 +963,8 @@ namespace SWRTS.Demo1
                     visual = new StrikeVisual
                     {
                         Root = root,
-                        Radius = Demo1Drawing.CreateCircle(root.transform, "Target Area", new Color(1f, 0.78f, 0.1f, 0.95f), 3.5f, 64)
+                        Radius = Demo1Drawing.CreateCircle(root.transform, "Target Area", new Color(1f, 0.78f, 0.1f, 0.97f),
+                            Demo1Drawing.EmphasizedLinePixelWidth, 96)
                     };
                     _strikeViews.Add(strike.Id, visual);
                 }
@@ -994,7 +995,7 @@ namespace SWRTS.Demo1
                     {
                         Root = root,
                         Trail = Demo1Drawing.CreateLine(root.transform, "Rocket Trail",
-                            new Color(1f, 0.38f, 0.08f, 0.85f), 3f)
+                            new Color(1f, 0.38f, 0.08f, 0.95f), Demo1Drawing.OperationalLinePixelWidth)
                     };
                     _projectileViews.Add(projectile.Id, visual);
                 }
@@ -1584,7 +1585,8 @@ namespace SWRTS.Demo1
 
         private void CreateGridLine(Transform parent, Vector3 a, Vector3 b)
         {
-            LineRenderer line = Demo1Drawing.CreateLine(parent, "Grid Line", new Color(0.22f, 0.38f, 0.42f, 0.35f), 1f);
+            LineRenderer line = Demo1Drawing.CreateLine(parent, "Grid Line", new Color(0.22f, 0.38f, 0.42f, 0.55f),
+                Demo1Drawing.BackgroundGridPixelWidth);
             line.SetPosition(0, a);
             line.SetPosition(1, b);
         }
