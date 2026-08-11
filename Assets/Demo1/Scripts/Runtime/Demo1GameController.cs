@@ -14,7 +14,8 @@ namespace SWRTS.Demo1
             Select,
             Engage,
             RemoteStrike,
-            AbilityTarget
+            AbilityTarget,
+            SupplyDrop
         }
 
         private sealed class StrikeVisual
@@ -29,10 +30,18 @@ namespace SWRTS.Demo1
             public LineRenderer Trail;
         }
 
+        private sealed class SupplyVisual
+        {
+            public GameObject Root;
+            public GameObject Marker;
+            public LineRenderer Radius;
+        }
+
         private readonly Dictionary<int, Demo1UnitView> _unitViews = new Dictionary<int, Demo1UnitView>();
         private readonly Dictionary<DemoUnitConfig, int> _configuredUnitIds = new Dictionary<DemoUnitConfig, int>();
         private readonly Dictionary<int, StrikeVisual> _strikeViews = new Dictionary<int, StrikeVisual>();
         private readonly Dictionary<int, ProjectileVisual> _projectileViews = new Dictionary<int, ProjectileVisual>();
+        private readonly Dictionary<int, SupplyVisual> _supplyViews = new Dictionary<int, SupplyVisual>();
         private readonly HashSet<int> _selection = new HashSet<int>();
         private readonly Dictionary<int, List<int>> _controlGroups = new Dictionary<int, List<int>>();
         private readonly List<DemoBattleEvent> _events = new List<DemoBattleEvent>();
@@ -638,6 +647,43 @@ namespace SWRTS.Demo1
                 : _simulation.ScheduleRemoteStrike(artillery.Id, target));
         }
 
+        public DemoCommandResult CommandSupplyDrop(Vector3 target)
+        {
+            if (_simulation == null)
+                return ApplyAndReturn(DemoCommandResult.Fail("战场尚未初始化"));
+            _commandMode = CommandMode.Select;
+            return ApplyAndReturn(_simulation.RequestSupplyDrop(target));
+        }
+
+        public DemoCommandResult CommandFieldResupply(IEnumerable<int> unitIds)
+        {
+            DemoCommandResult result = _simulation == null
+                ? DemoCommandResult.Fail("战场尚未初始化")
+                : _simulation.RequestFieldResupply(unitIds);
+            ApplyResult(result);
+            return result;
+        }
+
+        private void EnterSupplyDropMode()
+        {
+            if (_simulation == null)
+                return;
+            if (_simulation.SupplyPackagesRemaining <= 0)
+            {
+                _commandMode = CommandMode.Select;
+                _statusMessage = "战术补给包已耗尽";
+                return;
+            }
+            if (_simulation.SupplyCallCooldownRemaining > 0f)
+            {
+                _commandMode = CommandMode.Select;
+                _statusMessage = $"补给投放冷却中：{_simulation.SupplyCallCooldownRemaining:0.0}s";
+                return;
+            }
+            _commandMode = CommandMode.SupplyDrop;
+            _statusMessage = $"补给投放：左键指定基地 {_simulation.Balance.SupplyCallRange:0} 范围内的位置";
+        }
+
         public DemoCommandResult CommandSpecialAbility(int targetId = -1)
         {
             if (_simulation == null)
@@ -768,6 +814,10 @@ namespace SWRTS.Demo1
                 EnterRemoteStrikeMode();
             if (Input.GetKeyDown(KeyCode.S))
                 EnterSpecialAbilityMode();
+            if (Input.GetKeyDown(KeyCode.G))
+                EnterSupplyDropMode();
+            if (Input.GetKeyDown(KeyCode.R))
+                ApplyResult(_simulation.RequestFieldResupply(_selection));
             if (Input.GetKeyDown(KeyCode.H))
                 ApplyResult(_simulation.RequestReturnToBase(_selection));
             if (Input.GetKeyDown(KeyCode.V))
@@ -839,6 +889,13 @@ namespace SWRTS.Demo1
 
         private void HandlePrimaryClick()
         {
+            if (_commandMode == CommandMode.SupplyDrop)
+            {
+                if (TryGroundPoint(Input.mousePosition, out Vector3 supplyTarget))
+                    CommandSupplyDrop(supplyTarget);
+                return;
+            }
+
             if (_commandMode == CommandMode.RemoteStrike)
             {
                 if (TryGroundPoint(Input.mousePosition, out Vector3 target))
@@ -972,6 +1029,43 @@ namespace SWRTS.Demo1
                 Demo1Drawing.SetCircle(visual.Radius, strike.Target, strike.Radius, 0.11f);
             }
 
+            foreach (DemoSupplyDropModel drop in _simulation.SupplyDrops)
+            {
+                if (!_supplyViews.TryGetValue(drop.Id, out SupplyVisual visual))
+                {
+                    GameObject root = new GameObject($"Supply Drop #{drop.Id}");
+                    root.transform.SetParent(transform);
+                    GameObject marker = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                    marker.name = "Supply Beacon";
+                    marker.transform.SetParent(root.transform, false);
+                    marker.transform.localScale = new Vector3(1.1f, 0.12f, 1.1f);
+                    Collider collider = marker.GetComponent<Collider>();
+                    if (collider != null)
+                        Destroy(collider);
+                    marker.GetComponent<Renderer>().sharedMaterial =
+                        Demo1Drawing.CreateMaterial(new Color(1f, 0.72f, 0.16f));
+                    visual = new SupplyVisual
+                    {
+                        Root = root,
+                        Marker = marker,
+                        Radius = Demo1Drawing.CreateCircle(root.transform, "Supply Radius",
+                            new Color(1f, 0.72f, 0.16f, 0.96f), Demo1Drawing.EmphasizedLinePixelWidth, 96)
+                    };
+                    _supplyViews.Add(drop.Id, visual);
+                }
+
+                visual.Root.SetActive(!drop.Finished);
+                if (drop.Finished)
+                    continue;
+                visual.Root.transform.position = drop.Position;
+                float pulse = drop.IsInbound ? 0.82f + 0.14f * Mathf.Sin(Time.unscaledTime * 6f) : 1f;
+                visual.Marker.transform.localScale = new Vector3(1.1f * pulse, 0.12f, 1.1f * pulse);
+                visual.Marker.transform.localPosition = Vector3.up * 0.14f;
+                visual.Radius.enabled = drop.IsActive;
+                if (drop.IsActive)
+                    Demo1Drawing.SetCircle(visual.Radius, drop.Position, drop.Radius, 0.115f);
+            }
+
             foreach (DemoProjectileModel projectile in _simulation.Projectiles)
             {
                 if (projectile.Resolved)
@@ -1057,12 +1151,19 @@ namespace SWRTS.Demo1
             FillRect(new Rect(0f, TopBarHeight, PanelWidth, Screen.height - TopBarHeight), HudPanelColor);
             FillRect(new Rect(PanelWidth - 1f, TopBarHeight, 1f, Screen.height - TopBarHeight), new Color(0.16f, 0.34f, 0.4f, 0.75f));
             float y = TopBarHeight + 12f;
-            Rect missionRect = new Rect(12f, y, PanelWidth - 24f, 64f);
+            Rect missionRect = new Rect(12f, y, PanelWidth - 24f, 84f);
             FillRect(missionRect, HudCardColor);
             FillRect(new Rect(missionRect.x, missionRect.y, 4f, missionRect.height), PlayerAccent);
             GUI.Label(new Rect(26f, y + 7f, 130f, 20f), "当前任务", _detailHeaderStyle);
             GUI.Label(new Rect(26f, y + 28f, PanelWidth - 54f, 30f), ActiveMissionText, _smallStyle);
-            y += 76f;
+            string supplyCooldown = _simulation.SupplyCallCooldownRemaining > 0f
+                ? $"冷却 {_simulation.SupplyCallCooldownRemaining:0.0}s"
+                : "可投放";
+            int activeSupply = _simulation.SupplyDrops.Count(drop => drop.IsActive);
+            GUI.Label(new Rect(26f, y + 59f, PanelWidth - 54f, 18f),
+                $"战术补给 {_simulation.SupplyPackagesRemaining}/{_simulation.Balance.SupplyPackageCount}  ·  {supplyCooldown}  ·  有效区 {activeSupply}",
+                _detailMutedStyle);
+            y += 96f;
 
             GUI.Label(new Rect(14f, y, 180f, 22f), "战术命令", _detailHeaderStyle);
             y += 27f;
@@ -1091,6 +1192,13 @@ namespace SWRTS.Demo1
                     new Color(0.09f, 0.16f, 0.2f), new Color(0.13f, 0.25f, 0.3f)))
                 ApplyResult(_simulation.RequestReturnToBase(_selection));
             y += 46f;
+            if (DrawHudButton(new Rect(14f, y, 151f, 34f), "投放补给  G", _hudPrimaryButtonStyle,
+                    new Color(0.22f, 0.22f, 0.08f), new Color(0.38f, 0.34f, 0.08f)))
+                EnterSupplyDropMode();
+            if (DrawHudButton(new Rect(173f, y, 151f, 34f), "前往补给  R", _hudButtonStyle,
+                    new Color(0.16f, 0.14f, 0.06f), new Color(0.3f, 0.25f, 0.07f)))
+                ApplyResult(_simulation.RequestFieldResupply(_selection));
+            y += 46f;
 
             Rect feedbackRect = new Rect(14f, y, PanelWidth - 28f, 42f);
             FillRect(feedbackRect, new Color(0.035f, 0.075f, 0.095f, 0.98f));
@@ -1102,7 +1210,7 @@ namespace SWRTS.Demo1
             y += 29f;
 
             float eventTop = Mathf.Max(500f, Screen.height - 214f);
-            int visibleCards = Mathf.Clamp(Mathf.FloorToInt((eventTop - y - 8f) / 104f), 1, 3);
+            int visibleCards = Mathf.Clamp(Mathf.FloorToInt((eventTop - y - 8f) / 104f), 0, 3);
             List<DemoUnitModel> selected = _selection.Select(_simulation.GetUnit).Where(unit => unit != null).Take(visibleCards).ToList();
             foreach (DemoUnitModel unit in selected)
             {
@@ -1127,7 +1235,9 @@ namespace SWRTS.Demo1
         {
             Rect card = new Rect(14f, y, PanelWidth - 28f, 98f);
             GUI.Box(card, string.Empty, _unitCardStyle);
-            Color stateAccent = unit.Activity == DemoUnitActivity.Attacking ? WarningAccent : PlayerAccent;
+            Color stateAccent = unit.IsResupplying
+                ? new Color(1f, 0.72f, 0.16f)
+                : unit.Activity == DemoUnitActivity.Attacking ? WarningAccent : PlayerAccent;
             FillRect(new Rect(card.x, card.y, 4f, card.height), stateAccent);
             GUI.Label(new Rect(24f, y + 5f, 190f, 22f), unit.DisplayName, _unitNameStyle);
             GUI.Label(new Rect(212f, y + 5f, 96f, 22f), $"{ActivityName(unit.Activity)}  ·  {VisionTypeName(unit.Stats.WitchVisionType)}", _tagStyle);
@@ -1140,7 +1250,9 @@ namespace SWRTS.Demo1
                 $"速度 {unit.CurrentSpeed:0.0}/{_simulation.GetEffectiveMoveSpeed(unit.Id):0.0} · 弹药 {unit.MagazineAmmo}/{reserve}{reload}", _detailMutedStyle);
             GUI.Label(new Rect(24f, y + 66f, 280f, 17f),
                 $"锁定 {unit.LockQuality:0}% · 压制 {unit.Suppression:0}% · {AbilityStatus(unit)}", _detailMutedStyle);
-            if (unit.LockedTargetId >= 0)
+            if (unit.IsResupplying)
+                GUI.Label(new Rect(24f, y + 82f, 280f, 15f), BuildSupplyStatus(unit), _detailMutedStyle);
+            else if (unit.LockedTargetId >= 0)
             {
                 DemoUnitModel target = _simulation.GetUnit(unit.LockedTargetId);
                 GUI.Label(new Rect(24f, y + 82f, 280f, 15f), $"目标  {(target != null ? target.DisplayName : "最后已知位置")}", _detailMutedStyle);
@@ -1273,6 +1385,8 @@ namespace SWRTS.Demo1
 
         private string BuildCurrentActionText(DemoUnitModel unit)
         {
+            if (unit.IsResupplying)
+                return BuildSupplyStatus(unit);
             DemoUnitModel target = unit.LockedTargetId >= 0 ? _simulation.GetUnit(unit.LockedTargetId) : null;
             if (unit.IsEnteringHover)
                 return $"减速悬停中  ·  当前速度 {unit.CurrentSpeed:0.00}";
@@ -1294,6 +1408,23 @@ namespace SWRTS.Demo1
             if (unit.HasDestination)
                 return $"{ActivityName(unit.Activity)}：前往 ({unit.Destination.x:0.0}, {unit.Destination.z:0.0})";
             return $"{ActivityName(unit.Activity)}  ·  位置 ({unit.Position.x:0.0}, {unit.Position.z:0.0})";
+        }
+
+        private string BuildSupplyStatus(DemoUnitModel unit)
+        {
+            DemoSupplyDropModel drop = _simulation?.SupplyDrops.FirstOrDefault(item => item.Id == unit.SupplyDropId);
+            if (drop == null || !drop.IsActive)
+                return "补给区失效，正在恢复待机";
+            float distance = Vector3.Distance(unit.Position, drop.Position);
+            if (distance > drop.Radius * Mathf.Clamp(_simulation.Balance.SupplyApproachRadiusRatio, 0.1f, 1f))
+                return $"前往补给 #{drop.Id}  ·  距离 {distance:0.0}";
+            if (unit.IsEnteringHover)
+                return $"补给 #{drop.Id}  ·  减速悬停 {unit.CurrentSpeed:0.0}";
+            float hitPause = Mathf.Max(0f,
+                _simulation.Balance.SupplyHitPauseDuration - (_simulation.SimulationTime - unit.LastHitAt));
+            if (hitPause > 0f)
+                return $"补给 #{drop.Id}  ·  受击暂停 {hitPause:0.0}s";
+            return $"接收补给 #{drop.Id}  ·  库存 {drop.RemainingSupply:0}/{drop.Capacity:0}";
         }
 
         private string BuildTargetingText(DemoUnitModel unit)
@@ -1349,6 +1480,17 @@ namespace SWRTS.Demo1
             {
                 Vector3 screen = _camera.WorldToScreenPoint(strike.Target);
                 GUI.Label(new Rect(screen.x - 70f, Screen.height - screen.y - 15f, 140f, 24f), $"打击 {Mathf.Max(0f, strike.Remaining):0.0}s", _worldLabelStyle);
+            }
+
+            foreach (DemoSupplyDropModel drop in _simulation.SupplyDrops.Where(drop => !drop.Finished))
+            {
+                Vector3 screen = _camera.WorldToScreenPoint(drop.Position + Vector3.up * 1.2f);
+                if (screen.z <= 0f)
+                    continue;
+                string label = drop.IsInbound
+                    ? $"补给 #{drop.Id} 投放 {drop.InboundRemaining:0.0}s"
+                    : $"补给 #{drop.Id}  {drop.RemainingSupply:0}/{drop.Capacity:0}  ·  {drop.ActiveRemaining:0.0}s";
+                GUI.Label(new Rect(screen.x - 115f, Screen.height - screen.y - 16f, 230f, 24f), label, _worldLabelStyle);
             }
         }
 
@@ -1627,6 +1769,7 @@ namespace SWRTS.Demo1
                 case DemoUnitActivity.Pursuing: return "追击中";
                 case DemoUnitActivity.Attacking: return "攻击中";
                 case DemoUnitActivity.Destroyed: return "失去战斗力";
+                case DemoUnitActivity.Resupplying: return "补给中";
                 default: return activity.ToString();
             }
         }

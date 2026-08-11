@@ -402,6 +402,152 @@ namespace SWRTS.Demo1.Tests
         }
 
         [Test]
+        public void TacticalSupplyCall_EnforcesRangeStockCooldownAndActivationDelay()
+        {
+            Demo1Balance balance = TestBalance();
+            balance.SupplyPackageCount = 2;
+            balance.SupplyCallRange = 10f;
+            balance.SupplyCallCooldown = 0.5f;
+            balance.SupplyDeliveryDelay = 0.25f;
+            Demo1Simulation simulation = new Demo1Simulation(balance);
+            simulation.ConfigureBase(Vector3.zero);
+
+            DemoCommandResult outOfRange = simulation.RequestSupplyDrop(new Vector3(11f, 0f, 0f));
+            Assert.That(outOfRange.Success, Is.False);
+            Assert.That(simulation.SupplyPackagesRemaining, Is.EqualTo(2));
+
+            Assert.That(simulation.RequestSupplyDrop(new Vector3(5f, 0f, 0f)).Success, Is.True);
+            Assert.That(simulation.SupplyPackagesRemaining, Is.EqualTo(1));
+            Assert.That(simulation.SupplyDrops.Single().IsInbound, Is.True);
+            Assert.That(simulation.RequestSupplyDrop(new Vector3(4f, 0f, 0f)).Success, Is.False);
+
+            simulation.Advance(0.3f);
+            Assert.That(simulation.SupplyDrops.Single().IsActive, Is.True);
+            Assert.That(simulation.SupplyCallCooldownRemaining, Is.GreaterThan(0f));
+            simulation.Advance(0.3f);
+            Assert.That(simulation.RequestSupplyDrop(new Vector3(4f, 0f, 0f)).Success, Is.True);
+            Assert.That(simulation.SupplyPackagesRemaining, Is.Zero);
+        }
+
+        [Test]
+        public void TacticalSupply_ApproachesHoversStopsFiringAndUsesPriorityOrder()
+        {
+            Demo1Balance balance = TestBalance();
+            balance.SupplyDeliveryDelay = 0f;
+            balance.SupplyCallCooldown = 0f;
+            balance.SupplyAmmoPerSecond = 8f;
+            balance.SupplyHitPauseDuration = 0f;
+            Demo1Simulation simulation = new Demo1Simulation(balance);
+            simulation.ConfigureBase(Vector3.zero);
+            DemoUnitStats witchStats = Stats(20f, 6f);
+            witchStats.MaxShield = 50f;
+            DemoUnitModel witch = simulation.AddUnit("witch", DemoTeam.Player, DemoUnitRole.Witch,
+                witchStats, new Vector3(-5f, 0f, 0f));
+            DemoUnitModel enemy = simulation.AddUnit("enemy", DemoTeam.Enemy, DemoUnitRole.Guard,
+                Stats(), new Vector3(1f, 0f, 0f));
+            simulation.GrantPersistentPlayerIntel(enemy.Id, DemoIntelLevel.Assessed);
+            witch.Health = 123f;
+            witch.Magic = 0f;
+            witch.Shield = 0f;
+            witch.MagazineAmmo = 0;
+            witch.ReserveAmmo = 0;
+            Assert.That(simulation.RequestSupplyDrop(Vector3.zero).Success, Is.True);
+            simulation.Advance(0.1f);
+            Assert.That(simulation.RequestFieldResupply(new[] { witch.Id }).Success, Is.True);
+
+            simulation.Advance(4f);
+
+            Assert.That(witch.IsResupplying, Is.True);
+            Assert.That(witch.IsHovering, Is.True);
+            Assert.That(witch.MagazineAmmo + witch.ReserveAmmo, Is.GreaterThan(0));
+            Assert.That(witch.Magic, Is.Zero, "Ammo must be replenished before magic.");
+            Assert.That(witch.Shield, Is.Zero, "Shield must be replenished after ammo and magic.");
+            Assert.That(witch.Health, Is.EqualTo(123f), "Field supply must not repair health.");
+            Assert.That(witch.AttacksPerformed, Is.Zero);
+            Assert.That(enemy.Health, Is.EqualTo(enemy.Stats.MaxHealth));
+            Assert.That(witch.AutoAttackEnabled, Is.False);
+        }
+
+        [Test]
+        public void TacticalSupply_HitPausesTransferAndMoveCancelsRestoringStance()
+        {
+            Demo1Balance balance = TestBalance();
+            balance.SupplyDeliveryDelay = 0f;
+            balance.SupplyCallCooldown = 0f;
+            balance.SupplyHitPauseDuration = 2f;
+            Demo1Simulation simulation = new Demo1Simulation(balance);
+            simulation.ConfigureBase(Vector3.zero);
+            DemoUnitStats stats = Stats();
+            stats.MaxShield = 20f;
+            DemoUnitModel witch = simulation.AddUnit("witch", DemoTeam.Player, DemoUnitRole.Witch, stats, Vector3.zero);
+            witch.MagazineAmmo = stats.MagazineSize;
+            witch.ReserveAmmo = stats.ReserveAmmo;
+            witch.Magic = 0f;
+            witch.Shield = 0f;
+            witch.AutoAttackEnabled = true;
+            simulation.RequestSupplyDrop(Vector3.zero);
+            simulation.Advance(0.1f);
+            simulation.RequestFieldResupply(new[] { witch.Id });
+            witch.LastHitAt = simulation.SimulationTime;
+
+            simulation.Advance(1f);
+            Assert.That(witch.Magic, Is.Zero);
+            simulation.Advance(1.2f);
+            Assert.That(witch.Magic, Is.GreaterThan(0f));
+
+            simulation.IssueMove(new[] { witch.Id }, new Vector3(5f, 0f, 0f));
+            Assert.That(witch.IsResupplying, Is.False);
+            Assert.That(witch.AutoAttackEnabled, Is.True);
+            Assert.That(witch.HasDestination, Is.True);
+            Assert.That(witch.FlightMode, Is.EqualTo(DemoFlightMode.Normal));
+        }
+
+        [Test]
+        public void TacticalSupply_CompletionAndExpiryRestoreStanceAndLoiter()
+        {
+            Demo1Balance completionBalance = TestBalance();
+            completionBalance.SupplyDeliveryDelay = 0f;
+            completionBalance.SupplyCallCooldown = 0f;
+            Demo1Simulation completionSimulation = new Demo1Simulation(completionBalance);
+            completionSimulation.ConfigureBase(Vector3.zero);
+            DemoUnitModel fullWitch = completionSimulation.AddUnit("full", DemoTeam.Player, DemoUnitRole.Witch,
+                Stats(), Vector3.zero);
+            fullWitch.AutoAttackEnabled = true;
+            completionSimulation.RequestSupplyDrop(Vector3.zero);
+            completionSimulation.Advance(0.1f);
+            Assert.That(completionSimulation.RequestFieldResupply(new[] { fullWitch.Id }).Success, Is.True);
+
+            completionSimulation.Advance(0.3f);
+
+            Assert.That(fullWitch.IsResupplying, Is.False);
+            Assert.That(fullWitch.AutoAttackEnabled, Is.True);
+            Assert.That(fullWitch.HasLoiter, Is.True);
+            Assert.That(fullWitch.FlightMode, Is.EqualTo(DemoFlightMode.Loiter));
+
+            Demo1Balance expiryBalance = TestBalance();
+            expiryBalance.SupplyDeliveryDelay = 0f;
+            expiryBalance.SupplyCallCooldown = 0f;
+            expiryBalance.SupplyZoneDuration = 0.25f;
+            expiryBalance.SupplyHitPauseDuration = 10f;
+            Demo1Simulation expirySimulation = new Demo1Simulation(expiryBalance);
+            expirySimulation.ConfigureBase(Vector3.zero);
+            DemoUnitModel waitingWitch = expirySimulation.AddUnit("waiting", DemoTeam.Player, DemoUnitRole.Witch,
+                Stats(), Vector3.zero);
+            waitingWitch.Magic = 0f;
+            waitingWitch.AutoAttackEnabled = false;
+            expirySimulation.RequestSupplyDrop(Vector3.zero);
+            expirySimulation.Advance(0.1f);
+            Assert.That(expirySimulation.RequestFieldResupply(new[] { waitingWitch.Id }).Success, Is.True);
+
+            expirySimulation.Advance(0.2f);
+
+            Assert.That(expirySimulation.SupplyDrops.Single().Finished, Is.True);
+            Assert.That(waitingWitch.IsResupplying, Is.False);
+            Assert.That(waitingWitch.AutoAttackEnabled, Is.False);
+            Assert.That(waitingWitch.HasLoiter, Is.True);
+        }
+
+        [Test]
         public void EnemyArmor_UsesThreePenetrationTiers()
         {
             float[] penetrationValues = { 20f, 15f, 14.9f };
@@ -634,6 +780,12 @@ namespace SWRTS.Demo1.Tests
             Assert.That(balance.Values.LoiterStraightHalfLength, Is.EqualTo(2.5f));
             Assert.That(balance.Values.LoiterTurnRadius, Is.EqualTo(2.5f));
             Assert.That(balance.Values.LoiterArcSegments, Is.EqualTo(8));
+            Assert.That(balance.Values.SupplyPackageCount, Is.EqualTo(3));
+            Assert.That(balance.Values.SupplyCallRange, Is.EqualTo(140f));
+            Assert.That(balance.Values.SupplyDeliveryDelay, Is.EqualTo(8f));
+            Assert.That(balance.Values.SupplyZoneDuration, Is.EqualTo(35f));
+            Assert.That(balance.Values.SupplyZoneRadius, Is.EqualTo(6f));
+            Assert.That(balance.Values.SupplyPackageCapacity, Is.EqualTo(180f));
             Assert.That(perrine.Stats.SpecialAbility, Is.EqualTo(DemoSpecialAbility.LightningStrike));
             Assert.That(sakamoto.Stats.Traits, Is.EqualTo(DemoUnitTrait.None));
             Assert.That(miyafuji.Stats.Traits, Is.EqualTo(DemoUnitTrait.None));

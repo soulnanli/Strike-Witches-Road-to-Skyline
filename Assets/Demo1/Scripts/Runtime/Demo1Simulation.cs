@@ -60,7 +60,8 @@ namespace SWRTS.Demo1
         Moving,
         Pursuing,
         Attacking,
-        Destroyed
+        Destroyed,
+        Resupplying
     }
 
     public enum DemoFlightMode
@@ -162,6 +163,21 @@ namespace SWRTS.Demo1
         public float BaseArrivalRadius = 2f;
         public float BaseLaunchSpread = 1.5f;
         public float BaseTurnaroundDuration = 20f;
+        public int SupplyPackageCount = 3;
+        public float SupplyCallRange = 140f;
+        public float SupplyCallCooldown = 20f;
+        public float SupplyDeliveryDelay = 8f;
+        public float SupplyZoneDuration = 35f;
+        public float SupplyZoneRadius = 6f;
+        public float SupplyPackageCapacity = 180f;
+        public float SupplyApproachRadiusRatio = 0.7f;
+        public float SupplyHitPauseDuration = 2f;
+        public float SupplyAmmoPerSecond = 8f;
+        public float SupplyAmmoCost = 1f;
+        public float SupplyMagicPerSecond = 12f;
+        public float SupplyMagicCost = 0.5f;
+        public float SupplyShieldPerSecond = 10f;
+        public float SupplyShieldCost = 0.75f;
         public float LoiterRadius = 1.5f;
         public float AccelerationDuration = 8f;
         public float TurnSpeedCapAt180 = 0.3f;
@@ -365,6 +381,9 @@ namespace SWRTS.Demo1
         public int MagazineAmmo;
         public int ReserveAmmo;
         public float ReloadRemaining;
+        public int SupplyDropId = -1;
+        public float SupplyAmmoProgress;
+        public bool AutoAttackBeforeResupply = true;
         public float LockQuality;
         public float Suppression;
         public float LastHitAt = float.NegativeInfinity;
@@ -416,6 +435,7 @@ namespace SWRTS.Demo1
         public float SuppressionRatio => Mathf.Clamp01(Suppression / 100f);
         public float LockQualityRatio => Mathf.Clamp01(LockQuality / 100f);
         public bool IsReloading => ReloadRemaining > 0f;
+        public bool IsResupplying => SupplyDropId >= 0;
         public bool IsChannelingAbility => AbilityChannelRemaining > 0f;
         public bool HasUsableAmmo => Stats.UnlimitedReserveAmmo || MagazineAmmo >= Mathf.Max(1, Stats.AmmoPerAttack) || ReserveAmmo > 0;
         public bool HasPlayerIntel => Team == DemoTeam.Player || IsRevealedToPlayer || PlayerIntelLevel != DemoIntelLevel.Unknown;
@@ -524,6 +544,34 @@ namespace SWRTS.Demo1
         }
     }
 
+    public sealed class DemoSupplyDropModel
+    {
+        public int Id { get; }
+        public Vector3 Position { get; }
+        public float Radius { get; }
+        public float Capacity { get; }
+        public float RemainingSupply;
+        public float InboundRemaining;
+        public float ActiveRemaining;
+        public bool Finished;
+
+        public bool IsInbound => !Finished && InboundRemaining > 0f;
+        public bool IsActive => !Finished && InboundRemaining <= 0f && ActiveRemaining > 0f && RemainingSupply > 0f;
+        public float CapacityRatio => Capacity <= 0f ? 0f : Mathf.Clamp01(RemainingSupply / Capacity);
+
+        public DemoSupplyDropModel(int id, Vector3 position, float radius, float capacity,
+            float inboundRemaining, float activeRemaining)
+        {
+            Id = id;
+            Position = position;
+            Radius = radius;
+            Capacity = capacity;
+            RemainingSupply = capacity;
+            InboundRemaining = inboundRemaining;
+            ActiveRemaining = activeRemaining;
+        }
+    }
+
     public static class DemoDamageResolver
     {
         public static DemoDamageResult Resolve(
@@ -602,15 +650,20 @@ namespace SWRTS.Demo1
         private readonly Dictionary<int, DemoUnitModel> _units = new Dictionary<int, DemoUnitModel>();
         private readonly List<DemoRemoteStrikeModel> _remoteStrikes = new List<DemoRemoteStrikeModel>();
         private readonly List<DemoProjectileModel> _projectiles = new List<DemoProjectileModel>();
+        private readonly List<DemoSupplyDropModel> _supplyDrops = new List<DemoSupplyDropModel>();
         private readonly System.Random _random;
         private int _nextUnitId = 1;
         private int _nextStrikeId = 1;
         private int _nextProjectileId = 1;
+        private int _nextSupplyDropId = 1;
 
         public Demo1Balance Balance { get; }
         public IReadOnlyCollection<DemoUnitModel> Units => _units.Values;
         public IReadOnlyList<DemoRemoteStrikeModel> RemoteStrikes => _remoteStrikes;
         public IReadOnlyList<DemoProjectileModel> Projectiles => _projectiles;
+        public IReadOnlyList<DemoSupplyDropModel> SupplyDrops => _supplyDrops;
+        public int SupplyPackagesRemaining { get; private set; }
+        public float SupplyCallCooldownRemaining { get; private set; }
         public float SimulationTime { get; private set; }
         public DemoOutcome Outcome { get; private set; } = DemoOutcome.Running;
         public DemoMissionObjective MissionObjective { get; private set; } = DemoMissionObjective.DestroyFortress;
@@ -621,6 +674,7 @@ namespace SWRTS.Demo1
         {
             Balance = balance ?? new Demo1Balance();
             _random = new System.Random(Balance.RandomSeed);
+            SupplyPackagesRemaining = Mathf.Max(0, Balance.SupplyPackageCount);
         }
 
         public DemoUnitModel AddUnit(string name, DemoTeam team, DemoUnitRole role, DemoUnitStats stats, Vector3 position)
@@ -698,6 +752,9 @@ namespace SWRTS.Demo1
                 unit.MagazineAmmo = Mathf.Max(1, unit.Stats.MagazineSize);
                 unit.ReserveAmmo = Mathf.Max(0, unit.Stats.ReserveAmmo);
                 unit.ReloadRemaining = 0f;
+                unit.SupplyDropId = -1;
+                unit.SupplyAmmoProgress = 0f;
+                unit.AutoAttackBeforeResupply = unit.AutoAttackEnabled;
                 unit.LockQuality = 0f;
                 unit.Suppression = 0f;
                 unit.AbilityCooldownRemaining = 0f;
@@ -723,6 +780,7 @@ namespace SWRTS.Demo1
 
             foreach (DemoUnitModel unit in candidates)
             {
+                CancelFieldResupply(unit, false);
                 CancelAbilityChannel(unit, false);
                 ClearTarget(unit);
                 unit.DeploymentState = DemoUnitDeploymentState.Returning;
@@ -730,6 +788,62 @@ namespace SWRTS.Demo1
             }
             Raise($"{candidates.Count} witches returning to base.", BasePosition, true);
             return DemoCommandResult.Ok($"{candidates.Count} witches returning to base.");
+        }
+
+        public DemoCommandResult RequestSupplyDrop(Vector3 target)
+        {
+            if (Outcome != DemoOutcome.Running)
+                return DemoCommandResult.Fail("Supply cannot be called after the mission has ended.");
+            if (SupplyPackagesRemaining <= 0)
+                return DemoCommandResult.Fail("No tactical supply packages remain.");
+            if (SupplyCallCooldownRemaining > 0f)
+                return DemoCommandResult.Fail($"Supply call cooling down ({SupplyCallCooldownRemaining:0.0}s).");
+
+            Vector3 clampedTarget = ClampToMap(target);
+            if (HorizontalDistance(BasePosition, clampedTarget) > Mathf.Max(0f, Balance.SupplyCallRange))
+                return DemoCommandResult.Fail("Supply target is outside base delivery range.");
+
+            DemoSupplyDropModel drop = new DemoSupplyDropModel(
+                _nextSupplyDropId++, clampedTarget, Mathf.Max(0.1f, Balance.SupplyZoneRadius),
+                Mathf.Max(0f, Balance.SupplyPackageCapacity), Mathf.Max(0f, Balance.SupplyDeliveryDelay),
+                Mathf.Max(0f, Balance.SupplyZoneDuration));
+            _supplyDrops.Add(drop);
+            SupplyPackagesRemaining--;
+            SupplyCallCooldownRemaining = Mathf.Max(0f, Balance.SupplyCallCooldown);
+            Raise($"Supply drop #{drop.Id} inbound; arrival in {drop.InboundRemaining:0.0}s.", drop.Position, true);
+            return DemoCommandResult.Ok($"Supply drop #{drop.Id} inbound.");
+        }
+
+        public DemoCommandResult RequestFieldResupply(IEnumerable<int> unitIds)
+        {
+            List<DemoSupplyDropModel> activeDrops = _supplyDrops
+                .Where(drop => drop.IsActive)
+                .OrderBy(drop => drop.Id)
+                .ToList();
+            if (activeDrops.Count == 0)
+                return DemoCommandResult.Fail("No active tactical supply zone is available.");
+
+            List<DemoUnitModel> candidates = (unitIds ?? Enumerable.Empty<int>())
+                .Select(GetUnit)
+                .Where(unit => unit != null && unit.Team == DemoTeam.Player && unit.IsAlive && !unit.IsFixed &&
+                               unit.DeploymentState == DemoUnitDeploymentState.Active)
+                .Distinct()
+                .ToList();
+            if (candidates.Count == 0)
+                return DemoCommandResult.Fail("No selected witch can receive tactical supply.");
+
+            foreach (DemoUnitModel unit in candidates)
+            {
+                DemoSupplyDropModel drop = activeDrops
+                    .OrderBy(item => HorizontalDistance(unit.Position, item.Position))
+                    .ThenBy(item => item.Id)
+                    .First();
+                BeginFieldResupply(unit, drop);
+            }
+
+            Raise($"{candidates.Count} witches are rendezvousing with tactical supply.",
+                GetUnit(candidates[0].Id).Position, true);
+            return DemoCommandResult.Ok($"{candidates.Count} witches assigned to tactical supply.");
         }
 
         public DemoCommandResult ConfigureScoutAi(int unitId, IEnumerable<Vector3> patrolPoints)
@@ -860,6 +974,8 @@ namespace SWRTS.Demo1
 
             foreach (DemoUnitModel unit in candidates)
             {
+                if (!enabled && unit.IsResupplying)
+                    CancelFieldResupply(unit, false);
                 if (enabled)
                 {
                     unit.HasDestination = false;
@@ -895,6 +1011,8 @@ namespace SWRTS.Demo1
                 return DemoCommandResult.Fail("Selected witch cannot use an ability.");
             if (caster.Stats.SpecialAbility == DemoSpecialAbility.None)
                 return DemoCommandResult.Fail("Selected witch has no active ability.");
+            if (caster.IsResupplying)
+                return DemoCommandResult.Fail("Tactical resupply must be cancelled before using an ability.");
             if (caster.AbilityCooldownRemaining > 0f)
                 return DemoCommandResult.Fail($"Ability cooling down ({caster.AbilityCooldownRemaining:0.0}s).");
             if (caster.IsChannelingAbility)
@@ -926,6 +1044,12 @@ namespace SWRTS.Demo1
                 return DemoCommandResult.Fail("No selected witch can change auto-attack stance.");
             foreach (DemoUnitModel unit in candidates)
             {
+                if (unit.IsResupplying)
+                {
+                    unit.AutoAttackBeforeResupply = enabled;
+                    unit.AutoAttackEnabled = false;
+                    continue;
+                }
                 unit.AutoAttackEnabled = enabled;
                 if (!enabled)
                 {
@@ -954,6 +1078,7 @@ namespace SWRTS.Demo1
 
             foreach (DemoUnitModel unit in candidates)
             {
+                CancelFieldResupply(unit, false);
                 if (unit.Stats.SpecialAbility == DemoSpecialAbility.Heal && unit.IsChannelingAbility)
                     CancelAbilityChannel(unit, true);
                 bool changedTarget = unit.LockedTargetId != target.Id;
@@ -994,6 +1119,7 @@ namespace SWRTS.Demo1
                     ? Vector3.zero
                     : new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle)) * spacing;
                 DemoUnitModel unit = candidates[i];
+                CancelFieldResupply(unit, false);
                 if (unit.Stats.SpecialAbility == DemoSpecialAbility.FireControlSolution && unit.IsChannelingAbility)
                     CancelAbilityChannel(unit, false);
                 SetMovement(unit, destination + offset, DemoUnitActivity.Moving, true);
@@ -1030,6 +1156,7 @@ namespace SWRTS.Demo1
                 float dt = Mathf.Min(remaining, 0.1f);
                 SimulationTime += dt;
                 TickUnitResources(dt);
+                TickFieldSupply(dt);
                 TickVisibility(dt);
                 TickLockQuality(dt);
                 TickAbilities(dt);
@@ -1100,13 +1227,166 @@ namespace SWRTS.Demo1
                         Raise($"{unit.DisplayName} completed reload.", unit.Position, false);
                     }
                 }
-                if (unit.LockedTargetId < 0)
+                if (unit.LockedTargetId < 0 && !unit.IsResupplying)
                 {
                     unit.Magic = Mathf.Min(unit.Stats.MaxMagic, unit.Magic + unit.Stats.MagicRecovery * dt);
                     if (unit.Magic > unit.Stats.MaxMagic * 0.25f)
                         unit.Shield = Mathf.Min(unit.Stats.MaxShield, unit.Shield + unit.Stats.MagicRecovery * 0.45f * dt);
                 }
             }
+        }
+
+        private void TickFieldSupply(float dt)
+        {
+            SupplyCallCooldownRemaining = Mathf.Max(0f, SupplyCallCooldownRemaining - dt);
+            foreach (DemoSupplyDropModel drop in _supplyDrops.Where(item => !item.Finished).OrderBy(item => item.Id).ToList())
+            {
+                if (drop.InboundRemaining > 0f)
+                {
+                    drop.InboundRemaining = Mathf.Max(0f, drop.InboundRemaining - dt);
+                    if (drop.InboundRemaining <= 0f)
+                        Raise($"Supply drop #{drop.Id} is active.", drop.Position, true);
+                    continue;
+                }
+
+                drop.ActiveRemaining = Mathf.Max(0f, drop.ActiveRemaining - dt);
+                if (drop.ActiveRemaining <= 0f || drop.RemainingSupply <= 0.0001f)
+                {
+                    drop.Finished = true;
+                    string reason = drop.RemainingSupply <= 0.0001f ? "depleted" : "expired";
+                    Raise($"Supply drop #{drop.Id} {reason}.", drop.Position, true);
+                }
+            }
+
+            foreach (DemoUnitModel unit in _units.Values
+                         .Where(item => item.IsAlive && item.IsResupplying)
+                         .OrderBy(item => item.Id)
+                         .ToList())
+            {
+                DemoSupplyDropModel drop = GetSupplyDrop(unit.SupplyDropId);
+                if (unit.Team != DemoTeam.Player || unit.DeploymentState != DemoUnitDeploymentState.Active ||
+                    drop == null || !drop.IsActive)
+                {
+                    CancelFieldResupply(unit, true);
+                    continue;
+                }
+
+                float approachRadius = drop.Radius * Mathf.Clamp(Balance.SupplyApproachRadiusRatio, 0.1f, 1f);
+                if (HorizontalDistance(unit.Position, drop.Position) > approachRadius)
+                {
+                    if (!unit.HasDestination || HorizontalDistance(unit.Destination, drop.Position) > 0.05f)
+                        SetMovement(unit, drop.Position, DemoUnitActivity.Resupplying, true);
+                    unit.Activity = DemoUnitActivity.Resupplying;
+                    continue;
+                }
+
+                if (!unit.IsHovering)
+                {
+                    unit.HasDestination = false;
+                    unit.HasManualMoveOrder = false;
+                    unit.HasLoiter = false;
+                    unit.SetLoiterWaypoints(Enumerable.Empty<Vector3>());
+                    unit.FlightMode = unit.CurrentSpeed <= Balance.HoverStopSpeed
+                        ? DemoFlightMode.Hovering
+                        : DemoFlightMode.EnteringHover;
+                    unit.HoverStableTime = 0f;
+                    unit.Activity = DemoUnitActivity.Resupplying;
+                    continue;
+                }
+
+                unit.Activity = DemoUnitActivity.Resupplying;
+                if (SimulationTime - unit.LastHitAt < Mathf.Max(0f, Balance.SupplyHitPauseDuration))
+                    continue;
+
+                bool complete = ReplenishFromSupply(unit, drop, dt);
+                if (complete)
+                {
+                    Raise($"{unit.DisplayName} completed tactical resupply.", unit.Position, true);
+                    CancelFieldResupply(unit, true);
+                }
+            }
+        }
+
+        private DemoSupplyDropModel GetSupplyDrop(int id)
+        {
+            return _supplyDrops.FirstOrDefault(drop => drop.Id == id);
+        }
+
+        private void BeginFieldResupply(DemoUnitModel unit, DemoSupplyDropModel drop)
+        {
+            if (unit == null || drop == null)
+                return;
+            if (!unit.IsResupplying)
+                unit.AutoAttackBeforeResupply = unit.AutoAttackEnabled;
+            CancelAbilityChannel(unit, false);
+            ClearTarget(unit);
+            unit.AutoAttackEnabled = false;
+            unit.SupplyDropId = drop.Id;
+            unit.SupplyAmmoProgress = 0f;
+            SetMovement(unit, drop.Position, DemoUnitActivity.Resupplying, true);
+            unit.Activity = DemoUnitActivity.Resupplying;
+        }
+
+        private void CancelFieldResupply(DemoUnitModel unit, bool resumeLoiter)
+        {
+            if (unit == null || !unit.IsResupplying)
+                return;
+            unit.SupplyDropId = -1;
+            unit.SupplyAmmoProgress = 0f;
+            unit.AutoAttackEnabled = unit.AutoAttackBeforeResupply;
+            if (resumeLoiter && unit.IsAlive && unit.DeploymentState == DemoUnitDeploymentState.Active)
+                BeginLoiter(unit, unit.Position);
+        }
+
+        private bool ReplenishFromSupply(DemoUnitModel unit, DemoSupplyDropModel drop, float dt)
+        {
+            int maximumTotalAmmo = Mathf.Max(1, unit.Stats.MagazineSize) + Mathf.Max(0, unit.Stats.ReserveAmmo);
+            int missingAmmo = Mathf.Max(0, maximumTotalAmmo - unit.MagazineAmmo - unit.ReserveAmmo);
+            if (missingAmmo > 0 && drop.RemainingSupply > 0f)
+            {
+                unit.SupplyAmmoProgress += Mathf.Max(0f, Balance.SupplyAmmoPerSecond) * dt;
+                int availableRounds = Mathf.FloorToInt(unit.SupplyAmmoProgress + 0.0001f);
+                int capacityRounds = Balance.SupplyAmmoCost <= 0f
+                    ? availableRounds
+                    : Mathf.FloorToInt(drop.RemainingSupply / Balance.SupplyAmmoCost + 0.0001f);
+                int transferred = Mathf.Min(missingAmmo, availableRounds, capacityRounds);
+                if (transferred > 0)
+                {
+                    unit.ReserveAmmo += transferred;
+                    unit.SupplyAmmoProgress -= transferred;
+                    drop.RemainingSupply = Mathf.Max(0f,
+                        drop.RemainingSupply - transferred * Mathf.Max(0f, Balance.SupplyAmmoCost));
+                    if (unit.MagazineAmmo < Mathf.Max(1, unit.Stats.AmmoPerAttack) && unit.ReloadRemaining <= 0f)
+                        StartReload(unit);
+                }
+                return false;
+            }
+
+            unit.SupplyAmmoProgress = 0f;
+            if (unit.Magic < unit.Stats.MaxMagic - 0.0001f && drop.RemainingSupply > 0f)
+            {
+                float desired = Mathf.Min(unit.Stats.MaxMagic - unit.Magic,
+                    Mathf.Max(0f, Balance.SupplyMagicPerSecond) * dt);
+                float cost = Mathf.Max(0f, Balance.SupplyMagicCost);
+                float transferred = cost <= 0f ? desired : Mathf.Min(desired, drop.RemainingSupply / cost);
+                unit.Magic += transferred;
+                drop.RemainingSupply = Mathf.Max(0f, drop.RemainingSupply - transferred * cost);
+                return false;
+            }
+
+            if (unit.Shield < unit.Stats.MaxShield - 0.0001f && drop.RemainingSupply > 0f)
+            {
+                float desired = Mathf.Min(unit.Stats.MaxShield - unit.Shield,
+                    Mathf.Max(0f, Balance.SupplyShieldPerSecond) * dt);
+                float cost = Mathf.Max(0f, Balance.SupplyShieldCost);
+                float transferred = cost <= 0f ? desired : Mathf.Min(desired, drop.RemainingSupply / cost);
+                unit.Shield += transferred;
+                drop.RemainingSupply = Mathf.Max(0f, drop.RemainingSupply - transferred * cost);
+                return false;
+            }
+
+            return missingAmmo <= 0 && unit.Magic >= unit.Stats.MaxMagic - 0.0001f &&
+                   unit.Shield >= unit.Stats.MaxShield - 0.0001f;
         }
 
         private void TickMovement(float dt)
@@ -1693,7 +1973,7 @@ namespace SWRTS.Demo1
             {
                 if (unit.Team == DemoTeam.Player)
                 {
-                    if (!unit.AutoAttackEnabled || unit.HasExplicitAttackOrder || unit.LockedTargetId >= 0 ||
+                    if (unit.IsResupplying || !unit.AutoAttackEnabled || unit.HasExplicitAttackOrder || unit.LockedTargetId >= 0 ||
                         unit.DeploymentState != DemoUnitDeploymentState.Active)
                         continue;
                     DemoUnitModel target = _units.Values
@@ -2124,7 +2404,7 @@ namespace SWRTS.Demo1
 
         private bool CanFireWeapon(DemoUnitModel unit)
         {
-            if (unit == null || unit.ReloadRemaining > 0f)
+            if (unit == null || unit.IsResupplying || unit.ReloadRemaining > 0f)
                 return false;
             int cost = Mathf.Max(1, unit.Stats.AmmoPerAttack);
             if (unit.MagazineAmmo >= cost)

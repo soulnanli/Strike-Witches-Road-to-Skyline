@@ -7,7 +7,7 @@ The playable entry is `Assets/Prototype/BaseScene/Scenes/BaseCommand.unity`. The
 - The English Channel operational map uses a defined prototype extent of `560 x 315 km`; one simulation/world unit represents one kilometre.
 - Base Command's Folkestone anchor and all scenario spawn/patrol coordinates use the same kilometre coordinate system.
 - The initial camera fits the complete `560 x 315 km` theatre. The base is a permanent, invulnerable world landmark at `(187.6, 0, 100.8)`; its readiness UI is only an overlay.
-- Enemy AI begins on scene load, including while every witch is still at base. Witches move through `Standby`, `Active`, `Returning`, `Servicing` and `Lost` deployment states. Return is a separate order, can be intercepted, and resumes after combat; landing within 2 km starts a 20-second full-service turnaround before another sortie is allowed.
+- Enemy AI begins on scene load, including while every witch is still at base. Witches move through `Standby`, `Active`, `Returning`, `Servicing` and `Lost` deployment states. Return is a separate order, can be intercepted, and resumes after combat; landing within 2 km starts a 20-second full-service turnaround before another sortie is allowed. A limited tactical supply call can extend a sortie, but never repairs health or replaces base service.
 - Aircraft maximum level speed is converted with `move speed = historical km/h / 3600 x 12`. The `12x` strategic time compression keeps a real-distance theatre playable while preserving the historical speed ratios between witches.
 - Historical metadata lives on each `DemoUnitConfig` ScriptableObject, so an individual witch's model, source basis or speed can be tuned without code changes.
 
@@ -77,6 +77,8 @@ This visual pass implements the information requirements of Feishu revision 6 wi
 - **Auto** toggles automatic acquisition of the nearest identified enemy inside the unit's current effective attack range. **Stop attack** disables automatic acquisition and clears the current lock.
 - `H`: clear the current target and order selected witches to return to Folkestone.
 - `V` / **Hover**: decelerate selected witches to a stationary hover; use it again to resume the capsule loiter route. Moving, returning or manually designating an attack target exits hover.
+- `G` / **Supply drop**: enter placement mode, then left click within 140 units of Folkestone to call a supply package. Each battle has three packages; delivery takes eight seconds and calls share a 20-second cooldown.
+- `R` / **Resupply**: send selected active witches to the nearest active supply zone. They approach, hover and replenish in ammo, magic, then shield order. Any move, attack, return or hover-exit order cancels resupply.
 - `S` / **Skill**: use the single selected witch's active mechanism. Sakamoto and Perrine resolve immediately; Miyafuji requires a friendly map-unit target. Lynette's fire-control solution is passive.
 - `Space`: pause/resume simulation. Camera, selection and orders remain available while paused.
 - `F`: focus the selected units. WASD/arrow keys, edge scrolling, middle drag and wheel control the camera.
@@ -92,8 +94,9 @@ This visual pass implements the information requirements of Feishu revision 6 wi
 - Movement uses eight-second acceleration to maximum speed and `60 degrees/s x Mobility` turning. A 180-degree turn limits speed to 30%. Entering the 1.8-unit arrival radius, or crossing it during one simulation step, completes a destination or loiter waypoint without snapping the unit to its center. Arrival creates a 10 x 5 capsule loiter route with 2.5-unit end radii and two straight segments aligned to the arrival heading. Movement and ordinary fire remain independent.
 - Lock quality grows from intelligence, turning and suppression, must reach 25 before firing, and decays by 35 per second without observation or outside effective attack range. Distance within range affects neither lock growth nor accuracy; accuracy applies lock and suppression modifiers before a separate evasion roll.
 - Standard witch machine guns use an 8/32 magazine/reserve load and a three-second reload. Empty reserves automatically order a return; the existing 20-second base service restores health, magic, shield and ammunition.
+- A tactical supply package has an eight-second inbound delay, a 35-second active window, six-unit service radius and 180 shared supply points. Transfer requires a stationary hover and two seconds without being hit; the unit cannot acquire, lock or fire while receiving supplies. Ammo, magic and shield transfer at 8, 12 and 10 per second with costs of 1, 0.5 and 0.75 supply points respectively. Supply does not restore health, clear suppression, reset cooldowns or bypass normal magazine reloads.
 - Enemy armour uses the 100% / 35% / 10% penetration tiers. Core marks last six seconds, halve effective armour and apply the non-stacking 2.4x core multiplier. Suppression only applies linear combat penalties and never clears orders or forces retreat.
-- This branch implements the target specification in Feishu `Demo1 战斗 个体` revision 395 and intentionally does not create battle instances, formations or a separate battle panel.
+- This branch implements the target specification in Feishu `Demo1 战斗 个体` revision 399 and intentionally does not create battle instances, formations or a separate battle panel.
 
 ## Witch active mechanisms
 

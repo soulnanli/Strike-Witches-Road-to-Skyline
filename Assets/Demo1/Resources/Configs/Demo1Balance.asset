@@ -54,6 +54,21 @@ MonoBehaviour:
     BaseArrivalRadius: 2
     BaseLaunchSpread: 1.5
     BaseTurnaroundDuration: 20
+    SupplyPackageCount: 3
+    SupplyCallRange: 140
+    SupplyCallCooldown: 20
+    SupplyDeliveryDelay: 8
+    SupplyZoneDuration: 35
+    SupplyZoneRadius: 6
+    SupplyPackageCapacity: 180
+    SupplyApproachRadiusRatio: 0.7
+    SupplyHitPauseDuration: 2
+    SupplyAmmoPerSecond: 8
+    SupplyAmmoCost: 1
+    SupplyMagicPerSecond: 12
+    SupplyMagicCost: 0.5
+    SupplyShieldPerSecond: 10
+    SupplyShieldCost: 0.75
     LoiterRadius: 1.5
     AccelerationDuration: 8
     TurnSpeedCapAt180: 0.3

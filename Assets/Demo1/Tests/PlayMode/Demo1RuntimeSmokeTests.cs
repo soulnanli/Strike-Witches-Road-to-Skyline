@@ -146,5 +146,37 @@ namespace SWRTS.Demo1.PlayModeTests
             Object.Destroy(root);
             yield return null;
         }
+
+        [UnityTest]
+        public IEnumerator TacticalSupplyCreatesMapVisualAndAcceptsSelectedWitch()
+        {
+            GameObject root = new GameObject("Demo1 Tactical Supply Smoke Test");
+            Demo1GameController controller = root.AddComponent<Demo1GameController>();
+            yield return null;
+            yield return null;
+
+            DemoUnitModel witch = controller.Simulation.Units.First(unit =>
+                unit.Team == DemoTeam.Player && unit.DeploymentState == DemoUnitDeploymentState.Active);
+            controller.SelectUnits(new[] { witch.Id });
+            Vector3 dropPosition = witch.Position + Vector3.right * 2f;
+            Assert.That(controller.CommandSupplyDrop(dropPosition).Success, Is.True);
+            controller.Simulation.Advance(controller.Simulation.Balance.SupplyDeliveryDelay + 0.1f);
+            yield return null;
+
+            DemoSupplyDropModel drop = controller.Simulation.SupplyDrops.Single();
+            Assert.That(drop.IsActive, Is.True);
+            GameObject visual = GameObject.Find($"Supply Drop #{drop.Id}");
+            Assert.That(visual, Is.Not.Null);
+            Assert.That(visual.transform.Find("Supply Radius"), Is.Not.Null);
+            witch.Magic = 0f;
+            Assert.That(controller.CommandFieldResupply(new[] { witch.Id }).Success, Is.True);
+            controller.Simulation.Advance(0.2f);
+            yield return null;
+            Assert.That(witch.IsResupplying, Is.True);
+            Assert.That(witch.AutoAttackEnabled, Is.False);
+
+            Object.Destroy(root);
+            yield return null;
+        }
     }
 }
