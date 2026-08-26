@@ -363,10 +363,9 @@ MonoBehaviour:
   cameraMoveLimit: 500
   cameraPosBuffer: {x: 0, y: 0, z: 0}
   patchNumber: 0
-  mesh: {fileID: 4300000, guid: 385c83a107979db40ae3e5b495dd6700, type: 2}
   meshMaterial: {fileID: 2100000, guid: dbf898c9f9c4a2d46aa6336e23caeb61, type: 2}
   heightMap: {fileID: 2800000, guid: f17ca9da849a9374eb1939fcd59d9e23, type: 3}
-  meshObjList: []
+  minMaxHeightMap: {fileID: 2800000, guid: b31bda6161c2f104b902c2fdfce10e93, type: 3}
   _cameraProjection: {fileID: 0}
 --- !u!4 &1590585345
 Transform:
@@ -395,6 +394,7 @@ GameObject:
   - component: {fileID: 1935406358}
   - component: {fileID: 1935406357}
   - component: {fileID: 1935406360}
+  - component: {fileID: 1935406361}
   m_Layer: 0
   m_Name: Main Camera
   m_TagString: MainCamera
@@ -442,7 +442,7 @@ Camera:
     width: 1
     height: 1
   near clip plane: 0.3
-  far clip plane: 1000
+  far clip plane: 5000
   field of view: 60
   orthographic: 0
   orthographic size: 5
@@ -470,7 +470,7 @@ Transform:
   m_GameObject: {fileID: 1935406356}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 100, z: -937}
+  m_LocalPosition: {x: 0, y: 30, z: -937}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -520,6 +520,22 @@ MonoBehaviour:
     m_MipBias: 0
     m_VarianceClampScale: 0.9
     m_ContrastAdaptiveSharpening: 0
+--- !u!114 &1935406361
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1935406356}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 31872c0f542047b40b15320e3617d8ca, type: 3}
+  m_Name:
+  m_EditorClassIdentifier:
+  moveSpeed: 50
+  rotateSpeed: 0.5
+  minYAngle: -80
+  maxYAngle: 80
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
