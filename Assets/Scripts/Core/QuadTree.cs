@@ -14,6 +14,9 @@ namespace SW.Core
     }
     public class QuadtreeNode
     {
+        public bool needReGen = true;
+        public bool isCurrentLeaf;
+
         public Vector3 center;
         public Vector3 size;
         private QuadtreeNode fl;
@@ -40,7 +43,7 @@ namespace SW.Core
             Gizmos.color = Color.red;
             Gizmos.DrawLine(center, center + Vector3.up * 10);
             Gizmos.color = Color.white;
-            if (fl == null)
+            if (isCurrentLeaf || fl == null)
                 Gizmos.DrawWireCube(center, size);
             else
             {
@@ -124,20 +127,23 @@ namespace SW.Core
             br = nbr == null ? new QuadtreeNode(center + new Vector3(oneFourth.x, 0, -oneFourth.z), size / 2, lodLevel - 1) : nbr;
         }
 
-        public bool CaculateLodNode()
+        public void CaculateLodNode(List<QuadtreeNode> output)
         {
             if (!CanLod())
             {
-                mapmgr.Instance.finalNodeList.Add(this);
-                return false;
+                isCurrentLeaf = true;
+                output.Add(this);
+                return;
             }
-            Segmentaion();
-            fl.CaculateLodNode();
-            fr.CaculateLodNode();
-            bl.CaculateLodNode();
-            br.CaculateLodNode();
 
-            return true;
+            isCurrentLeaf = false;
+            if(fl==null)
+                Segmentaion();
+
+            fl.CaculateLodNode(output);
+            fr.CaculateLodNode(output);
+            bl.CaculateLodNode(output);
+            br.CaculateLodNode(output);
         }
         public bool CanLod()
         {

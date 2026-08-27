@@ -41,9 +41,7 @@ public class mapmgr : MonoBehaviour
     NativeArray<Vector3> jobBoundsMinPoint;
     NativeArray<bool> result;
     private GameObject[] nodeObjArray;
-
-
-    bool lodComplete = false;
+    private bool needInitialGenerate = true;
     public static mapmgr Instance { get; private set; }
 
     void Start()
@@ -58,10 +56,6 @@ public class mapmgr : MonoBehaviour
             size: new Vector3(mapSize, 0 ,mapSize),
             lodLevel: 6
             );
-        // _root.Segmentaion();
-        lodComplete = _root.CaculateLodNode();
-        cameraPosBuffer = _camera.transform.position;
-
         jobPlanesNormal = new NativeArray<Vector3>(6, Allocator.Persistent);
         jobPlanesDistance = new NativeArray<float>(6, Allocator.Persistent);
         int len = 4096 * 64;
@@ -69,45 +63,99 @@ public class mapmgr : MonoBehaviour
         if (!jobBoundsMinPoint.IsCreated) jobBoundsMinPoint = new NativeArray<Vector3>(len, Allocator.Persistent);
         if (!result.IsCreated) result = new NativeArray<bool>(len, Allocator.Persistent);
         nodeObjArray =  new GameObject[4096 * 64];
+
+        finalNodeList.Clear();
+        _root.CaculateLodNode(finalNodeList);
+        cameraPosBuffer = _camera.transform.position;
     }
 
     // Update is called once per frame
     void Update()
     {
-        //patchNumber = meshObjDict.Count;
-        if (lodComplete)
+        if (needInitialGenerate)
         {
-            lodComplete = false;
-            //Debug.Log("Lod Complete");
-            GenerateMeshObj();
+            foreach (var node in finalNodeList)
+            {
+                GenerateMeshObj(node);
+            }
+
+            needInitialGenerate = false;
+            return;
         }
 
         if (Vector3.Distance(_camera.transform.position, cameraPosBuffer) > cameraMoveLimit)
         {
             cameraPosBuffer = _camera.transform.position;
-            foreach (var node in finalNodeList)
-            {
-                foreach (var o in node.meshObjDict.Values)
-                {
-                    o.SetActive(false);
-                    meshPool.TryEnqueue(1,o);
-                }
-                node.meshObjDict.Clear();
-            }
-            finalNodeList.Clear();
-            lodComplete = _root.CaculateLodNode();
+            UploadLodNode();
         }
 
         FrustumCulling();
     }
 
+    private List<QuadtreeNode> nextList = new ();
+    private readonly HashSet<QuadtreeNode> finalNodeSet = new ();
+    private readonly HashSet<QuadtreeNode> nextNodeSet = new ();
+
+    void UploadLodNode()
+    {
+        nextList.Clear();
+        _root.CaculateLodNode(nextList);
+
+        finalNodeSet.Clear();
+        nextNodeSet.Clear();
+        foreach (var node in finalNodeList)
+        {
+            finalNodeSet.Add(node);
+        }
+
+        foreach (var node in nextList)
+        {
+            nextNodeSet.Add(node);
+        }
+
+        foreach (var node in finalNodeList)
+        {
+            if (!nextNodeSet.Contains(node))
+            {
+                RecycleMeshObj(node);
+            }
+        }
+
+        foreach (var node in nextList)
+        {
+            if (finalNodeSet.Contains(node))
+            {
+                node.needReGen = false;
+                continue;
+            }
+
+            GenerateMeshObj(node);
+        }
+
+        List<QuadtreeNode> oldList = finalNodeList;
+        finalNodeList = nextList;
+        nextList = oldList;
+    }
+
+    private void RecycleMeshObj(QuadtreeNode node)
+    {
+        foreach (var go in node.meshObjDict.Values)
+        {
+            go.SetActive(false);
+            meshPool.TryEnqueue(1, go);
+        }
+
+        node.meshObjDict.Clear();
+        node.needReGen = true;
+    }
+
     private void OnDestroy()
     {
-        jobPlanesNormal.Dispose();
-        jobPlanesDistance.Dispose();
-        jobBoundsMaxPoint.Dispose();
-        jobBoundsMinPoint.Dispose();
-        result.Dispose();
+        if (jobPlanesNormal.IsCreated) jobPlanesNormal.Dispose();
+        if (jobPlanesDistance.IsCreated) jobPlanesDistance.Dispose();
+        if (jobBoundsMaxPoint.IsCreated) jobBoundsMaxPoint.Dispose();
+        if (jobBoundsMinPoint.IsCreated) jobBoundsMinPoint.Dispose();
+        if (result.IsCreated) result.Dispose();
     }
 
     bool isCameraMoved = true;
@@ -145,6 +193,8 @@ public class mapmgr : MonoBehaviour
         job.result = result;
 
         int len = index + 1;
+        patchNumber = len;
+        if (len == 0) return;
 
         JobHandle handle = job.Schedule(len, 64);
         handle.Complete();
@@ -184,41 +234,39 @@ public class mapmgr : MonoBehaviour
         return new Bounds(center, size);
     }
 
-    public void GenerateMeshObj()
+    public void GenerateMeshObj(QuadtreeNode node)
     {
-        foreach (var node in finalNodeList)
+        for (int i = 0; i < 8; i++)
         {
-            for (int i = 0; i < 8; i++)
+            for(int j = 0; j < 8; j++)
             {
-                for(int j = 0; j < 8; j++)
+                GameObject go = meshPool.TryDequeue(1);
+                MeshFilter meshFilter = go.GetComponent<MeshFilter>();
+                Mesh m = meshFilter.sharedMesh;
+                if (m is null)
                 {
-                    GameObject go = meshPool.TryDequeue(1);
-                    MeshFilter meshFilter = go.GetComponent<MeshFilter>();
-                    Mesh m = meshFilter.sharedMesh;
-                    if (m is null)
-                    {
-                        m = Instantiate(originalMesh);
-                        meshFilter.sharedMesh = m;
-                    }
-
-                    Vector3 v;
-                    var scale = Math.Pow(2, node.lodLevel);
-                    Vector3 pos = new Vector3(node.center.x + (int)scale * ( - 32 + 4) + j *  (int)scale * 8, 0f,
-                        node.center.z + (int)scale * ( - 32 + 4) + i *  (int)scale * 8 );
-                    (m,v) = Utils.heightMap2Mesh(m,heightMapData,heightMapWidth,(int)scale,node.size.x,node.center, mapSize, heightScale,i,j, pos);
-
-                    node.meshObjDict[m] = go;
-                    go.SetActive(true);
-                    go.GetComponent<MeshRenderer>().material = meshMaterial;
-                    go.GetComponent<NodeDescriptor>().lodLevel = node.lodLevel;
-                    go.GetComponent<NodeDescriptor>().offset = v;
-                    
-                    go.transform.position = pos;
-                    go.transform.localScale = new Vector3((float)scale, 1, (float)scale);
+                    m = Instantiate(originalMesh);
+                    meshFilter.sharedMesh = m;
                 }
-            }
 
+                Vector3 v;
+                var scale = Math.Pow(2, node.lodLevel);
+                Vector3 pos = new Vector3(node.center.x + (int)scale * ( - 32 + 4) + j *  (int)scale * 8, 0f,
+                    node.center.z + (int)scale * ( - 32 + 4) + i *  (int)scale * 8 );
+                (m,v) = Utils.heightMap2Mesh(m,heightMapData,heightMapWidth,(int)scale,node.size.x,node.center, mapSize, heightScale,i,j, pos);
+
+                node.meshObjDict[m] = go;
+                go.GetComponent<MeshRenderer>().sharedMaterial = meshMaterial;
+                go.GetComponent<NodeDescriptor>().lodLevel = node.lodLevel;
+                go.GetComponent<NodeDescriptor>().offset = v;
+
+                go.transform.position = pos;
+                go.transform.localScale = new Vector3((float)scale, 1, (float)scale);
+                go.SetActive(true);
+            }
         }
+
+        node.needReGen = false;
     }
 
     private void OnDrawGizmos()
