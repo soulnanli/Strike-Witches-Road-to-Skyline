@@ -1,0 +1,11 @@
+﻿<Solution>
+  <Project Path="Assembly-CSharp.csproj" />
+  <Project Path="Assembly-CSharp-Editor.csproj" />
+  <Project Path="SWRTS.BasePrototype.PlayModeTests.csproj" />
+  <Project Path="SWRTS.Demo1.csproj" />
+  <Project Path="SWRTS.Demo1.Editor.csproj" />
+  <Project Path="SWRTS.Demo1.PlayModeTests.csproj" />
+  <Project Path="SWRTS.BasePrototype.csproj" />
+  <Project Path="SWRTS.BasePrototype.Editor.csproj" />
+  <Project Path="SWRTS.Demo1.Tests.csproj" />
+</Solution>

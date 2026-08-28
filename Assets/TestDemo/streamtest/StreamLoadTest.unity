@@ -160,7 +160,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 15303, guid: 0000000000000000f000000000000000, type: 0}
+  - {fileID: 2100000, guid: 5e82f4df0a7b4a9ba76d191fd21a3f11, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -360,10 +360,10 @@ MonoBehaviour:
   lodJudgeSector: 100
   cameraFov: 0
   heightScale: 300
-  cameraMoveLimit: 500
+  cameraMoveLimit: 50
   cameraPosBuffer: {x: 0, y: 0, z: 0}
   patchNumber: 0
-  meshMaterial: {fileID: 2100000, guid: dbf898c9f9c4a2d46aa6336e23caeb61, type: 2}
+  meshMaterial: {fileID: 2100000, guid: 5e82f4df0a7b4a9ba76d191fd21a3f11, type: 2}
   heightMap: {fileID: 2800000, guid: f17ca9da849a9374eb1939fcd59d9e23, type: 3}
   minMaxHeightMap: {fileID: 2800000, guid: b31bda6161c2f104b902c2fdfce10e93, type: 3}
   _cameraProjection: {fileID: 0}
@@ -530,8 +530,8 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 31872c0f542047b40b15320e3617d8ca, type: 3}
-  m_Name:
-  m_EditorClassIdentifier:
+  m_Name: 
+  m_EditorClassIdentifier: 
   moveSpeed: 50
   rotateSpeed: 0.5
   minYAngle: -80
